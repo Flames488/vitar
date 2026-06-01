@@ -1,0 +1,269 @@
+groups:
+
+  # ── API Health ───────────────────────────────────────────────────────────────
+  - name: api_health
+    interval: 30s
+    rules:
+
+      - alert: APIDown
+        expr: up{job="vitar_api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "Vitar API is DOWN"
+          description: "The API has been unreachable for >1 minute. Check: docker compose ps api"
+          runbook: "docker compose restart api"
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(vitar_http_requests_total{status=~"5.."}[5m])
+            /
+            rate(vitar_http_requests_total[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 5xx error rate: {{ $value | humanizePercentage }}"
+          description: "More than 5% of requests are returning 5xx errors over the last 5 minutes."
+
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            rate(vitar_http_requests_total{status=~"5.."}[5m])
+            /
+            rate(vitar_http_requests_total[5m])
+          ) > 0.20
+        for: 1m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "CRITICAL error rate: {{ $value | humanizePercentage }}"
+          description: "More than 20% of requests are 5xx. Likely a deployment or DB issue."
+
+      - alert: SlowAPIResponses
+        expr: |
+          histogram_quantile(0.95,
+            rate(vitar_http_request_duration_seconds_bucket[5m])
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 API latency is {{ $value }}s (threshold: 2s)"
+          description: "95th percentile response time has been above 2 seconds for 5 minutes. Check DB slow queries."
+
+  # ── Celery Workers ───────────────────────────────────────────────────────────
+  - name: celery_health
+    interval: 60s
+    rules:
+
+      - alert: CeleryWorkerDown
+        expr: |
+          absent(vitar_celery_tasks_total) or
+          sum(rate(vitar_celery_tasks_total[10m])) == 0
+        for: 10m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "Celery worker appears DOWN or stalled"
+          description: "No Celery task activity in 10 minutes. Workers may be dead. Check: docker compose ps worker"
+          runbook: "docker compose restart worker"
+
+      - alert: HighCeleryFailureRate
+        expr: |
+          (
+            rate(vitar_celery_tasks_total{status="failure"}[15m])
+            /
+            rate(vitar_celery_tasks_total[15m])
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery task failure rate: {{ $value | humanizePercentage }}"
+          description: "More than 10% of Celery tasks are failing. Check worker logs."
+
+      - alert: NotificationsStuck
+        expr: vitar_notifications_stuck_total > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} notifications stuck in pending"
+          description: "Over 100 notifications have been stuck in PENDING for >1h. Workers may not be processing the reminders queue."
+
+  # ── Database ─────────────────────────────────────────────────────────────────
+  - name: database_health
+    interval: 30s
+    rules:
+
+      - alert: SlowDBQueries
+        expr: rate(vitar_db_slow_queries_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} slow DB queries/sec"
+          description: "Sustained slow query rate. Consider adding indexes or check for N+1 queries."
+
+      - alert: DBConnectionPoolExhausted
+        expr: |
+          vitar_db_pool_checkedout / (vitar_db_pool_size + vitar_db_pool_overflow) > 0.90
+        for: 2m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "DB connection pool is {{ $value | humanizePercentage }} full"
+          description: "Connection pool near exhaustion. Requests will start timing out. Scale workers or increase pool size."
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  - name: redis_health
+    interval: 30s
+    rules:
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "Redis is DOWN"
+          description: "Redis has been unreachable for >1 minute. Celery, caching, and rate limiting will fail."
+          runbook: "docker compose restart redis"
+
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory at {{ $value | humanizePercentage }}"
+          description: "Redis is using over 85% of its allocated memory (256MB). Keys will start being evicted."
+
+  # ── System Resources (v10) ───────────────────────────────────────────────────
+  - name: system_resources
+    interval: 30s
+    rules:
+
+      - alert: HighCPUUsage
+        expr: vitar_system_cpu_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU at {{ $value | humanize }}% (threshold: 85%)"
+          description: "Host CPU has been above 85% for 5 minutes. Check for runaway processes or increase replicas."
+
+      - alert: CriticalCPUUsage
+        expr: vitar_system_cpu_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "CRITICAL: CPU at {{ $value | humanize }}%"
+          description: "CPU above 95% for 2 minutes. Auto-scale triggered. Check for memory leaks or high-cardinality queries."
+          runbook: "docker compose up -d --scale worker=$(( $(docker compose ps -q worker | wc -l) + 1 )) worker"
+
+      - alert: HighMemoryUsage
+        expr: vitar_system_memory_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory at {{ $value | humanize }}% (threshold: 80%)"
+          description: "Host memory above 80% for 5 minutes. Workers may be leaking memory."
+
+      - alert: CriticalMemoryUsage
+        expr: vitar_system_memory_percent > 90
+        for: 2m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "CRITICAL: Memory at {{ $value | humanize }}%"
+          description: "Memory above 90%. OOM kills are imminent. Consider reducing UVICORN_WORKERS or worker count."
+          runbook: "docker compose restart worker"
+
+      - alert: DiskSpaceWarning
+        expr: vitar_system_disk_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk at {{ $value | humanize }}% (threshold: 80%)"
+          description: "Disk above 80%. Clean Docker images: docker system prune -af"
+
+      - alert: DiskSpaceCritical
+        expr: vitar_system_disk_percent > 92
+        for: 2m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "CRITICAL: Disk at {{ $value | humanize }}% — DB crash imminent"
+          description: "Disk above 92%. PostgreSQL WAL writes will fail when full. Immediate action required."
+          runbook: "docker exec postgres psql -U vitar -c 'CHECKPOINT; VACUUM;' && docker system prune -af"
+
+  # ── Circuit Breakers (v10) ───────────────────────────────────────────────────
+  - name: circuit_breakers
+    interval: 30s
+    rules:
+
+      - alert: CircuitBreakerOpen
+        expr: vitar_circuit_breaker_open_count > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} circuit breaker(s) are OPEN"
+          description: "One or more external service circuits are open. Check /health/circuits for details."
+
+      - alert: HighCircuitBreakerFallbacks
+        expr: rate(vitar_circuit_breaker_events_total{event="open"}[10m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent circuit breaker trips"
+          description: "Circuit breakers are opening repeatedly — an external service may be degraded."
+
+  # ── Dead-Letter Queue (v10) ──────────────────────────────────────────────────
+  - name: dlq_health
+    interval: 60s
+    rules:
+
+      - alert: DLQGrowing
+        expr: rate(vitar_celery_queue_depth{queue="dead_letter"}[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead-letter queue is growing"
+          description: "Tasks are accumulating in the DLQ. Review worker logs for repeated errors."
+
+      - alert: DLQCritical
+        expr: vitar_celery_queue_depth{queue="dead_letter"} > 50
+        for: 5m
+        labels:
+          severity: critical
+          team: oncall
+        annotations:
+          summary: "DLQ has {{ $value }} failed tasks"
+          description: "Over 50 tasks in dead-letter queue. Major processing failures detected."
+
+      - alert: StuckTasksDetected
+        expr: increase(vitar_celery_stuck_tasks_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stuck Celery tasks detected"
+          description: "Tasks running longer than the stuck threshold were detected. Check inspect_stuck_tasks logs."

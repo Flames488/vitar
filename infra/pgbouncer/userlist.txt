@@ -1,0 +1,33 @@
+; PgBouncer userlist — MD5-hashed credentials for Docker deployment.
+;
+; ── Docker Compose ────────────────────────────────────────────────────────────
+; This file is NOT mounted in docker-compose.yml.
+; The edoburu/pgbouncer image auto-generates its internal userlist from these
+; Docker environment variables:
+;   DB_USER     = vitar
+;   DB_PASSWORD = ${POSTGRES_PASSWORD}
+;   AUTH_TYPE   = md5
+; The image computes md5(password + username) and writes the file internally.
+; No manual action needed for the Docker deployment path.
+;
+; ── Bare-Metal / Non-Docker Deployment ───────────────────────────────────────
+; For bare-metal deployments, run the following command at first boot to
+; generate MD5-hashed credentials from your environment variables.
+; This is handled automatically by infra/scripts/setup.sh.
+;
+;   DB_USER=vitar DB_PASSWORD=$POSTGRES_PASSWORD \
+;     bash infra/pgbouncer/generate-userlist.sh
+;
+; The lines below are placeholders — setup.sh overwrites them at first boot.
+; They are intentionally NOT real passwords. Do not use them in production.
+;
+; To verify setup.sh ran correctly:
+;   grep -v '^;' /etc/pgbouncer/userlist.txt | grep -c '"md5'
+; Should output 2 (one line per user, each containing an md5 hash).
+;
+; ── Auth Type Note ────────────────────────────────────────────────────────────
+; pgbouncer.ini and Docker Compose both use auth_type = md5.
+; Postgres is configured with password_encryption = md5 to match.
+;
+"vitar" "SETUP_NOT_RUN_YET__run_infra_scripts_setup.sh_to_generate_real_credentials"
+"pgbouncer" "SETUP_NOT_RUN_YET__run_infra_scripts_setup.sh_to_generate_real_credentials"

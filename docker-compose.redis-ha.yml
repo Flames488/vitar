@@ -1,0 +1,138 @@
+# docker-compose.redis-ha.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Redis High-Availability overlay for Vitar production deployments.
+#
+# PROBLEM THIS SOLVES:
+#   The default docker-compose.yml runs a single Redis container.
+#   Redis is the backbone of three critical systems:
+#     1. Celery broker  — ALL async tasks (reminders, billing, AI, notifications)
+#     2. App cache      — doctor/clinic/appointment query results
+#     3. Paystack idempotency keys — prevents duplicate payment processing
+#
+#   A single Redis container going down (OOM kill, bad deploy, disk full) takes
+#   ALL three systems offline simultaneously. Celery task queue is drained,
+#   in-flight tasks are lost, and Paystack idempotency is broken until restart.
+#
+# WHAT THIS FILE ADDS:
+#   - redis-replica: read replica of the primary Redis (async replication).
+#   - sentinel1/2/3: Redis Sentinel cluster (quorum=2) for automatic failover.
+#     If the primary goes down, Sentinels elect the replica as primary within
+#     ~10 seconds — Celery reconnects automatically.
+#
+# USAGE:
+#   # Production single-host HA:
+#   docker compose -f docker-compose.yml -f docker-compose.redis-ha.yml up -d
+#
+#   # Combined with API scaling:
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.redis-ha.yml \
+#     -f docker-compose.scale.yml \
+#     up -d
+#
+# APP CONFIGURATION:
+#   Update .env for Sentinel-aware connections:
+#     REDIS_URL=redis-sentinel://sentinel1:26379,sentinel2:26379,sentinel3:26379/mymaster/0
+#     CELERY_BROKER_URL=redis-sentinel://sentinel1:26379,sentinel2:26379,sentinel3:26379/mymaster/1
+#     CELERY_RESULT_BACKEND=redis-sentinel://sentinel1:26379,sentinel2:26379,sentinel3:26379/mymaster/2
+#
+#   The redis Python library and Celery both support Sentinel natively.
+#   Add to requirements.txt if not present: redis[hiredis]>=5.0
+#
+# SIMPLER ALTERNATIVE (recommended for most deployments):
+#   Use Upstash Redis (https://upstash.com) — managed, free tier covers this
+#   load, built-in HA, no ops overhead. Set REDIS_URL to the Upstash endpoint.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Redis replica — async replication from primary ──────────────────────────
+  redis-replica:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --replicaof redis 6379
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+    volumes:
+      - redis_replica_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Sentinel cluster (3 nodes, quorum 2) ────────────────────────────────────
+  # Sentinel monitors the primary and elects a new primary if it disappears.
+  # Quorum = 2 means 2 of 3 sentinels must agree before declaring a failure.
+  # Using 3 sentinels on one host is not true multi-host HA, but it prevents
+  # split-brain within the Docker network and keeps the app Sentinel-aware
+  # so you can later move sentinels to separate hosts with zero code changes.
+
+  sentinel1:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'sentinel monitor mymaster redis 6379 2' > /tmp/sentinel.conf &&
+        echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
+        echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
+        echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
+        redis-sentinel /tmp/sentinel.conf
+      "
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:26379:26379"
+
+  sentinel2:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'sentinel monitor mymaster redis 6379 2' > /tmp/sentinel.conf &&
+        echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
+        echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
+        echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
+        redis-sentinel /tmp/sentinel.conf
+      "
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:26380:26379"
+
+  sentinel3:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'sentinel monitor mymaster redis 6379 2' > /tmp/sentinel.conf &&
+        echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
+        echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
+        echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
+        redis-sentinel /tmp/sentinel.conf
+      "
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:26381:26379"
+
+volumes:
+  redis_replica_data:

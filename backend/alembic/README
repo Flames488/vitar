@@ -1,0 +1,10 @@
+Vitar v5 - Database Migrations
+
+To create a new migration:
+  alembic revision --autogenerate -m "description"
+
+To upgrade to latest:
+  alembic upgrade head
+
+To rollback one step:
+  alembic downgrade -1

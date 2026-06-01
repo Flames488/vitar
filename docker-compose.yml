@@ -1,0 +1,595 @@
+x-api-env: &api-env
+  env_file: .env
+  environment:
+    # NOTE: DATABASE_URL is NOT set here. Each service sets it explicitly in its
+    # own environment block to avoid Docker Compose YAML merge-key clobbering.
+    # When a service defines its own `environment:` map, it REPLACES (not merges)
+    # the anchor's `environment:` map — so any key missing from the service block
+    # is silently dropped. DATABASE_URL must therefore appear in every service block.
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+    environment:
+      POSTGRES_USER: vitar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vitar}
+      POSTGRES_DB: vitar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitar -d vitar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: >
+      postgres
+        -c password_encryption=md5
+        -c max_connections=300
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c work_mem=4MB
+        -c checkpoint_completion_target=0.9
+        -c shared_preload_libraries=pg_stat_statements
+        -c pg_stat_statements.track=all
+        -c pg_stat_statements.max=10000
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+    # ⚠️  SINGLE POINT OF FAILURE WARNING
+    # This is a single Redis instance. If it restarts, ALL of the following
+    # state is lost until it recovers (seconds to minutes):
+    #   - Celery task queue  → in-flight jobs (reminders, billing) are dropped
+    #   - Paystack idempotency keys → duplicate payment processing on retry
+    #   - Rate-limit counters → brief bypass window after restart
+    #   - Session/cache data → cold cache until repopulated
+    #
+    # For production with >500 concurrent users, enable Sentinel HA:
+    #   docker compose -f docker-compose.yml -f docker-compose.redis-ha.yml up -d
+    # This adds a Redis replica + 3 Sentinel nodes for automatic failover.
+    # See docker-compose.redis-ha.yml for full setup instructions.
+    # Persistence: RDB snapshots every 60s if >= 1 key changed (fast recovery),
+    # plus AOF (appendonly) for durability between snapshots.
+    # Without these flags, Redis loses ALL data on container restart — which
+    # wipes Celery task queue and Paystack idempotency keys, causing:
+    #   1. All in-flight Celery tasks are lost (no-show reminders, billing jobs)
+    #   2. Paystack idempotency keys gone → duplicate payment processing on retry
+    #   3. Rate-limit counters reset → burst attacks bypass rate limiting briefly
+    #
+    # allkeys-lru: evict least-recently-used keys when maxmemory is reached.
+    # This is correct for a cache+broker combo — newer broker messages are never
+    # evicted because Celery re-reads them immediately; the LRU policy naturally
+    # ages out stale cache keys first.
+    #
+    # For production Redis HA (Sentinel/replica), see docker-compose.redis-ha.yml.
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --save 60 1
+      --save 300 10
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    <<: *api-env
+    environment:
+      DATABASE_URL: postgresql://vitar:${POSTGRES_PASSWORD:-vitar}@pgbouncer:5432/vitar
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      UVICORN_WORKERS: "2"  # Local/default stack: keep Docker Desktop startup stable. Use docker-compose.scale.yml for higher production worker counts.
+      LOG_LEVEL: "info"
+      # Single-node default: auto-migrate on startup (safe — only one replica).
+      # Multi-replica: override to SKIP_MIGRATIONS=true in docker-compose.scale.yml.
+      SKIP_MIGRATIONS: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 5
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    restart: always
+    <<: *api-env
+    environment:
+      DATABASE_URL: postgresql://vitar:${POSTGRES_PASSWORD:-vitar}@pgbouncer:5432/vitar
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      CELERY_WORKER_HOSTNAME: "worker@%h"
+    command: >
+      celery -A app.workers.celery_app worker
+      --loglevel=info
+      --queues=notifications,reminders,ai,billing,celery
+      --concurrency=4
+      --max-tasks-per-child=500
+      --hostname=worker@%h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d worker@$$HOSTNAME --timeout 5 2>&1 | grep -q pong || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+
+  worker_dead_letter:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    restart: always
+    <<: *api-env
+    environment:
+      DATABASE_URL: postgresql://vitar:${POSTGRES_PASSWORD:-vitar}@pgbouncer:5432/vitar
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      CELERY_WORKER_HOSTNAME: "dead_letter@%h"
+    command: >
+      celery -A app.workers.celery_app worker
+      --loglevel=info
+      --queues=dead_letter
+      --concurrency=1
+      --max-tasks-per-child=100
+      --hostname=dead_letter@%h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d dead_letter@$$HOSTNAME --timeout 5 2>&1 | grep -q pong || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    restart: always
+    <<: *api-env
+    environment:
+      DATABASE_URL: postgresql://vitar:${POSTGRES_PASSWORD:-vitar}@pgbouncer:5432/vitar
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    command: >
+      celery -A app.workers.celery_app beat
+      --loglevel=info
+      --schedule=/var/celery/celerybeat-schedule
+    volumes:
+      - celerybeat_data:/var/celery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Beat writes its PID file on startup; check it exists and the process is alive
+      test: ["CMD-SHELL", "test -f /var/celery/celerybeat-schedule"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 45s
+
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    restart: always
+    <<: *api-env
+    environment:
+      DATABASE_URL: postgresql://vitar:${POSTGRES_PASSWORD:-vitar}@pgbouncer:5432/vitar
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    command: >
+      celery -A app.workers.celery_app flower
+      --port=5555
+      --address=127.0.0.1
+      --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-vitar_flower}
+      --url_prefix=flower
+    ports:
+      # Bind to loopback only — access via SSH tunnel or internal nginx proxy, never public internet
+      - "127.0.0.1:5555:5555"
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:5555/flower/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://labvault.cloud/api/v1}
+    restart: always
+    ports:
+      - "3002:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+        reservations:
+          cpus: '0.02'
+          memory: 32M
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/certbot/conf:/etc/letsencrypt:ro
+      - ./infra/nginx/certbot/www:/var/www/certbot:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Observability ────────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      - "--web.listen-address=0.0.0.0:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.02'
+          memory: 32M
+
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=https://labvault.cloud/alertmanager"
+    environment:
+      SLACK_WEBHOOK_URL: "${SLACK_WEBHOOK_URL:-}"
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/alertmanager/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.62.0-alpine
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.01'
+          memory: 16M
+
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    depends_on:
+      - redis
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.01'
+          memory: 16M
+
+    environment:
+      DATA_SOURCE_NAME: "postgresql://vitar:${POSTGRES_PASSWORD:-vitar}@postgres:5432/vitar?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-vitar_grafana}"
+      GF_SERVER_ROOT_URL: "https://labvault.cloud/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── PgBouncer — connection pooler ────────────────────────────────────────
+  # v12: Always-on (no profile gate). Transaction-mode pooling sits between
+  # all app services and Postgres, multiplexing hundreds of app-level
+  # connections down to a 20-connection real pool. This is what makes
+  # 500 concurrent users safe without exhausting Postgres max_connections.
+  #
+  # Pool math (worst case — 16 API workers at max overflow):
+  #   App side:  16 workers × (pool_size=15 + max_overflow=25) = 640 client conns
+  #   PG side:   DEFAULT_POOL_SIZE=20 + RESERVE=5 = 25 real PG connections
+  #   PgBouncer: MAX_CLIENT_CONN=1000 → 640 << 1000 ✅
+  # ── Postgres read replica (streaming replication) ────────────────────────
+  # Offloads read-heavy Celery tasks (no-show risk scoring, queue monitoring,
+  # analytics) from the primary. Tasks use get_replica_db() from database.py.
+  # Enable by setting DATABASE_REPLICA_URL in .env:
+  #   DATABASE_REPLICA_URL=postgresql://vitar:<password>@postgres-replica:5432/vitar
+  #
+  # The replica is read-only; all write operations must target the primary.
+  # Streaming replication lag is typically <1s on the same host.
+  # Start with replica profile: docker compose --profile replica up -d
+  postgres-replica:
+    image: bitnami/postgresql:16
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: "${POSTGRES_REPLICATION_PASSWORD:-replicator}"
+      POSTGRESQL_MASTER_HOST: postgres
+      POSTGRESQL_MASTER_PORT_NUMBER: "5432"
+      POSTGRESQL_PASSWORD: "${POSTGRES_PASSWORD:-vitar}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    profiles:
+      - replica  # opt-in: docker compose --profile replica up -d
+
+  # ── PgBouncer — connection pooler ────────────────────────────────────────
+  #   Postgres:  max_connections=300 → 25 << 300 ✅
+  #
+  # Previous MAX_CLIENT_CONN=500 was below the 640-connection burst ceiling,
+  # causing "connection refused" at 501 during booking surges. Fixed to 1000.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: vitar
+      DB_USER: vitar
+      DB_PASSWORD: "${POSTGRES_PASSWORD:-vitar}"
+      POOL_MODE: transaction
+      # CONNECTION MATH FIX: 16 workers × (pool_size=15 + max_overflow=25) = 640 max app→PgBouncer conns.
+      # Old value of 500 < 640 → PgBouncer would refuse connections at 501 under full burst,
+      # causing OperationalError and taking down the booking flow during a surge.
+      # 1000 gives ample headroom (640 peak + reserve). PgBouncer is lightweight at this count —
+      # it still only opens DEFAULT_POOL_SIZE=20 real Postgres connections regardless.
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "20"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_TIMEOUT: "3"
+      SERVER_IDLE_TIMEOUT: "600"
+      CLIENT_IDLE_TIMEOUT: "0"
+      AUTH_TYPE: md5
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,lock_timeout,statement_timeout,idle_in_transaction_session_timeout,search_path,application_name
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # FIX: Credentials are auto-generated by edoburu/pgbouncer from DB_USER + DB_PASSWORD
+    # env vars above — no static userlist.txt is needed or mounted for Docker.
+    # AUTH_TYPE=md5 matches Postgres -c password_encryption=md5 in the postgres service.
+    # For bare-metal (non-Docker) deployments, run infra/scripts/setup.sh which generates
+    # /etc/pgbouncer/userlist.txt from POSTGRES_USER + POSTGRES_PASSWORD env vars.
+    healthcheck:
+      # Real connectivity test: attempts a pgbouncer admin SHOW STATS command.
+      # Falls back to TCP check if psql is not available in the image.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U vitar -d vitar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── v10: node-exporter — host system metrics ───────────────────────────────
+  # Exposes CPU, memory, disk, network metrics to Prometheus.
+  # Complements the in-process psutil collection in system_metrics.py
+  # with host-level visibility (useful when running multiple containers).
+  node-exporter:
+    image: prom/node-exporter:v1.8.0
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.01'
+          memory: 16M
+
+    command:
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--collector.disable-defaults"
+      - "--collector.cpu"
+      - "--collector.meminfo"
+      - "--collector.diskstats"
+      - "--collector.loadavg"
+      - "--collector.netdev"
+      - "--collector.filefd"
+    ports:
+      - "127.0.0.1:9100:9100"
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:
+  celerybeat_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:

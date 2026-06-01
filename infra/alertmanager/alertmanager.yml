@@ -1,0 +1,94 @@
+global:
+  # How long to wait before re-sending a resolved alert
+  resolve_timeout: 5m
+
+  # Default Slack webhook — set SLACK_WEBHOOK_URL in .env and pass it here
+  # or swap for smtp_smarthost for email
+  slack_api_url: "http://localhost:1"  # Set SLACK_WEBHOOK_URL in .env for real alerts
+
+# ── Routing tree ──────────────────────────────────────────────────────────────
+# Critical alerts go to #oncall immediately.
+# Warnings are grouped and sent to #alerts every 5 minutes.
+route:
+  receiver: slack_warnings
+  group_by: [alertname, severity]
+  group_wait: 30s        # Wait 30s to batch alerts firing at the same time
+  group_interval: 5m     # How often to re-notify for an ongoing group
+  repeat_interval: 4h    # Don't re-alert about the same ongoing issue more than every 4h
+
+  routes:
+    # Critical alerts get their own channel + shorter repeat
+    - matchers:
+        - severity = critical
+      receiver: slack_critical
+      repeat_interval: 30m
+      continue: false   # Don't fall through to the default
+
+    # Warnings go to the standard channel
+    - matchers:
+        - severity = warning
+      receiver: slack_warnings
+      repeat_interval: 2h
+
+# ── Inhibition rules ─────────────────────────────────────────────────────────
+# If the API is down, suppress downstream alerts (Celery stalled, slow queries, etc.)
+# so you get ONE alert, not a flood.
+inhibit_rules:
+  - source_matchers:
+      - alertname = APIDown
+    target_matchers:
+      - severity =~ "warning|critical"
+    equal: []  # Apply globally
+
+  - source_matchers:
+      - alertname = RedisDown
+    target_matchers:
+      - alertname =~ "CeleryWorkerDown|NotificationsStuck|HighCeleryFailureRate"
+    equal: []
+
+# ── Receivers ─────────────────────────────────────────────────────────────────
+receivers:
+
+  - name: slack_critical
+    slack_configs:
+      - channel: "#vitar-oncall"
+        username: "Vitar Alerts 🚨"
+        icon_emoji: ":rotating_light:"
+        title: "🚨 CRITICAL: {{ .GroupLabels.alertname }}"
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Details:* {{ .Annotations.description }}
+          *Runbook:* {{ if .Annotations.runbook }}{{ .Annotations.runbook }}{{ else }}Check docker compose ps{{ end }}
+          *Started:* {{ .StartsAt | since }}
+          {{ end }}
+        send_resolved: true
+
+  - name: slack_warnings
+    slack_configs:
+      - channel: "#vitar-alerts"
+        username: "Vitar Alerts"
+        icon_emoji: ":warning:"
+        title: "⚠️ {{ .GroupLabels.alertname }}"
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Details:* {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+# ── To use email instead of Slack ──────────────────────────────────────────────
+# Uncomment and set SMTP vars in .env:
+#
+# global:
+#   smtp_smarthost: 'smtp.sendgrid.net:587'
+#   smtp_from: 'alerts@labvault.cloud'
+#   smtp_auth_username: 'apikey'
+#   smtp_auth_password: '${SENDGRID_API_KEY}'
+#
+# receivers:
+#   - name: email_critical
+#     email_configs:
+#       - to: 'your@email.com'
+#         subject: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+#         send_resolved: true

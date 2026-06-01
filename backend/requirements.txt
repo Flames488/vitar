@@ -1,0 +1,66 @@
+# Vitar v5 - Python Dependencies
+# Pin major versions for reproducibility; allow patch updates
+
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+gunicorn==23.0.0          # production process manager (UvicornWorker)
+python-multipart==0.0.20
+starlette==0.41.3
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg2-binary==2.9.10
+
+# ── Pydantic / Settings ───────────────────────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.7.0
+pydantic[email]==2.10.3
+email-validator==2.2.0
+
+# ── Auth / Security ───────────────────────────────────────────────────────────
+bcrypt==4.2.1
+python-jose[cryptography]==3.3.0
+cryptography==43.0.3
+
+# ── Task Queue ────────────────────────────────────────────────────────────────
+celery==5.4.0
+redis==5.2.1
+flower==2.0.1
+kombu==5.4.2
+
+# ── Storage
+boto3==1.35.0                  # v13: S3 file storage (STORAGE_BACKEND=s3)
+
+# ── HTTP Client ───────────────────────────────────────────────────────────────
+httpx==0.28.1
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+# (twilio, sendgrid are optional — graceful degradation if not installed)
+
+# ── AI ────────────────────────────────────────────────────────────────────────
+groq==0.13.0
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+sentry-sdk[fastapi]==2.19.2
+prometheus-client==0.21.0
+psutil==5.9.8                  # v10: system metrics (CPU/memory/disk)
+
+# ── Async DB driver ───────────────────────────────────────────────────────────
+# Required by database_async.py (postgresql+asyncpg:// URLs) and test fixtures
+# (aiosqlite for in-memory SQLite). Without these, all 8 async endpoints crash
+# on startup with ModuleNotFoundError.
+asyncpg>=0.29.0
+aiosqlite>=0.20.0   # for async SQLite in tests
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dateutil==2.9.0
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.24.0
+anyio==4.7.0
+
+# ── Load testing ─────────────────────────────────────────────────────────────
+locust==2.32.3             # load testing (run: locust -f tests/locust_load_test.py)

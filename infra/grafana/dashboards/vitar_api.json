@@ -1,0 +1,168 @@
+{
+  "uid": "vitar-api",
+  "title": "Vitar API",
+  "tags": ["vitar", "api"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "sum(rate(vitar_http_requests_total[1m]))",
+        "legendFormat": "req/s"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "Error Rate (5xx %)",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "100 * sum(rate(vitar_http_requests_total{status=~\"5..\"}[1m])) / sum(rate(vitar_http_requests_total[1m]))",
+        "legendFormat": "error %"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "In-Flight Requests",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "vitar_http_requests_in_flight",
+        "legendFormat": "in-flight"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "P50 / P95 / P99 Latency",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(vitar_http_request_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(vitar_http_request_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(vitar_http_request_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Slowest Endpoints (avg latency)",
+      "type": "table",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "topk(10, avg by (path) (rate(vitar_http_request_duration_seconds_sum[5m]) / rate(vitar_http_request_duration_seconds_count[5m])))",
+        "legendFormat": "{{path}}",
+        "instant": true
+      }]
+    },
+    {
+      "id": 6,
+      "title": "Celery Task Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(vitar_celery_tasks_total{status=\"success\"}[1m])) by (task)",
+          "legendFormat": "✓ {{task}}"
+        },
+        {
+          "expr": "sum(rate(vitar_celery_tasks_total{status=\"failure\"}[1m])) by (task)",
+          "legendFormat": "✗ {{task}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Celery Failures (1h)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 16, "w": 6, "h": 8 },
+      "targets": [{
+        "expr": "sum(increase(vitar_celery_tasks_total{status=\"failure\"}[1h]))",
+        "legendFormat": "failures"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 5, "color": "yellow" },
+              { "value": 20, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Slow Queries / min",
+      "type": "timeseries",
+      "gridPos": { "x": 18, "y": 16, "w": 6, "h": 8 },
+      "targets": [{
+        "expr": "rate(vitar_db_slow_queries_total[1m]) * 60",
+        "legendFormat": "slow queries/min"
+      }]
+    },
+    {
+      "id": 9,
+      "title": "Cache Hit Rate",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 24, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "100 * rate(vitar_cache_hits_total[5m]) / (rate(vitar_cache_hits_total[5m]) + rate(vitar_cache_misses_total[5m]))",
+        "legendFormat": "hit %"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0, "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 50, "color": "yellow" },
+              { "value": 80, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Notifications Sent / min",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 24, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(vitar_notifications_sent_total{status=\"sent\"}[1m])) by (channel) * 60",
+          "legendFormat": "{{channel}} sent"
+        },
+        {
+          "expr": "sum(rate(vitar_notifications_sent_total{status=\"failed\"}[1m])) by (channel) * 60",
+          "legendFormat": "{{channel}} failed"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "DB Query P95 Latency by Type",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 24, "w": 8, "h": 8 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(vitar_db_query_duration_seconds_bucket[2m])) by (le, query_type))",
+        "legendFormat": "{{query_type}} p95"
+      }]
+    }
+  ]
+}

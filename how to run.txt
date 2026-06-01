@@ -1,0 +1,16 @@
+cd C:\Users\USER\Downloads\vitar
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload
+
+
+
+cd C:\Users\USER\Downloads\vitar
+docker-compose up --build
+
+
+
+cd C:\Users\USER\Downloads\vitar\frontend
+npm install
+npm run dev

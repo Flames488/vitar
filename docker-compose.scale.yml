@@ -1,0 +1,187 @@
+# docker-compose.scale.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Horizontal scaling override for Vitar API.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d
+#
+# Prerequisites before scaling API replicas:
+#
+#   1. UPLOADS → S3 (mandatory)
+#      Local `uploads` volume breaks horizontal scaling because each replica
+#      has its own filesystem. Move file storage to S3 before using this file.
+#      Set in .env:
+#        AWS_ACCESS_KEY_ID=...
+#        AWS_SECRET_ACCESS_KEY=...
+#        AWS_S3_BUCKET=vitar-uploads
+#
+#   2. SESSIONS → Redis (already done)
+#      JWT tokens are stateless; rate-limit state is in Redis. ✓
+#
+#   3. CELERY BEAT → single instance (already done)
+#      Only one `beat` container runs — do NOT scale the beat service.
+#
+#   4. LOAD BALANCER
+#      nginx upstream `api_backend` must list multiple instances, OR
+#      use a hardware/cloud LB (AWS ALB, GCP LB, etc.) in front.
+#      For docker-based scaling, update nginx.conf upstream block and
+#      redeploy nginx after scaling.
+#
+#   5. MIGRATIONS (v12 fix)
+#      SKIP_MIGRATIONS=true is set below. The deploy.yml CI script runs
+#      `alembic upgrade head` once as a dedicated step before replicas start.
+#      This prevents the race condition where concurrent replicas collide
+#      on the alembic_version lock table.
+#
+#   6. CONNECTION POOL (v12 fix)
+#      PgBouncer is always-on in docker-compose.yml. With 3 replicas the
+#      app presents up to 800 client connections to PgBouncer, which
+#      multiplexes down to 25 real Postgres connections. Pool size per
+#      replica is reduced to 5+5 so PgBouncer isn't overwhelmed.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── API replicas: three named services matching nginx upstream ─────────────
+  # Fix 4: Renamed api → api_1, added api_2 and api_3 to match the nginx
+  # upstream block (api_1:8000, api_2:8000, api_3:8000). Without named
+  # services, Nginx upstream entries are unreachable even when docker scale
+  # is running.
+  # After updating: docker compose restart nginx
+  api_1:
+    extends:
+      file: docker-compose.yml
+      service: api
+    environment:
+      - SKIP_MIGRATIONS=false   # api_1 runs migrations; api_2+3 skip them
+      - MIGRATION_DATABASE_URL=postgresql://vitar:${POSTGRES_PASSWORD:-vitar}@postgres:5432/vitar
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+  api_2:
+    extends:
+      file: docker-compose.yml
+      service: api
+    environment:
+      - SKIP_MIGRATIONS=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+  api_3:
+    extends:
+      file: docker-compose.yml
+      service: api
+    environment:
+      - SKIP_MIGRATIONS=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+      update_config:
+        parallelism: 1          # rolling update: 1 replica at a time
+        delay: 10s
+        failure_action: rollback
+        order: start-first      # start new before stopping old (zero-downtime)
+    # Remove the static port binding — nginx handles routing internally
+    ports: []
+    # No local uploads volume when using S3
+    volumes:
+      - /dev/null:/app/uploads  # Placeholder — override with S3 mount or remove
+    environment:
+      # v12: Skip migrations in each replica — CI deploy step handles them once.
+      SKIP_MIGRATIONS: "true"
+      # v13: S3 storage backend — mandatory for multi-replica deployments.
+      # Each replica must write to shared S3 storage, not the local filesystem.
+      STORAGE_BACKEND: "s3"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+      AWS_S3_BUCKET: "${AWS_S3_BUCKET:-vitar-uploads}"
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+      # Reduce per-worker pool so PgBouncer client-conn ceiling isn't hit.
+      # 3 replicas × 2 workers × 10 = 60 connections → PgBouncer handles fine.
+      UVICORN_WORKERS: "16"  # PERF FIX: scaled deployment — see docker-compose.yml note
+      DATABASE_POOL_SIZE: "5"
+      DATABASE_MAX_OVERFLOW: "5"
+
+  # ── Workers: scale independently from API ──────────────────────────────────
+  worker:
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          cpus: "0.5"
+          memory: 384M
+    environment:
+      DATABASE_POOL_SIZE: "5"
+      DATABASE_MAX_OVERFLOW: "5"
+
+  # ── Beat: NEVER scale — exactly one instance ───────────────────────────────
+  beat:
+    deploy:
+      replicas: 1    # DO NOT change — multiple beat instances cause duplicate tasks
+
+  # ── Nginx: update upstream to round-robin across API replicas ──────────────
+  # When using docker compose scale, nginx resolves `api` DNS to multiple IPs.
+  # The upstream block in nginx.conf already uses `server api:8000` which Docker
+  # DNS will round-robin automatically within the stack.
+  # For production multi-host deployments, replace with explicit IPs or an
+  # external load balancer.
+  nginx:
+    deploy:
+      replicas: 1

@@ -1,0 +1,26 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y bash gcc libpq-dev curl && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Create beat schedule directory
+RUN mkdir -p /var/celery
+
+RUN useradd -m -u 1000 vitar \
+    && chown -R vitar:vitar /app \
+    && chown -R vitar:vitar /var/celery
+USER vitar
+
+# Default: run general worker. Override CMD for beat scheduler.
+CMD ["celery", "-A", "app.workers.celery_app", "worker", \
+     "--loglevel=info", \
+     "--queues=notifications,reminders,ai,billing,celery,dead_letter", \
+     "--concurrency=4", \
+     "--max-tasks-per-child=500", \
+     "--hostname=worker@%h"]

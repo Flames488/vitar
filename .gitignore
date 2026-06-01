@@ -1,1 +1,7 @@
-.env 
+.env
+__pycache__/
+**/__pycache__/
+*.pyc
+infra/nginx/certbot/conf/live/
+infra/nginx/certbot/conf/accounts/
+infra/pgbouncer/userlist.txt

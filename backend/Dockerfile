@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Ensure entrypoint is executable
-RUN chmod +x /app/entrypoint.sh
+RUN find /app -name "*.sh" -exec sed -i 's/\r$//' {} \; && chmod +x /app/entrypoint.sh /app/scripts/check_migrations.sh
 
 # Create uploads directory
 RUN mkdir -p /app/uploads /app/ml_models
@@ -23,6 +23,6 @@ USER vitar
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD curl -f http://localhost:8000/health/ready || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]

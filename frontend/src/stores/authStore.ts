@@ -23,6 +23,7 @@ interface User {
   id: string;
   email: string;
   full_name: string;
+  is_superadmin?: boolean;
 }
 
 interface Clinic {
@@ -136,6 +137,13 @@ export const useAuthStore = create<AuthState>()(
        * If the httpOnly access cookie is still valid, the API call succeeds
        * and we restore isAuthenticated. If not, the axios interceptor
        * attempts a silent cookie refresh automatically.
+       *
+       * v12 FIX: this previously called clinicsApi.getMe() (404s for
+       * superadmin-only accounts with no clinic) AND was never actually
+       * invoked anywhere in the app — isAuthenticated wasn't persisted,
+       * so every hard refresh silently bounced everyone to /login. Now
+       * called from App.tsx on mount and hits /auth/me, which tolerates
+       * a missing clinic.
        */
       validateSession: async () => {
         const { user } = get();
@@ -144,8 +152,8 @@ export const useAuthStore = create<AuthState>()(
           return;
         }
         try {
-          const clinic = await clinicsApi.getMe();
-          set({ isAuthenticated: true, clinic, sessionChecked: true });
+          const { user: freshUser, clinic } = await authApi.me();
+          set({ user: freshUser, clinic, isAuthenticated: true, sessionChecked: true });
         } catch {
           // Session invalid — clean up local state
           csrfManager.clear();

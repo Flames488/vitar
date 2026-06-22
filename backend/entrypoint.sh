@@ -91,6 +91,11 @@ do
   sleep 2
 done
 
+if [[ "$#" -gt 0 ]]; then
+  log "Running custom command: $*"
+  exec "$@"
+fi
+
 # ── Run Alembic migrations ───────────────────────────────────────────────────
 # SKIP_MIGRATIONS=true → skip migrations on this replica.
 #

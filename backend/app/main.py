@@ -159,6 +159,19 @@ def health_check(db: Session = Depends(get_db)):
     return JSONResponse(content=result, status_code=status_code)
 
 
+@app.get("/health/live", tags=["System"])
+def liveness_check():
+    return {"status": "alive", "service": "Vitar API"}
+
+
+@app.get("/health/ready", tags=["System"])
+def readiness_check(db: Session = Depends(get_db)):
+    from app.core.health import readiness_check as run_readiness_check
+    result = run_readiness_check(db)
+    status_code = 200 if result["status"] == "healthy" else 503
+    return JSONResponse(content=result, status_code=status_code)
+
+
 @app.get("/health/circuits", tags=["System"])
 async def circuit_breaker_status():
     from app.core.recovery import all_circuit_statuses

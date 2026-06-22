@@ -33,7 +33,7 @@ class UpgradeRequest(BaseModel):
 
 @router.get("/plans")
 async def get_plans(
-    currency: str = "USD",
+    currency: str = "NGN",
 ):
     """
     Returns all plans with pricing for a given currency.

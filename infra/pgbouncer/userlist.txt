@@ -29,5 +29,9 @@
 ; pgbouncer.ini and Docker Compose both use auth_type = md5.
 ; Postgres is configured with password_encryption = md5 to match.
 ;
-"vitar" "SETUP_NOT_RUN_YET__run_infra_scripts_setup.sh_to_generate_real_credentials"
-"pgbouncer" "SETUP_NOT_RUN_YET__run_infra_scripts_setup.sh_to_generate_real_credentials"
+"vitar"  "md5e0f4ec24b6205aaa03787fd37331e336"
+"pgbouncer" "md5e0f4ec24b6205aaa03787fd37331e336"
+
+
+
+

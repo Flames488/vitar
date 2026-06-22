@@ -22,6 +22,12 @@ from app.api.v1.endpoints import (
     waiting_list,
     uploads,
     admin_api_keys,
+    admin_users,
+    admin_clinics,
+    admin_subscriptions,
+    admin_analytics,
+    admin_audit,
+    qr,
 )
 
 api_router = APIRouter()
@@ -42,3 +48,13 @@ api_router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboar
 api_router.include_router(waiting_list.router, prefix="/waiting-list", tags=["Waiting List"])
 api_router.include_router(uploads.router, prefix="/uploads", tags=["File Uploads"])
 api_router.include_router(admin_api_keys.router, tags=["Admin — API Keys"])
+api_router.include_router(qr.router, prefix="/qr", tags=["QR Code"])
+
+# ── Superadmin Dashboard (/admin/*) ────────────────────────────────────────
+# Each router below is independently protected by get_current_superadmin
+# (app/core/security.py) — never trust the frontend route guard alone.
+api_router.include_router(admin_users.router, tags=["Admin — Users"])
+api_router.include_router(admin_clinics.router, tags=["Admin — Clinics"])
+api_router.include_router(admin_subscriptions.router, tags=["Admin — Subscriptions"])
+api_router.include_router(admin_analytics.router, tags=["Admin — Analytics"])
+api_router.include_router(admin_audit.router, tags=["Admin — Audit Log"])

@@ -45,12 +45,14 @@ export default function AppointmentsPage() {
   );
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Appointments</h1>
+    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Appointments</h1>
         <Link to="/appointments/new"
-          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">
-          <Plus className="w-4 h-4" /> New Appointment
+          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex-shrink-0">
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">New Appointment</span>
+          <span className="sm:hidden">New</span>
         </Link>
       </div>
 
@@ -82,7 +84,7 @@ export default function AppointmentsPage() {
           <div className="divide-y divide-slate-100">
             {appointments.map((apt: any) => (
               <Link key={apt.id} to={`/appointments/${apt.id}`}
-                className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors">
+                className="flex items-center gap-3 px-4 sm:px-6 py-4 hover:bg-slate-50 transition-colors">
                 <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
                   {apt.patient?.full_name?.charAt(0) ?? '?'}
                 </div>

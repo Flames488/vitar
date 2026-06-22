@@ -19,8 +19,8 @@ export default function PatientsPage() {
   const patients = data?.items ?? [];
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-slate-900">Patients</h1>
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl mx-auto">
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Patients</h1>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}

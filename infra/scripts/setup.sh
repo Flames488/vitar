@@ -7,6 +7,11 @@
 set -euo pipefail
 
 MODE=${1:-dev}
+if [ "$MODE" = "prod" ]; then
+    COMPOSE="docker compose --profile observability -f docker-compose.yml -f docker-compose.prod.yml"
+else
+    COMPOSE="docker compose"
+fi
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
 log()  { echo -e "${GREEN}[Vitar]${NC} $1"; }
@@ -71,24 +76,24 @@ PYEOF
 # ── Build & start ──────────────────────────────────────────────────────────────
 build_and_start() {
     log "Building images..."
-    docker compose build --parallel
+    $COMPOSE build --parallel
 
     log "Starting services..."
-    docker compose up -d postgres redis
+    $COMPOSE up -d postgres redis pgbouncer
 
     log "Waiting for database to be ready..."
     sleep 5
-    docker compose exec postgres pg_isready -U vitar || sleep 5
+    $COMPOSE exec postgres pg_isready -U vitar || sleep 5
 
     log "Running database migrations..."
-    docker compose run --rm api alembic upgrade head
+    $COMPOSE run --rm api alembic upgrade head
 
     log "Starting all services..."
-    docker compose up -d
+    $COMPOSE up -d
 
     log "Checking service health..."
     sleep 10
-    docker compose ps
+    $COMPOSE ps
 }
 
 # ── Dev mode ───────────────────────────────────────────────────────────────────
@@ -99,7 +104,7 @@ dev_setup() {
     export ENVIRONMENT=development
     export DEBUG=true
 
-    docker compose -f docker-compose.yml up -d postgres redis
+    docker compose -f docker-compose.yml up -d postgres redis pgbouncer
 
     log "PostgreSQL and Redis running"
     log ""

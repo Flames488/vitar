@@ -19,6 +19,7 @@ from app.core.security import (
     hash_password, verify_password,
     create_access_token, create_refresh_token,
     decode_token, generate_secure_token,
+    get_current_user,
 )
 from app.core.config import settings
 from app.core.cookie_auth import (
@@ -30,6 +31,7 @@ from app.models.models import (
     SubscriptionPlan, SubscriptionStatus, Region, RefreshToken,
 )
 from app.services.email_service import send_welcome_email, send_password_reset_email
+from app.services.qr_service import generate_clinic_qr
 
 router = APIRouter()
 
@@ -60,6 +62,7 @@ class UserOut(BaseModel):
     id: str
     email: str
     full_name: str
+    is_superadmin: bool = False
 
 class ClinicOut(BaseModel):
     id: str
@@ -76,10 +79,14 @@ class AuthResponse(BaseModel):
     v11: No tokens in body — they live in httpOnly cookies.
     The csrf_token IS returned in the body so the frontend can
     bootstrap its CSRF header without a separate request.
+
+    v12: clinic is now Optional — superadmin-only accounts (created via
+    scripts/create_superadmin.py) have no clinic of their own and must
+    still be able to log in to access the /admin dashboard.
     """
     csrf_token: str
     user: UserOut
-    clinic: ClinicOut
+    clinic: ClinicOut | None = None
 
 
 # ─── Refresh token helpers ────────────────────────────────────────────────────
@@ -201,7 +208,8 @@ async def register(
         email_verification_token=generate_secure_token(),
     )
     db.add(user)
-    db.flush()
+    db.commit()        # commit user first so FK is visible across all connections
+    db.refresh(user)   # re-attach user to session after commit
 
     trial_ends = utcnow() + timedelta(days=settings.TRIAL_DAYS)
     region = _determine_region(body.country)
@@ -224,7 +232,8 @@ async def register(
         onboarding_step=1,
     )
     db.add(clinic)
-    db.flush()
+    db.commit()        # commit clinic so FK is visible for subscription + notification_settings
+    db.refresh(clinic)
 
     db.add(Subscription(
         clinic_id=clinic.id,
@@ -242,9 +251,20 @@ async def register(
     refresh_token = create_refresh_token({"sub": user.id})
     _store_refresh_token(user.id, refresh_token, db)
 
-    db.commit()
-    db.refresh(user)
-    db.refresh(clinic)
+    db.commit()  # commit subscription, notification_settings, refresh_token together
+
+    # Generate QR code immediately at registration so it exists from day one.
+    # The lazy /qr/me approach meant clinics that never visited QR settings had
+    # no QR code at all — breaking any printed/physical collateral.
+    try:
+        qr_path = generate_clinic_qr(clinic)
+        clinic.qr_code_path = qr_path
+        db.commit()
+    except Exception as qr_err:
+        # Non-fatal — registration succeeds even if QR generation fails.
+        # The lazy /qr/me endpoint will generate it on first dashboard visit.
+        import logging
+        logging.getLogger(__name__).warning(f"QR generation failed at registration for {clinic.id}: {qr_err}")
 
     background_tasks.add_task(send_welcome_email, user.email, user.full_name, clinic.name)
 
@@ -252,7 +272,7 @@ async def register(
 
     return {
         "csrf_token": csrf_token,
-        "user": {"id": user.id, "email": user.email, "full_name": user.full_name},
+        "user": {"id": user.id, "email": user.email, "full_name": user.full_name, "is_superadmin": user.is_superadmin},
         "clinic": _clinic_dict(clinic),
     }
 
@@ -273,12 +293,15 @@ async def login(
     clinic = db.query(Clinic).filter(
         Clinic.owner_id == user.id, Clinic.is_active == True
     ).first()
-    if not clinic:
+    # v12 FIX: superadmin-only accounts (no clinic of their own, e.g. bootstrapped
+    # via scripts/create_superadmin.py) must still be able to log in — they need
+    # access to /admin, not a clinic dashboard. Regular users still require a clinic.
+    if not clinic and not user.is_superadmin:
         raise HTTPException(404, "No clinic found for this account")
 
     user.last_login_at = utcnow()
 
-    access_token  = create_access_token({"sub": user.id, "clinic_id": clinic.id})
+    access_token  = create_access_token({"sub": user.id, "clinic_id": clinic.id if clinic else None})
     refresh_token = create_refresh_token({"sub": user.id})
     _store_refresh_token(user.id, refresh_token, db)
     db.commit()
@@ -287,8 +310,32 @@ async def login(
 
     return {
         "csrf_token": csrf_token,
-        "user": {"id": user.id, "email": user.email, "full_name": user.full_name},
-        "clinic": _clinic_dict(clinic),
+        "user": {"id": user.id, "email": user.email, "full_name": user.full_name, "is_superadmin": user.is_superadmin},
+        "clinic": _clinic_dict(clinic) if clinic else None,
+    }
+
+
+@router.get("/me")
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    v12: Session-restore endpoint that works for BOTH clinic owners and
+    superadmin-only accounts. The frontend uses this on app mount instead of
+    GET /clinics/me, which 404s for users without a clinic.
+    """
+    clinic = db.query(Clinic).filter(
+        Clinic.owner_id == current_user.id, Clinic.is_active == True
+    ).first()
+    return {
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "full_name": current_user.full_name,
+            "is_superadmin": current_user.is_superadmin,
+        },
+        "clinic": _clinic_dict(clinic) if clinic else None,
     }
 
 

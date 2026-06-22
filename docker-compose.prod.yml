@@ -1,0 +1,46 @@
+services:
+  api:
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      FRONTEND_URL: https://labvault.cloud
+      VITE_API_URL: https://labvault.cloud/api/v1
+      ALLOWED_ORIGINS: '["https://labvault.cloud","https://www.labvault.cloud"]'
+      ALLOWED_HOSTS: '["labvault.cloud","www.labvault.cloud"]'
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
+      SKIP_MIGRATIONS: "false"
+
+  worker:
+    environment:
+      ENVIRONMENT: production
+      OPS_MONITORING_ENABLED: "true"
+
+  worker_dead_letter:
+    environment:
+      ENVIRONMENT: production
+      OPS_MONITORING_ENABLED: "true"
+
+  beat:
+    environment:
+      ENVIRONMENT: production
+      OPS_MONITORING_ENABLED: "true"
+
+  frontend:
+    build:
+      args:
+        VITE_API_URL: https://labvault.cloud/api/v1
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/certbot/conf:/etc/letsencrypt:ro
+      - ./infra/nginx/certbot/www:/var/www/certbot:ro
+
+  postgres:
+    ports: []
+
+  redis:
+    ports: []

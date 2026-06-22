@@ -51,8 +51,8 @@ export default function PricingPage() {
 
   const formatPrice = (amount: number | null) => {
     if (amount == null) return 'Custom';
-    const sym = currency_format?.symbol ?? '$';
-    const dec = currency_format?.decimals ?? 2;
+    const sym = currency_format?.symbol ?? '₦';
+    const dec = currency_format?.decimals ?? 0;
     if (dec === 0) return `${sym}${Math.round(amount).toLocaleString()}`;
     return `${sym}${amount.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
   };
@@ -76,9 +76,9 @@ export default function PricingPage() {
         {/* Plans */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
           {(plans.length > 0 ? plans : [
-            { plan: 'basic',      name: 'Basic',      monthly: null, annual: null, features: PLAN_FEATURES.basic },
-            { plan: 'pro',        name: 'Pro',        monthly: null, annual: null, features: PLAN_FEATURES.pro, popular: true },
-            { plan: 'enterprise', name: 'Enterprise', monthly: null, annual: null, features: PLAN_FEATURES.enterprise },
+            { plan: 'basic',      name: 'Starter',    monthly: 2500,  annual: 25000, annual_savings_percent: 17, features: PLAN_FEATURES.basic },
+            { plan: 'pro',        name: 'Pro',        monthly: 7500,  annual: 75000, annual_savings_percent: 17, features: PLAN_FEATURES.pro, popular: true },
+            { plan: 'enterprise', name: 'Enterprise', monthly: null,  annual: null,  features: PLAN_FEATURES.enterprise },
           ]).map((plan: any) => {
             const Icon = PLAN_ICONS[plan.plan as keyof typeof PLAN_ICONS] ?? Zap;
             const isPopular = plan.plan === 'pro';

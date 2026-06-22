@@ -49,6 +49,30 @@ def check_celery() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
+def readiness_check(db) -> Dict[str, Any]:
+    """
+    Lightweight readiness probe for Docker/Nginx health checks.
+
+    Keep this intentionally cheap: it verifies dependencies needed to serve
+    requests, but avoids Celery inspection, queue scans, autoscaler status, and
+    host-level psutil sampling. Those belong in the richer /health endpoint.
+    """
+    components = {
+        "database": check_database(db),
+        "redis": check_redis(),
+    }
+    overall = "healthy"
+    for component in components.values():
+        if component.get("status") != "ok":
+            overall = "unhealthy"
+            break
+    return {
+        "status": overall,
+        "components": components,
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+    }
+
+
 def get_stuck_notifications_count(db) -> int:
     """Count notifications stuck in pending for more than 1 hour."""
     try:

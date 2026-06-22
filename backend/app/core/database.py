@@ -61,11 +61,20 @@ def _make_engine(url: str, retries: int = 5, delay: float = 2.0):
             pool_recycle=3600,
             pool_timeout=30,
             connect_args={
-                "options": (
-                    f"-c lock_timeout=10000"
-                    f" -c statement_timeout={stmt_timeout_ms}"
-                    f" -c idle_in_transaction_session_timeout=60000"
-                ),
+                # GUC options (lock_timeout, statement_timeout, etc.) are intentionally
+                # NOT set here. When DATABASE_URL points to pgbouncer in transaction
+                # pooling mode, session-level SET commands sent by the client are
+                # silently dropped (pgbouncer doesn't maintain a persistent session per
+                # client). SQLAlchemy's pool_pre_ping then sees an unexpected connection
+                # state and closes immediately (age=0s in pgbouncer logs), cascading
+                # to healthcheck failure.
+                #
+                # These GUC values are now set once per real PG connection via
+                # pgbouncer's server_connect_query in pgbouncer/pgbouncer.ini:
+                #   server_connect_query = SET lock_timeout='10s'; SET statement_timeout='30s'; ...
+                #
+                # For MIGRATION_DATABASE_URL (direct postgres, bypasses pgbouncer),
+                # Alembic handles DDL safely on its own connection.
                 "connect_timeout": 10,
             },
         )

@@ -3,6 +3,7 @@
  * Floating chat window powered by Claude via backend
  */
 
+import VitarLogo from '@/components/shared/VitarLogo';
 import { useState, useRef, useEffect } from 'react';
 import { X, Send, Brain, Loader2 } from 'lucide-react';
 import { aiApi } from '@/lib/api/services';
@@ -65,8 +66,8 @@ export default function AIChatbot({ onClose }: { onClose: () => void }) {
     <div className="w-80 sm:w-96 h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-teal-600 text-white">
-        <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-          <Brain className="w-4 h-4" />
+        <div className="w-8 h-8 rounded-full overflow-hidden bg-white flex items-center justify-center">
+          <VitarLogo size={28} />
         </div>
         <div className="flex-1">
           <p className="font-semibold text-sm">Vitar AI Assistant</p>

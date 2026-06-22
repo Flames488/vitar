@@ -365,3 +365,104 @@ def join_waiting_list(slug: str, body: WaitingListRequest, db: Session = Depends
         "message": "You've been added to the waiting list. We'll notify you when a slot opens.",
         "id": entry.id,
     }
+
+
+# ─── Hospital/Clinic Portal (QR scan landing) ──────────────────────────────────
+
+@router.get("/clinic/{slug}/portal")
+def get_clinic_portal(slug: str, db: Session = Depends(get_db)):
+    """
+    Public endpoint for the QR scan landing page (/portal/:slug).
+    Returns clinic branding info for the portal welcome screen.
+    No auth required — patients arrive here by scanning a printed QR code.
+    """
+    clinic = db.query(Clinic).filter(
+        Clinic.slug == slug,
+        Clinic.is_active == True,
+    ).first()
+    if not clinic:
+        raise HTTPException(status_code=404, detail="Hospital/clinic not found")
+
+    return {
+        "id": clinic.id,
+        "name": clinic.name or "",
+        "slug": clinic.slug or "",
+        "logo_url": clinic.logo_url or "",
+        "address": clinic.address or "",
+        "city": clinic.city or "",
+        "phone": clinic.phone or "",
+        "booking_enabled": bool(clinic.booking_page_enabled and clinic.online_booking_enabled),
+    }
+
+
+class PortalRegisterRequest(BaseModel):
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+
+
+@router.post("/clinic/{slug}/register-patient", status_code=201)
+def portal_register_patient(
+    slug: str,
+    body: PortalRegisterRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Patient self-registration via hospital portal (QR scan flow).
+    Upserts a Patient record pre-assigned to the clinic identified by slug.
+    Returns a welcome message and the patient record.
+
+    This is the critical step that ensures patients who arrive via QR scan
+    are automatically associated with the correct hospital — no manual
+    hospital selection required.
+    """
+    clinic = db.query(Clinic).filter(
+        Clinic.slug == slug,
+        Clinic.is_active == True,
+    ).first()
+    if not clinic:
+        raise HTTPException(status_code=404, detail="Hospital/clinic not found")
+
+    # Upsert: if a patient with the same phone already exists in this clinic,
+    # update their record rather than create a duplicate.
+    patient = db.query(Patient).filter(
+        Patient.clinic_id == clinic.id,
+        Patient.phone == body.phone,
+    ).first()
+
+    if patient:
+        # Update details in case they changed
+        if body.full_name:
+            patient.full_name = body.full_name
+        if body.email:
+            patient.email = body.email
+        db.commit()
+        db.refresh(patient)
+        return {
+            "message": f"Welcome back, {patient.full_name}! Your details have been updated.",
+            "patient_id": patient.id,
+            "is_new": False,
+        }
+
+    # New patient — create and assign to this clinic
+    patient = Patient(
+        clinic_id=clinic.id,
+        full_name=body.full_name,
+        phone=body.phone,
+        email=body.email or None,
+    )
+    db.add(patient)
+    try:
+        db.commit()
+        db.refresh(patient)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Portal patient registration failed: {e}")
+        raise HTTPException(status_code=500, detail="Registration failed — please try again")
+
+    return {
+        "message": f"Welcome to {clinic.name}, {patient.full_name}! You're now registered.",
+        "patient_id": patient.id,
+        "is_new": True,
+    }
+

@@ -181,6 +181,7 @@ class Settings(BaseSettings):
     # ─── Background job safety ────────────────────────────────────────────
     TASK_STUCK_THRESHOLD_S: int = 600
     AUTOHEAL_STUCK_TASKS: bool = False
+    OPS_MONITORING_ENABLED: bool = False
 
     # ─── PgBouncer ────────────────────────────────────────────────────────
     # v12: PgBouncer is always-on. Default True matches docker-compose.yml.

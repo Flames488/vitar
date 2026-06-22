@@ -139,3 +139,22 @@ def get_current_clinic(
     if not clinic:
         raise HTTPException(status_code=404, detail="Clinic not found")
     return clinic
+
+
+def get_current_superadmin(
+    current_user=Depends(get_current_user),
+):
+    """
+    v12 — Admin Dashboard: protects every /admin/* endpoint.
+
+    Server-side enforcement only — the frontend route guard is a UX nicety,
+    never the actual security boundary. Raises 403 (not 404) so a regular
+    authenticated user gets a clear "not allowed" rather than a misleading
+    "not found".
+    """
+    if not getattr(current_user, "is_superadmin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superadmin access required",
+        )
+    return current_user

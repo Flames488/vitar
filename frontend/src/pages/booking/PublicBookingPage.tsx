@@ -114,7 +114,7 @@ export default function PublicBookingPage() {
                 <p className="text-slate-500 text-sm">{d.specialty}</p>
                 {d.consultation_fee > 0 && (
                   <p className="text-teal-600 text-sm font-medium mt-1">
-                    {clinic?.currency === 'NGN' ? '₦' : '$'}{d.consultation_fee.toLocaleString()}
+                    ₦{d.consultation_fee.toLocaleString()}
                   </p>
                 )}
               </button>

@@ -1,0 +1,21 @@
+; PgBouncer userlist.txt
+; Format: "username" "password"
+;
+; IMPORTANT: password must be the SCRAM-SHA-256 hash, NOT plaintext.
+; Generate it by connecting to PostgreSQL and running:
+;   SELECT concat('"', usename, '" "', passwd, '"') FROM pg_shadow WHERE usename = 'vitar';
+;
+; If you haven't switched to scram-sha-256 yet (still using md5), either:
+;   Option A (recommended): change auth_type = md5 in pgbouncer.ini AND
+;     use the md5 hash:  "vitar" "md5<hash>"
+;   Option B: use auth_query instead of userlist.txt (see below)
+;
+; For local dev with a known password, you can temporarily use:
+;   auth_type = plain
+;   "vitar" "vitar"
+;
+; For production, generate with:
+;   docker exec -it vitar-postgres-1 psql -U postgres -c \
+;     "SELECT concat('\"', usename, '\" \"', passwd, '\"') FROM pg_shadow WHERE usename='vitar';"
+
+"vitar" "vitar"

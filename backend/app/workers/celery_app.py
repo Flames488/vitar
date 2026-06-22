@@ -22,6 +22,59 @@ celery = Celery(
     include=["app.workers.tasks"],
 )
 
+beat_schedule = {
+    "fire-pending-reminders": {
+        "task": "app.workers.tasks.fire_pending_reminders",
+        "schedule": 300.0,
+    },
+    "trial-nudges": {
+        "task": "app.workers.tasks.send_trial_nudges",
+        "schedule": crontab(hour=9, minute=0),
+    },
+    "expire-trials": {
+        "task": "app.workers.tasks.expire_trial_subscriptions",
+        "schedule": crontab(hour=0, minute=0),
+    },
+    "retry-failed-notifications": {
+        "task": "app.workers.tasks.retry_failed_notifications",
+        "schedule": 600.0,
+    },
+    "retry-failed-payments": {
+        "task": "app.workers.tasks.retry_failed_payments",
+        "schedule": 1800.0,
+    },
+    "refresh-risk-scores": {
+        "task": "app.workers.tasks.refresh_upcoming_risk_scores",
+        "schedule": crontab(minute=0),
+    },
+    "process-dead-letter": {
+        "task": "app.workers.tasks.dead_letter_processor",
+        "schedule": crontab(minute=0, hour="*/6"),
+    },
+    "cleanup-expired-refresh-tokens": {
+        "task": "app.workers.tasks.cleanup_expired_refresh_tokens",
+        "schedule": crontab(hour=3, minute=0),
+        "options": {"queue": "celery"},
+    },
+}
+
+if settings.OPS_MONITORING_ENABLED:
+    beat_schedule.update({
+        "monitor-queue-depths": {
+            "task": "app.workers.tasks.monitor_queue_depths",
+            "schedule": 60.0,
+        },
+        "monitor-system-resources": {
+            "task": "app.workers.tasks.monitor_system_resources",
+            "schedule": 60.0,
+        },
+        "inspect-stuck-tasks": {
+            "task": "app.workers.tasks.inspect_stuck_tasks",
+            "schedule": 300.0,
+        },
+    })
+
+
 celery.conf.update(
     # ── Serialization ──────────────────────────────────────────────────────
     task_serializer="json",
@@ -80,57 +133,7 @@ celery.conf.update(
     },
 
     # ── Beat schedule ──────────────────────────────────────────────────────
-    beat_schedule={
-        "fire-pending-reminders": {
-            "task": "app.workers.tasks.fire_pending_reminders",
-            "schedule": 300.0,
-        },
-        "trial-nudges": {
-            "task": "app.workers.tasks.send_trial_nudges",
-            "schedule": crontab(hour=9, minute=0),
-        },
-        "expire-trials": {
-            "task": "app.workers.tasks.expire_trial_subscriptions",
-            "schedule": crontab(hour=0, minute=0),
-        },
-        "retry-failed-notifications": {
-            "task": "app.workers.tasks.retry_failed_notifications",
-            "schedule": 600.0,
-        },
-        "retry-failed-payments": {
-            "task": "app.workers.tasks.retry_failed_payments",
-            "schedule": 1800.0,
-        },
-        "refresh-risk-scores": {
-            "task": "app.workers.tasks.refresh_upcoming_risk_scores",
-            "schedule": crontab(minute=0),
-        },
-        "process-dead-letter": {
-            "task": "app.workers.tasks.dead_letter_processor",
-            "schedule": crontab(minute=0, hour="*/6"),
-        },
-        # v9: monitor queue depth every 60 s
-        "monitor-queue-depths": {
-            "task": "app.workers.tasks.monitor_queue_depths",
-            "schedule": 60.0,
-        },
-        # v10: system resource monitor every 60 s (CPU / memory / disk)
-        "monitor-system-resources": {
-            "task": "app.workers.tasks.monitor_system_resources",
-            "schedule": 60.0,
-        },
-        # v10: stuck task inspector every 5 min
-        "inspect-stuck-tasks": {
-            "task": "app.workers.tasks.inspect_stuck_tasks",
-            "schedule": 300.0,
-        },
-        # v11: purge expired refresh tokens daily at 3 AM
-        "cleanup-expired-refresh-tokens": {
-            "task": "app.workers.tasks.cleanup_expired_refresh_tokens",
-            "schedule": crontab(hour=3, minute=0),
-            "options": {"queue": "celery"},
-        },
-    },
+    beat_schedule=beat_schedule,
 )
 
 

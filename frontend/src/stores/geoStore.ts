@@ -27,15 +27,15 @@ interface GeoState {
 }
 
 const DEFAULT_FORMAT: CurrencyFormat = {
-  symbol: '$', code: 'USD', locale: 'en-US', decimals: 2,
+  symbol: '₦', code: 'NGN', locale: 'en-NG', decimals: 0,
 };
 
 export const useGeoStore = create<GeoState>((set, get) => ({
-  country: 'US',
-  currency: 'USD',
+  country: 'NG',
+  currency: 'NGN',
   currency_format: DEFAULT_FORMAT,
-  payment_provider: 'stripe',
-  pricing_tier: 'USD',
+  payment_provider: 'paystack',
+  pricing_tier: 'NGN',
   plans: [],
   detected: false,
 

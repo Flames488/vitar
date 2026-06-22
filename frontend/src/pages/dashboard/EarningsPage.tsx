@@ -2,7 +2,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '@/lib/api/services';
 import { useGeoStore } from '@/stores/geoStore';
-import { DollarSign } from 'lucide-react';
 
 export function EarningsPage() {
   const { data } = useQuery({ queryKey: ['analytics', 'dashboard'], queryFn: analyticsApi.dashboard });
@@ -13,7 +12,7 @@ export function EarningsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-6 flex items-center gap-4">
           <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-            <DollarSign className="w-6 h-6 text-green-600" />
+            <span className="text-xl font-bold text-green-600">₦</span>
           </div>
           <div>
             <p className="text-slate-500 text-sm">This Month Revenue</p>
@@ -22,7 +21,7 @@ export function EarningsPage() {
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-6 flex items-center gap-4">
           <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center">
-            <DollarSign className="w-6 h-6 text-teal-600" />
+            <span className="text-xl font-bold text-teal-600">₦</span>
           </div>
           <div>
             <p className="text-slate-500 text-sm">Revenue Recovered by AI</p>

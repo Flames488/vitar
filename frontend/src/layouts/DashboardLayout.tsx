@@ -7,13 +7,14 @@ import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, Users, UserCheck, BarChart3,
-  DollarSign, Settings, Brain, Clock, Bell, LogOut, Menu,
-  X, ChevronRight, AlertTriangle, MessageSquare, ListOrdered, Key,
+  Banknote, Settings, Brain, Clock, Bell, LogOut, Menu,
+  X, AlertTriangle, MessageSquare, ListOrdered, Key, QrCode,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useGeoStore } from '@/stores/geoStore';
 import AIChatbot from '@/components/ai/AIChatbot';
 import TrialBanner from '@/components/shared/TrialBanner';
+import VitarLogo from '@/components/shared/VitarLogo';
 
 const NAV_ITEMS = [
   { to: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
@@ -23,14 +24,15 @@ const NAV_ITEMS = [
   { to: '/ai-risk',       label: 'AI Risk',       icon: Brain },
   { to: '/waiting-list',  label: 'Waiting List',  icon: ListOrdered },
   { to: '/analytics',     label: 'Analytics',     icon: BarChart3 },
-  { to: '/earnings',      label: 'Earnings',      icon: DollarSign },
+  { to: '/earnings',      label: 'Earnings',      icon: Banknote },
 ];
 
 const SETTINGS_ITEMS = [
   { to: '/settings',               label: 'General',       icon: Settings },
-  { to: '/settings/billing',       label: 'Billing',       icon: DollarSign },
+  { to: '/settings/billing',       label: 'Billing',       icon: Banknote },
   { to: '/settings/notifications', label: 'Notifications', icon: Bell },
   { to: '/settings/booking-page',  label: 'Booking Page',  icon: Clock },
+  { to: '/settings/qr-code',       label: 'QR Code',       icon: QrCode },
   { to: '/settings/api-keys',      label: 'API Keys',      icon: Key },
 ];
 
@@ -51,11 +53,9 @@ export default function DashboardLayout() {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">V</span>
-          </div>
+      <div className="px-5 py-4 border-b border-slate-700">
+        <div className="flex items-center gap-2.5">
+          <VitarLogo size={32} />
           <span className="text-white font-bold text-lg">Vitar</span>
         </div>
         {clinic && (
@@ -178,9 +178,7 @@ export default function DashboardLayout() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-teal-500 rounded flex items-center justify-center">
-              <span className="text-white font-bold text-xs">V</span>
-            </div>
+            <VitarLogo size={28} />
             <span className="font-bold text-slate-800">Vitar</span>
           </div>
           <div className="w-5" />

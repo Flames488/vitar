@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '@/lib/api/services';
 import { useGeoStore } from '@/stores/geoStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { TrendingDown, TrendingUp, DollarSign, Users } from 'lucide-react';
+import { TrendingDown, TrendingUp, Users } from 'lucide-react';
 
 export default function AnalyticsPage() {
   const { data, isLoading } = useQuery({ queryKey: ['analytics', 'dashboard'], queryFn: analyticsApi.dashboard });
@@ -33,11 +33,11 @@ export default function AnalyticsPage() {
             icon: TrendingUp, color: 'bg-green-50 text-green-600' },
           { label: 'Revenue Recovered', value: formatMoney(data?.revenue?.recovered_from_reminders ?? 0),
             sub: 'From reminder-influenced bookings',
-            icon: DollarSign, color: 'bg-teal-50 text-teal-600' },
+            icon: null, nairaIcon: true, color: 'bg-teal-50 text-teal-600' },
           { label: 'Conversion Rate', value: `${data?.conversion_rate ?? 0}%`,
             sub: `${curr.total ?? 0} total · ${curr.completed ?? 0} completed`,
             icon: Users, color: 'bg-blue-50 text-blue-600' },
-        ].map(({ label, value, sub, icon: Icon, color }) => (
+        ].map(({ label, value, sub, icon: Icon, color, nairaIcon }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5">
             <div className="flex items-start justify-between">
               <div>
@@ -46,7 +46,7 @@ export default function AnalyticsPage() {
                 <p className="text-slate-400 text-xs mt-1">{sub}</p>
               </div>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-                <Icon className="w-5 h-5" />
+                {nairaIcon ? <span className="text-lg font-bold">₦</span> : Icon ? <Icon className="w-5 h-5" /> : null}
               </div>
             </div>
           </div>

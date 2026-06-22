@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 PRICING_TIERS: Dict[str, Dict] = {
     "NGN": {
         "basic": {
-            "monthly": 15000,     # ₦15,000/month
-            "annual": 150000,     # ₦150,000/year (save 17%)
+            "monthly": 2500,      # ₦2,500/month
+            "annual": 25000,      # ₦25,000/year (save 17%)
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 35000,     # ₦35,000/month
-            "annual": 336000,     # ₦336,000/year
-            "annual_savings_percent": 20,
+            "monthly": 7500,      # ₦7,500/month
+            "annual": 75000,      # ₦75,000/year (save 17%)
+            "annual_savings_percent": 17,
         },
         "enterprise": {
             "monthly": None,      # Custom
@@ -124,7 +124,7 @@ PAYMENT_PROVIDERS: Dict[str, str] = {
 
 
 def get_currency_for_country(country_code: str) -> str:
-    return COUNTRY_CURRENCY.get(country_code.upper(), "USD")
+    return COUNTRY_CURRENCY.get(country_code.upper(), "NGN")  # NGN-first default
 
 
 def get_pricing_tier(currency: str) -> str:
@@ -136,7 +136,7 @@ def get_pricing_tier(currency: str) -> str:
 
 
 def get_payment_provider(country_code: str) -> str:
-    return PAYMENT_PROVIDERS.get(country_code.upper(), "stripe")
+    return PAYMENT_PROVIDERS.get(country_code.upper(), "paystack")  # paystack-first default
 
 
 def format_currency(amount: float, currency: str) -> str:
@@ -230,12 +230,15 @@ def detect_geo_from_locale(accept_language: Optional[str] = None) -> Dict[str, A
 
 
 def _default_geo() -> Dict[str, Any]:
+    # Default to Nigeria/NGN — this is a Nigerian-market-first product.
+    # Previously defaulted to US/USD/stripe which caused dollar signs on
+    # localhost (where IP detection always routes here via 127.0.0.1).
     return {
-        "country": "US",
-        "currency": "USD",
-        "currency_format": CURRENCY_FORMAT["USD"],
-        "payment_provider": "stripe",
-        "pricing_tier": "USD",
+        "country": "NG",
+        "currency": "NGN",
+        "currency_format": CURRENCY_FORMAT["NGN"],
+        "payment_provider": "paystack",
+        "pricing_tier": "NGN",
         "source": "default",
     }
 

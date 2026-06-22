@@ -56,7 +56,7 @@ PLANS = {
 
 
 def get_plan_pricing(plan: str, currency: str) -> Dict[str, Any]:
-    tiers = PRICING_TIERS.get(currency, PRICING_TIERS["USD"])
+    tiers = PRICING_TIERS.get(currency, PRICING_TIERS["NGN"])  # NGN-first default
     plan_price = tiers.get(plan, {})
     return {
         "plan": plan,

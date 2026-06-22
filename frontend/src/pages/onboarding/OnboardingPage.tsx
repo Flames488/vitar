@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import VitarLogo from '@/components/shared/VitarLogo';
 import { CheckCircle, ChevronRight, Loader2, Building2, UserPlus, Clock, Bell, Rocket } from 'lucide-react';
 import { clinicsApi, doctorsApi, onboardingApi } from '@/lib/api/services';
 import { useAuthStore } from '@/stores/authStore';
@@ -101,11 +102,8 @@ export default function OnboardingPage() {
       <div className="w-full max-w-2xl">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 bg-teal-500 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">V</span>
-            </div>
-            <span className="text-white font-bold text-2xl">Vitar</span>
+          <div className="inline-flex flex-col items-center gap-2">
+            <VitarLogo size={72} />
           </div>
           <p className="text-slate-400 text-sm mt-2">Let's set up your clinic in under 5 minutes</p>
         </div>
@@ -134,7 +132,7 @@ export default function OnboardingPage() {
         </div>
 
         {/* Step card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-white rounded-2xl shadow-2xl p-5 sm:p-8">
 
           {/* ── Step 1: Profile ─────────────────────────────────── */}
           {step === 1 && (
@@ -181,7 +179,7 @@ export default function OnboardingPage() {
                   <p className="text-red-500 text-xs mt-1">{doctorForm.formState.errors.full_name.message}</p>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Specialty</label>
                   <input {...doctorForm.register('specialty')} placeholder="General Practitioner"

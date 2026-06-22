@@ -7,14 +7,19 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { CheckCircle, Zap, Building, AlertCircle, ExternalLink, CreditCard } from 'lucide-react';
 import { billingApi } from '@/lib/api/services';
-import { useGeoStore } from '@/stores/geoStore';
+import { formatNaira } from '@/lib/currency';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
 
 const PLAN_ICONS = { basic: Zap, pro: CheckCircle, enterprise: Building };
 
+// Vitar is a Nigerian-market-first product — billing is always shown in
+// Naira on the client dashboard, regardless of IP-based geo detection.
+// (Geo detection is still used elsewhere for marketing/pricing-page localization.)
+const currency = 'NGN';
+const formatMoney = formatNaira;
+
 export default function BillingPage() {
-  const { currency, formatMoney, payment_provider } = useGeoStore();
   const clinic = useAuthStore((s) => s.clinic);
   const refreshClinic = useAuthStore((s) => s.refreshClinic);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
@@ -65,9 +70,7 @@ export default function BillingPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Billing & Subscription</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Pricing shown in {currency} — based on your region
-          {payment_provider === 'paystack' && ' · Payments via Paystack'}
-          {payment_provider === 'stripe' && ' · Payments via Stripe'}
+          Pricing shown in {currency} · Payments via Paystack
         </p>
       </div>
 
@@ -250,7 +253,7 @@ export default function BillingPage() {
       <div className="flex items-center gap-2 text-slate-400 text-xs justify-center">
         <CreditCard className="w-4 h-4" />
         <span>
-          Secure payments via {payment_provider === 'paystack' ? 'Paystack' : 'Stripe'} ·
+          Secure payments via Paystack ·
           Cancel anytime · No hidden fees
         </span>
       </div>

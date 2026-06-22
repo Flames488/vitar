@@ -49,11 +49,23 @@ import BillingPage from '@/pages/settings/BillingPage';
 import NotificationSettingsPage from '@/pages/settings/NotificationSettingsPage';
 import BookingPageSettings from '@/pages/settings/BookingPageSettings';
 import ApiKeysPage from '@/pages/admin/ApiKeys';
+import QrCodeSettings from '@/pages/QrCodeSettings';
+
+// Superadmin Dashboard (/admin/*) — distinct from pages/admin/ApiKeys above,
+// which is clinic-level settings, not the platform superadmin control panel.
+import AdminLayout from '@/layouts/AdminLayout';
+import AdminOverviewPage from '@/pages/superadmin/OverviewPage';
+import AdminUsersPage from '@/pages/superadmin/UsersPage';
+import AdminClinicsPage from '@/pages/superadmin/ClinicsPage';
+import AdminSubscriptionsPage from '@/pages/superadmin/SubscriptionsPage';
+import AdminAnalyticsPage from '@/pages/superadmin/AnalyticsPage';
+import AdminAuditLogPage from '@/pages/superadmin/AuditLogPage';
 
 // Public Booking
 import PublicBookingPage from '@/pages/booking/PublicBookingPage';
 import BookingConfirmationPage from '@/pages/booking/BookingConfirmationPage';
 import CancelAppointmentPage from '@/pages/booking/CancelAppointmentPage';
+import Portal from '@/pages/Portal';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +81,11 @@ const queryClient = new QueryClient({
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const sessionChecked = useAuthStore((s) => s.sessionChecked);
+  // Wait for validateSession() to finish before deciding — avoids bouncing
+  // authenticated users to /login on every hard refresh (isAuthenticated is
+  // not persisted to localStorage; sessionChecked is the gate).
+  if (!sessionChecked) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
@@ -83,18 +100,43 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// ── Superadmin Guard ──────────────────────────────────────────────────────────
+// Frontend gate is a UX nicety only — every /admin/* API call is independently
+// enforced server-side via get_current_superadmin (app/core/security.py).
+
+function SuperadminRoute({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  const sessionChecked = useAuthStore((s) => s.sessionChecked);
+  if (!sessionChecked) return null; // wait for validateSession() before deciding
+  if (!user?.is_superadmin) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
+// ── Superadmin-only Login Redirect ────────────────────────────────────────────
+// Superadmin accounts with no clinic must land on /admin, not /dashboard.
+// Without this they'd be sent to /dashboard, which calls clinicsApi.getMe()
+// (404), then OnboardingGuard would loop them to /onboarding, which also 404s.
+
+function AdminOrDashboard() {
+  const user = useAuthStore((s) => s.user);
+  const clinic = useAuthStore((s) => s.clinic);
+  if (user?.is_superadmin && !clinic) return <Navigate to="/admin/overview" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const detect = useGeoStore((s) => s.detect);
-  const refreshClinic = useAuthStore((s) => s.refreshClinic);
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const validateSession = useAuthStore((s) => s.validateSession);
 
   useEffect(() => {
     detect();
-    if (isAuthenticated) {
-      refreshClinic();
-    }
+    // v12 FIX: validateSession existed but was never called — isAuthenticated
+    // wasn't persisted, so every hard refresh bounced everyone to /login even
+    // with a valid session cookie. This restores the session (and works for
+    // superadmin-only accounts with no clinic, via /auth/me).
+    validateSession();
   }, []);
 
   return (
@@ -117,6 +159,8 @@ export default function App() {
 
           {/* ── Public Booking (no auth) ───────────────────────────────── */}
           <Route path="/book/:slug" element={<PublicBookingPage />} />
+          {/* /portal/:slug — QR scan landing page (patient self-registration) */}
+          <Route path="/portal/:slug" element={<Portal />} />
           <Route path="/confirm/:token" element={<BookingConfirmationPage />} />
           <Route path="/cancel/:token" element={<CancelAppointmentPage />} />
 
@@ -160,6 +204,26 @@ export default function App() {
             <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
             <Route path="/settings/booking-page" element={<BookingPageSettings />} />
             <Route path="/settings/api-keys" element={<ApiKeysPage />} />
+            <Route path="/settings/qr-code" element={<QrCodeSettings />} />
+          </Route>
+
+          {/* ── Superadmin Dashboard ──────────────────────────────────── */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <SuperadminRoute>
+                  <AdminLayout />
+                </SuperadminRoute>
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
+            <Route path="/admin/overview" element={<AdminOverviewPage />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/clinics" element={<AdminClinicsPage />} />
+            <Route path="/admin/subscriptions" element={<AdminSubscriptionsPage />} />
+            <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+            <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
           </Route>
 
           {/* Fallback */}

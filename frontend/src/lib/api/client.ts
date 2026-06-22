@@ -20,12 +20,25 @@ const BASE_URL = rawBaseUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
 // The CSRF token is returned in the login/register/refresh response body.
 // We keep it in memory — it never touches localStorage or a cookie we control.
 
-let _csrfToken: string | null = null;
+// CSRF token is kept in memory for the tab lifetime AND mirrored to
+// sessionStorage so that a hard refresh (F5) on /admin/* or any protected
+// route can still attempt a silent token refresh without an empty header.
+// sessionStorage is tab-scoped and cleared when the tab closes — safe for
+// a CSRF mitigation token that is NOT a credential.
+const SESSION_CSRF_KEY = 'vitar_csrf';
+
+let _csrfToken: string | null = sessionStorage.getItem(SESSION_CSRF_KEY);
 
 export const csrfManager = {
   get: (): string | null => _csrfToken,
-  set: (token: string): void => { _csrfToken = token; },
-  clear: (): void => { _csrfToken = null; },
+  set: (token: string): void => {
+    _csrfToken = token;
+    sessionStorage.setItem(SESSION_CSRF_KEY, token);
+  },
+  clear: (): void => {
+    _csrfToken = null;
+    sessionStorage.removeItem(SESSION_CSRF_KEY);
+  },
 };
 
 // ── Axios Instance ────────────────────────────────────────────────────────────

@@ -1,7 +1,3 @@
-/**
- * Vitar v5 - Login Page
- */
-
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -31,7 +27,14 @@ export default function LoginPage() {
   const onSubmit = async (data: FormData) => {
     try {
       await login(data.email, data.password);
-      navigate('/dashboard');
+      // Superadmin-only accounts (no clinic) must go to /admin — /dashboard
+      // would 404 on clinicsApi.getMe() and loop them to /onboarding.
+      const { user, clinic } = useAuthStore.getState();
+      if (user?.is_superadmin && !clinic) {
+        navigate('/admin/overview');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       toast.error(getApiError(err));
     }

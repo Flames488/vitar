@@ -25,11 +25,10 @@ async def detect_geo(
 
     geo = await detect_geo_from_ip(ip)
 
-    # If IP detection failed, try locale
-    if geo.get("source") == "default" and accept_language:
-        locale_geo = detect_geo_from_locale(accept_language)
-        if locale_geo.get("source") == "locale":
-            geo = locale_geo
+    # Locale fallback intentionally removed — this product defaults to NG/NGN.
+    # The en-US Accept-Language header (Windows default) was overriding NGN
+    # with USD for all local/Nigerian users whose IP geo lookup returned the
+    # _default_geo(). NGN is the correct default for this market.
 
     # Add plans for the detected currency
     geo["plans"] = get_all_plans_for_currency(geo["currency"])

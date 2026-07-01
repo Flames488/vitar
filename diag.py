@@ -1,0 +1,15 @@
+import os 
+from sqlalchemy import create_engine, pool, text 
+migration_url = os.environ.get('MIGRATION_DATABASE_URL') or os.environ.get('DATABASE_URL') 
+print('USING URL:', migration_url) 
+engine = create_engine(migration_url, poolclass=pool.NullPool) 
+conn = engine.connect() 
+row = conn.execute(text("SELECT current_database(), current_user, inet_server_addr(), current_schema(), current_setting('search_path')")).fetchone() 
+print('CONNECTED TO:', row) 
+trans = conn.begin() 
+conn.execute(text('CREATE TABLE IF NOT EXISTS alembic_diag_test (id serial primary key)')) 
+trans.commit() 
+print('COMMITTED') 
+row2 = conn.execute(text("SELECT to_regclass('public.alembic_diag_test')")).fetchone() 
+print('VISIBLE IN SAME CONN:', row2) 
+conn.close() 

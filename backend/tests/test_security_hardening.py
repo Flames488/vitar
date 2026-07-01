@@ -254,5 +254,34 @@ class TestHealthEndpoint:
         assert resp.json()["service"] == "Vitar API"
 
     def test_docs_accessible(self):
-        resp = client.get("/api/docs")
+        resp = client.get("/api/v1/docs")
         assert resp.status_code in (200, 404)  # 404 when docs disabled in prod config
+
+
+# ── Webhook and upload hardening ──────────────────────────────────────────────
+
+class TestWebhookAndUploadHardening:
+    def test_paystack_webhook_fails_closed_without_secret_in_production(self, monkeypatch):
+        from app.core.config import settings
+        from app.services.billing_service import PaystackBilling
+
+        monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+        monkeypatch.setattr(settings, "PAYSTACK_WEBHOOK_SECRET", "")
+
+        assert PaystackBilling().verify_webhook(b"{}", "any-signature") is False
+
+    def test_paystack_webhook_allows_missing_secret_only_outside_production(self, monkeypatch):
+        from app.core.config import settings
+        from app.services.billing_service import PaystackBilling
+
+        monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+        monkeypatch.setattr(settings, "PAYSTACK_WEBHOOK_SECRET", "")
+
+        assert PaystackBilling().verify_webhook(b"{}", "any-signature") is True
+
+    def test_upload_type_detection_uses_file_signature(self):
+        from app.api.v1.endpoints.uploads import _detect_image_content_type
+
+        assert _detect_image_content_type(b"\x89PNG\r\n\x1a\npayload") == "image/png"
+        assert _detect_image_content_type(b"\xff\xd8\xffpayload") == "image/jpeg"
+        assert _detect_image_content_type(b"not-an-image") is None

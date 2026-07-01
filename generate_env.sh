@@ -25,7 +25,7 @@ SECRET_KEY=${SECRET_KEY}
 DEBUG=false
 
 # Domain — update ALLOWED_ORIGINS / ALLOWED_HOSTS / FRONTEND_URL before going live
-# ALLOWED_ORIGINS set below for labvault.cloud
+# ALLOWED_ORIGINS set below for livevault.cloud
 
 # Database
 POSTGRES_PASSWORD=${POSTGRES_PASS}
@@ -42,12 +42,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 REFRESH_TOKEN_EXPIRE_DAYS=30
 
 # CORS
-ALLOWED_ORIGINS=["https://labvault.cloud"]
-ALLOWED_HOSTS=["labvault.cloud","www.labvault.cloud"]
+ALLOWED_ORIGINS=["https://livevault.cloud","https://www.livevault.cloud","https://app.livevault.cloud","https://api.livevault.cloud"]
+ALLOWED_HOSTS=["livevault.cloud","www.livevault.cloud","app.livevault.cloud","api.livevault.cloud"]
 
 # Frontend
-FRONTEND_URL=https://labvault.cloud
-VITE_API_URL=https://labvault.cloud/api/v1
+FRONTEND_URL=https://livevault.cloud
+VITE_API_URL=https://livevault.cloud/api/v1
+API_DOCS_ENABLED=true
 
 # Trial limits
 TRIAL_DAYS=14
@@ -75,7 +76,7 @@ TWILIO_FROM_NUMBER=
 WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_ACCESS_TOKEN=
 SENDGRID_API_KEY=
-EMAIL_FROM=no-reply@labvault.cloud
+EMAIL_FROM=no-reply@livevault.cloud
 EMAIL_FROM_NAME=Vitar Health
 GROQ_API_KEY=
 SENTRY_DSN=
@@ -85,6 +86,8 @@ AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_S3_BUCKET=vitar-uploads
 AWS_REGION=us-east-1
+STORAGE_BACKEND=local
+ALLOW_LOCAL_UPLOADS_IN_PRODUCTION=true
 UPLOAD_DIR=/app/uploads
 DATABASE_POOL_SIZE=5
 DATABASE_MAX_OVERFLOW=10

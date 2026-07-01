@@ -1,0 +1,38 @@
+# Fix for "Request failed with status code 502" on login
+#
+# Root cause:
+#   The frontend container was built without VITE_API_URL, so it falls back to
+#   the hardcoded default "http://localhost:8000" in client.ts.
+#   Inside the nginx container, "localhost" resolves to the nginx process itself
+#   — not the api container — so every /api/v1/... request hits nginx on port
+#   8000 (nothing there) → 502 Bad Gateway.
+#
+# Fix:
+#   Set VITE_API_URL to the empty string "" (or omit it) so the axios baseURL
+#   becomes just "/api/v1" — a relative URL. Nginx already proxies /api/ to
+#   http://api:8000, so the request routes correctly to the FastAPI container.
+#
+# How to apply:
+#   Option A — Add to your existing docker-compose.yml under the `frontend`
+#              service's build args (recommended):
+#
+#       services:
+#         frontend:
+#           build:
+#             context: ./src
+#             args:
+#               VITE_API_URL: ""    # <-- add this line
+#
+#   Option B — Place this file alongside docker-compose.yml. Docker Compose
+#              merges it automatically:
+#
+#       docker compose up --build
+#
+# After applying, rebuild the frontend image:
+#   docker compose build frontend && docker compose up -d frontend
+
+services:
+  frontend:
+    build:
+      args:
+        VITE_API_URL: ""

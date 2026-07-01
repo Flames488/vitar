@@ -67,6 +67,14 @@ class PaymentProvider(str, enum.Enum):
     FLUTTERWAVE = "flutterwave"
     STRIPE = "stripe"
 
+class PendingPaymentStatus(str, enum.Enum):
+    """Status of an automated Paystack subscription payment, before it
+    becomes a finalized SubscriptionPayment record."""
+    PENDING = "pending"
+    PAID = "paid"
+    EXPIRED = "expired"
+    AMOUNT_MISMATCH = "amount_mismatch"
+
 class Region(str, enum.Enum):
     NG = "NG"
     US = "US"
@@ -214,6 +222,40 @@ class SubscriptionPayment(Base):
 
     __table_args__ = (
         Index("ix_subpayment_status_created", "status", "created_at"),
+    )
+
+
+# ─── Automated Paystack Subscription Payments (smart payment system) ─────────
+
+class PendingSubscriptionPayment(Base):
+    """
+    Tracks an in-flight, automated Paystack subscription payment from the
+    moment a clinic clicks "Upgrade" until the webhook confirms (or the
+    session expires). On success this is what drives automatic activation
+    of the clinic's Subscription — no admin step required.
+    """
+    __tablename__ = "pending_subscription_payments"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    subscription_plan = Column(String(20), nullable=False)   # basic | pro | enterprise
+    billing_cycle = Column(String(20), default="monthly")    # monthly | annual
+
+    amount = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(10), default="NGN")
+
+    paystack_reference = Column(String(255), unique=True, nullable=False, index=True)
+    status = Column(Enum(PendingPaymentStatus), default=PendingPaymentStatus.PENDING, nullable=False, index=True)
+
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=func.now(), index=True)
+    paid_at = Column(DateTime)
+
+    provider_response = Column(JSONB, default={})
+
+    __table_args__ = (
+        Index("ix_pendingpay_status_expires", "status", "expires_at"),
     )
 
 

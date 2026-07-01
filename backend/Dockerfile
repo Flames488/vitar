@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM --platform=linux/amd64 python:3.12-slim
 
 WORKDIR /app
 
@@ -7,7 +7,20 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# ── Layer 1: heavy/slow wheels cached separately to survive timeouts ──────────
+RUN pip install --no-cache-dir --timeout=120 --retries=5 \
+    psycopg2-binary==2.9.10 \
+    SQLAlchemy==2.0.36 \
+    cryptography==43.0.3 \
+    pillow \
+    reportlab \
+    aiohttp \
+    uvloop \
+    locust==2.32.3
+
+# ── Layer 2: remaining dependencies ──────────────────────────────────────────
+RUN pip install --no-cache-dir --timeout=120 --retries=5 -r requirements.txt
 
 COPY . .
 

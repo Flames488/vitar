@@ -167,15 +167,31 @@ def _determine_region(country: str) -> Region:
 
 
 def _clinic_dict(clinic: Clinic) -> dict:
+    now = utcnow()
+    trial_ends_at = clinic.trial_ends_at
+    is_on_trial = trial_ends_at is not None
+    is_expired = is_on_trial and now > trial_ends_at
+    days_left = max(0, (trial_ends_at - now).days) if is_on_trial and not is_expired else 0
+    bookings_used = clinic.trial_bookings_used or 0
+    bookings_limit = settings.TRIAL_MAX_BOOKINGS
+
     return {
         "id": clinic.id,
         "name": clinic.name,
         "slug": clinic.slug,
-        "trial_ends_at": clinic.trial_ends_at.isoformat() if clinic.trial_ends_at else None,
+        "trial_ends_at": trial_ends_at.isoformat() if trial_ends_at else None,
         "country": clinic.country,
         "currency": clinic.currency,
         "onboarding_completed": clinic.onboarding_completed,
         "onboarding_step": clinic.onboarding_step,
+        "trial": {
+            "is_trial": is_on_trial,
+            "is_expired": is_expired,
+            "days_left": days_left,
+            "bookings_used": bookings_used,
+            "bookings_limit": bookings_limit,
+            "show_upgrade_nudge": is_on_trial and (is_expired or days_left <= 7),
+        } if is_on_trial else None,
     }
 
 

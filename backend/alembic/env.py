@@ -37,9 +37,12 @@ logger = logging.getLogger("alembic.env")
 
 # ── Retry helper ──────────────────────────────────────────────────────────────
 
-def _connect_with_retry(engine, max_attempts: int = 5, base_delay: float = 1.0):
+def _wait_for_db(engine, max_attempts: int = 5, base_delay: float = 1.0) -> None:
     """
-    Attempt to connect, retrying with exponential backoff.
+    Block until the database is reachable, retrying with exponential backoff.
+    Uses its own short-lived connection that is fully discarded afterward —
+    never reused for the actual migration — so it can't leave behind an
+    open/auto-begun transaction that contaminates the migration connection.
 
     Backoff schedule (base_delay=1.0s):
       Attempt 1: immediate
@@ -52,9 +55,10 @@ def _connect_with_retry(engine, max_attempts: int = 5, base_delay: float = 1.0):
     last_exc = None
     for attempt in range(1, max_attempts + 1):
         try:
-            conn = engine.connect()
-            conn.execute(text("SELECT 1"))
-            return conn
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                conn.rollback()
+            return
         except OperationalError as exc:
             last_exc = exc
             if attempt < max_attempts:
@@ -111,7 +115,13 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    connection = _connect_with_retry(connectable, max_attempts=5, base_delay=1.0)
+    # Wait until the DB is reachable using a throwaway connection — never the
+    # one we actually migrate with, so it can't carry over any open transaction.
+    _wait_for_db(connectable, max_attempts=5, base_delay=1.0)
+
+    # Open a brand-new connection for the migration itself. Nothing has been
+    # executed on it yet, so it has no auto-begun transaction baggage.
+    connection = connectable.connect()
 
     try:
         context.configure(
@@ -126,6 +136,14 @@ def run_migrations_online() -> None:
         )
         with context.begin_transaction():
             context.run_migrations()
+
+        # Belt-and-suspenders: explicitly commit. If Alembic's transaction
+        # context already committed, this is a documented no-op. If for any
+        # reason it didn't, this ensures the DDL is actually persisted before
+        # the connection is closed (closing with an open transaction rolls
+        # back in SQLAlchemy 2.x).
+        connection.commit()
+        logger.info("Migration transaction explicitly committed.")
     finally:
         connection.close()
         connectable.dispose()

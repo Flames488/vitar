@@ -1,14 +1,14 @@
-# Deploying to labvault.cloud
+# Deploying to livevault.cloud
 
-No subdomain. Everything runs on **https://labvault.cloud**.
+No subdomain. Everything runs on **https://livevault.cloud**.
 
 ---
 
 ## Prerequisites
 
 - A Linux VPS (Ubuntu 22.04+ recommended) with Docker and Docker Compose v2 installed
-- DNS A record: `labvault.cloud → <your server IP>`
-- DNS A record: `www.labvault.cloud → <your server IP>`
+- DNS A record: `livevault.cloud → <your server IP>`
+- DNS A record: `www.livevault.cloud → <your server IP>`
 - Port 80 and 443 open in your firewall
 
 ---
@@ -16,9 +16,9 @@ No subdomain. Everything runs on **https://labvault.cloud**.
 ## Step 1 — Upload the project
 
 ```bash
-scp vitar_v5_1_labvault.zip user@<your-server-ip>:~
+scp vitar_v5_1_LiveVault.zip user@<your-server-ip>:~
 ssh user@<your-server-ip>
-unzip vitar_v5_1_labvault.zip
+unzip vitar_v5_1_LiveVault.zip
 cd vitar_v5_final
 ```
 
@@ -30,7 +30,7 @@ cd vitar_v5_final
 bash generate_env.sh
 ```
 
-This creates `.env` with random secrets already set for `labvault.cloud`.
+This creates `.env` with random secrets already set for `livevault.cloud`.
 Then open `.env` and fill in your external service keys:
 
 ```
@@ -46,12 +46,12 @@ TERMII_API_KEY=...                   # for SMS in Nigeria
 
 ```bash
 # Set your email for Let's Encrypt expiry notices
-export CERTBOT_EMAIL=you@labvault.cloud
+export CERTBOT_EMAIL=you@livevault.cloud
 
 bash infra/scripts/init-ssl.sh
 ```
 
-This issues a free certificate for `labvault.cloud` and `www.labvault.cloud`.
+This issues a free certificate for `livevault.cloud` and `www.livevault.cloud`.
 Takes about 30 seconds. Only needs to be run once.
 
 ---
@@ -73,7 +73,7 @@ This builds all images, runs database migrations, and starts all services.
 docker compose ps
 
 # API health check
-curl https://labvault.cloud/health
+curl https://livevault.cloud/health
 
 # Logs
 docker compose logs api --tail=50

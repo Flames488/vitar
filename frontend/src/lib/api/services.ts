@@ -84,7 +84,7 @@ export const appointmentsApi = {
 
 export const analyticsApi = {
   dashboard: () => api.get('/analytics/dashboard').then(r => r.data),
-  summary: () => api.get('/analytics/summary').then(r => r.data),
+  summary: () => api.get('/analytics/quick-summary').then(r => r.data),
 };
 
 // ── AI ────────────────────────────────────────────────────────────────────────
@@ -107,6 +107,8 @@ export const billingApi = {
   subscribe: (plan: string, billing_cycle: string) =>
     api.post('/billing/subscribe', { plan, billing_cycle }).then(r => r.data),
   cancel: () => api.post('/billing/cancel').then(r => r.data),
+  getPaymentStatus: (reference: string) =>
+    api.get(`/billing/payment-status/${reference}`).then(r => r.data),
   getBanks: () => api.get('/billing/banks').then(r => r.data),
   setupSubaccount: (bank_code: string, account_number: string) =>
     api.post('/billing/setup-subaccount', { bank_code, account_number }).then(r => r.data),

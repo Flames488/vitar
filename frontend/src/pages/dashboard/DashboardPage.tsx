@@ -154,9 +154,45 @@ export default function DashboardPage() {
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-widest text-teal-600 mb-0.5">
-              {format(new Date(), 'EEEE, MMMM d, yyyy')}
-            </p>
+            <div className="flex items-center gap-3 flex-wrap mb-0.5">
+              <p className="text-xs font-semibold uppercase tracking-widest text-teal-600">
+                {format(new Date(), 'EEEE, MMMM d, yyyy')}
+              </p>
+              {clinic?.trial?.is_trial && (() => {
+                const daysLeft = clinic.trial.is_expired ? 0 : (clinic.trial.days_left ?? 0);
+                const urgent = daysLeft <= 3;
+                const expired = clinic.trial.is_expired || daysLeft === 0;
+                return (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide border"
+                    style={expired ? {
+                      background: 'rgba(239,68,68,0.1)',
+                      color: '#dc2626',
+                      borderColor: 'rgba(239,68,68,0.25)',
+                    } : urgent ? {
+                      background: 'rgba(245,158,11,0.12)',
+                      color: '#d97706',
+                      borderColor: 'rgba(245,158,11,0.3)',
+                    } : {
+                      background: 'rgba(13,148,136,0.08)',
+                      color: '#0d9488',
+                      borderColor: 'rgba(13,148,136,0.2)',
+                    }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{
+                        background: expired ? '#dc2626' : urgent ? '#f59e0b' : '#0d9488',
+                        boxShadow: `0 0 4px ${expired ? '#dc2626' : urgent ? '#f59e0b' : '#0d9488'}`,
+                      }}
+                    />
+                    {expired
+                      ? 'Trial expired'
+                      : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on trial`}
+                  </span>
+                );
+              })()}
+            </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 truncate leading-tight">
               Good {getGreeting()}{clinic?.name ? `, ${clinic.name}` : ''} 👋
             </h1>

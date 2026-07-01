@@ -292,7 +292,7 @@ export default function OnboardingPage() {
                   'Public booking page created',
                   'AI no-show prediction active',
                   'Smart reminders configured',
-                  '14-day trial started',
+                  '30-day trial started',
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-2 text-sm text-slate-700">
                     <CheckCircle className="w-4 h-4 text-teal-500 flex-shrink-0" />

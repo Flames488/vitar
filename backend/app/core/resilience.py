@@ -458,7 +458,7 @@ class PaymentFallbackChain:
                     "https://api.flutterwave.com/v3/payments",
                     headers={"Authorization": f"Bearer {settings.FLUTTERWAVE_SECRET_KEY}"},
                     json={"amount": amount, "currency": currency, "customer": {"email": email},
-                          "tx_ref": reference, "redirect_url": "https://labvault.cloud/billing/callback"},
+                          "tx_ref": reference, "redirect_url": "https://livevault.cloud/billing/callback"},
                 )
                 data = resp.json()
                 if data.get("status") == "success":

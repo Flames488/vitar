@@ -47,7 +47,7 @@ def check_trial_booking_limit(clinic, db: Session):
                 status_code=402,
                 detail={
                     "code": "TRIAL_EXPIRED",
-                    "message": "Your 14-day free trial has ended. Upgrade to continue booking appointments.",
+                    "message": "Your 30-day free trial has ended. Upgrade to continue booking appointments.",
                     "upgrade_url": "/settings/billing",
                 },
             )

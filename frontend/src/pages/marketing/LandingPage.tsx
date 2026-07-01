@@ -41,7 +41,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link to="/register"
               className="w-full sm:w-auto bg-teal-500 hover:bg-teal-400 text-white font-bold px-8 py-4 rounded-xl text-lg transition-colors">
-              Start Free 14-Day Trial →
+              Start Free 30-day Trial →
             </Link>
             <Link to="/pricing"
               className="w-full sm:w-auto border border-white/20 hover:border-white/40 text-white px-8 py-4 rounded-xl text-lg transition-colors">

@@ -20,6 +20,10 @@ class ClinicUpdate(BaseModel):
     booking_page_enabled: Optional[bool] = None
     online_booking_enabled: Optional[bool] = None
     consultation_fee: Optional[float] = None
+    # Bank transfer payment settings
+    patient_payment_enabled: Optional[bool] = None
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
 
 @router.get("/me")
 def get_clinic(clinic=Depends(get_current_clinic)):
@@ -42,6 +46,9 @@ def get_clinic(clinic=Depends(get_current_clinic)):
         "online_booking_enabled": clinic.online_booking_enabled,
         "consultation_fee": float(clinic.consultation_fee) if clinic.consultation_fee else 0,
         "patient_payment_enabled": clinic.patient_payment_enabled,
+        # Bank transfer fields (stored as paystack_* columns, repurposed for direct transfer)
+        "bank_name": clinic.paystack_bank_name,
+        "account_number": clinic.paystack_account_number,
         "onboarding_completed": clinic.onboarding_completed,
         "onboarding_step": clinic.onboarding_step,
         "trial": trial,
@@ -53,8 +60,18 @@ def update_clinic(
     clinic=Depends(get_current_clinic),
     db: Session = Depends(get_db),
 ):
-    for field, val in body.model_dump(exclude_none=True).items():
-        setattr(clinic, field, val)
+    data = body.model_dump(exclude_none=True)
+
+    # Map frontend field names to model column names
+    field_map = {
+        "bank_name": "paystack_bank_name",
+        "account_number": "paystack_account_number",
+    }
+
+    for field, val in data.items():
+        model_field = field_map.get(field, field)
+        setattr(clinic, model_field, val)
+
     db.commit()
     db.refresh(clinic)
     return {"message": "Clinic updated", "id": clinic.id}

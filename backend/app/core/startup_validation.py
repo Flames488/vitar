@@ -84,11 +84,19 @@ def validate_production_config() -> None:
         if not settings.AWS_S3_BUCKET:
             errors.append("AWS_S3_BUCKET is empty. Set a bucket name.")
     elif storage_backend == 'local':
-        errors.append(
-            "STORAGE_BACKEND=local is not safe for production. "
-            "Files are stored on the container filesystem — they will be lost on restart "
-            "and are NOT shared across replicas. Set STORAGE_BACKEND=s3 and configure AWS credentials."
-        )
+        if getattr(settings, "ALLOW_LOCAL_UPLOADS_IN_PRODUCTION", False):
+            warnings.append(
+                "STORAGE_BACKEND=local is enabled in production for a single-node deployment. "
+                "Do not upload clinical documents or PHI here; move to S3-compatible object storage "
+                "before horizontal scaling."
+            )
+        else:
+            errors.append(
+                "STORAGE_BACKEND=local is not safe for production unless explicitly accepted. "
+                "Files are stored on the container filesystem and are not shared across replicas. "
+                "Set STORAGE_BACKEND=s3 or ALLOW_LOCAL_UPLOADS_IN_PRODUCTION=true for a documented "
+                "single-node deployment that only stores non-clinical assets."
+            )
     else:
         errors.append(f"Unknown STORAGE_BACKEND={storage_backend!r}. Valid values: s3, local.")
 

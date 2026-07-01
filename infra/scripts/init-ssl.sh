@@ -1,17 +1,17 @@
 #!/bin/bash
-# init-ssl.sh — Issue a Let's Encrypt certificate for labvault.cloud
+# init-ssl.sh — Issue a Let's Encrypt certificate for livevault.cloud
 # Run ONCE after DNS is pointing to this server.
 # Usage: bash infra/scripts/init-ssl.sh
 
 set -euo pipefail
 
-DOMAIN="labvault.cloud"
-EMAIL="${CERTBOT_EMAIL:-admin@labvault.cloud}"
+DOMAIN="livevault.cloud"
+EMAIL="${CERTBOT_EMAIL:-admin@livevault.cloud}"
 
 GREEN='\033[0;32m'; NC='\033[0m'
 log() { echo -e "${GREEN}[SSL]${NC} $1"; }
 
-log "Issuing Let's Encrypt certificate for $DOMAIN and www.$DOMAIN ..."
+log "Issuing Let's Encrypt certificate for $DOMAIN, www.$DOMAIN, app.$DOMAIN, and api.$DOMAIN ..."
 
 # Ensure the ACME challenge directory exists
 mkdir -p ./infra/nginx/certbot/www/.well-known/acme-challenge
@@ -30,7 +30,9 @@ docker run --rm \
   --agree-tos \
   --no-eff-email \
   -d "$DOMAIN" \
-  -d "www.$DOMAIN"
+  -d "www.$DOMAIN" \
+  -d "app.$DOMAIN" \
+  -d "api.$DOMAIN"
 
 log "Certificate issued. Restarting nginx with SSL..."
 docker compose restart nginx

@@ -21,11 +21,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ── pg_stat_statements — tracked by Postgres, queried for slow query reports ──
-    # Requires shared_preload_libraries='pg_stat_statements' in postgres.conf.
-    # The docker-compose command already sets -c shared_preload_libraries for pg 16.
-    # This CREATE EXTENSION is idempotent.
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+    # ── pg_stat_statements — already enabled on Supabase by default ───────────
+    # Skipping CREATE EXTENSION: Supabase pre-enables pg_stat_statements and
+    # the pooler user lacks superuser rights to run it. No-op needed here.
 
     # ── patients: clinic + name for fast ilike search ─────────────────────────
     # list_patients endpoint filters by clinic_id then sorts/searches by full_name.

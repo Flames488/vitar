@@ -89,7 +89,7 @@ async def send_welcome_email(to_email: str, full_name: str, clinic_name: str):
         f"Welcome to Vitar, {full_name.split()[0]}! 🎉",
         f"""
         <p>Your clinic <strong>{clinic_name}</strong> is ready to go.</p>
-        <p>You're on a <strong>14-day free trial</strong> with full access to:</p>
+        <p>You're on a <strong>30-day free trial</strong> with full access to:</p>
         <ul>
           <li>AI-powered no-show prediction</li>
           <li>Smart multi-channel reminders (SMS, WhatsApp, Email)</li>
@@ -121,7 +121,7 @@ async def send_trial_expiry_warning(to_email: str, clinic_name: str, days_left: 
     html = _base_template(
         f"Your trial ends in {days_left} day{'s' if days_left != 1 else ''}",
         f"""
-        <p>Your <strong>14-day free trial</strong> for <strong>{clinic_name}</strong> is almost over.</p>
+        <p>Your <strong>30-day free trial</strong> for <strong>{clinic_name}</strong> is almost over.</p>
         <p>Upgrade now to keep your appointments, reminders, and analytics running without interruption.</p>
         <a href="{settings.FRONTEND_URL}/settings/billing" class="btn">Upgrade Now →</a>
         <p style="color:#666;font-size:14px;">

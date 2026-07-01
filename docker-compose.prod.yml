@@ -3,10 +3,10 @@ services:
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
-      FRONTEND_URL: https://labvault.cloud
-      VITE_API_URL: https://labvault.cloud/api/v1
-      ALLOWED_ORIGINS: '["https://labvault.cloud","https://www.labvault.cloud"]'
-      ALLOWED_HOSTS: '["labvault.cloud","www.labvault.cloud"]'
+      FRONTEND_URL: https://livevault.cloud
+      VITE_API_URL: https://livevault.cloud/api/v1
+      ALLOWED_ORIGINS: '["https://livevault.cloud","https://www.livevault.cloud"]'
+      ALLOWED_HOSTS: '["livevault.cloud","www.livevault.cloud"]'
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       SKIP_MIGRATIONS: "false"
 
@@ -28,7 +28,7 @@ services:
   frontend:
     build:
       args:
-        VITE_API_URL: https://labvault.cloud/api/v1
+        VITE_API_URL: https://livevault.cloud/api/v1
 
   nginx:
     ports:

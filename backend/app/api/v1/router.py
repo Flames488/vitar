@@ -1,6 +1,5 @@
 """
-Vitar v5 - API v1 Router
-Aggregates all sub-routers
+Vitar — API v1 Router  (updated: push_notifications added)
 """
 
 from fastapi import APIRouter
@@ -28,6 +27,7 @@ from app.api.v1.endpoints import (
     admin_analytics,
     admin_audit,
     qr,
+    push_notifications,   # ← NEW
 )
 
 api_router = APIRouter()
@@ -49,10 +49,9 @@ api_router.include_router(waiting_list.router, prefix="/waiting-list", tags=["Wa
 api_router.include_router(uploads.router, prefix="/uploads", tags=["File Uploads"])
 api_router.include_router(admin_api_keys.router, tags=["Admin — API Keys"])
 api_router.include_router(qr.router, prefix="/qr", tags=["QR Code"])
+api_router.include_router(push_notifications.router, prefix="/push", tags=["Push Notifications"])  # ← NEW
 
 # ── Superadmin Dashboard (/admin/*) ────────────────────────────────────────
-# Each router below is independently protected by get_current_superadmin
-# (app/core/security.py) — never trust the frontend route guard alone.
 api_router.include_router(admin_users.router, tags=["Admin — Users"])
 api_router.include_router(admin_clinics.router, tags=["Admin — Clinics"])
 api_router.include_router(admin_subscriptions.router, tags=["Admin — Subscriptions"])

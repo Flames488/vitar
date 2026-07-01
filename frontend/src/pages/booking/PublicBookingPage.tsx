@@ -7,8 +7,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format, addDays, startOfDay } from 'date-fns';
-import { Calendar, Clock, CheckCircle, Loader2, User } from 'lucide-react';
+import { format, addDays } from 'date-fns';
+import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Copy, Check } from 'lucide-react';
 import { bookingApi, doctorsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -20,12 +20,86 @@ const schema = z.object({
   reason: z.string().optional(),
 });
 
+// ── Bank Transfer instructions panel ─────────────────────────────────────────
+
+function BankTransferCard({
+  clinicName,
+  bankName,
+  accountNumber,
+  amount,
+}: {
+  clinicName: string;
+  bankName: string;
+  accountNumber: string;
+  amount: number;
+}) {
+  const [copiedAccount, setCopiedAccount] = useState(false);
+
+  function copyAccount() {
+    navigator.clipboard.writeText(accountNumber).then(() => {
+      setCopiedAccount(true);
+      setTimeout(() => setCopiedAccount(false), 2000);
+    });
+  }
+
+  return (
+    <div className="bg-teal-50 border border-teal-200 rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Banknote className="w-5 h-5 text-teal-700" />
+        <h3 className="font-semibold text-teal-900">Payment Required</h3>
+      </div>
+
+      <p className="text-sm text-teal-800">
+        Please transfer your consultation fee to the account below before your appointment.
+        Use your <strong>name</strong> as the payment description so it can be confirmed.
+      </p>
+
+      <div className="bg-white rounded-lg border border-teal-200 divide-y divide-teal-100">
+        <div className="flex justify-between px-4 py-3 text-sm">
+          <span className="text-slate-500">Bank</span>
+          <span className="font-medium text-slate-900">{bankName}</span>
+        </div>
+        <div className="flex justify-between items-center px-4 py-3 text-sm">
+          <span className="text-slate-500">Account number</span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-semibold text-slate-900 tracking-wider">{accountNumber}</span>
+            <button
+              onClick={copyAccount}
+              className="text-teal-600 hover:text-teal-800 transition-colors"
+              title="Copy account number"
+            >
+              {copiedAccount ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+        <div className="flex justify-between px-4 py-3 text-sm">
+          <span className="text-slate-500">Account name</span>
+          <span className="font-medium text-slate-900">{clinicName}</span>
+        </div>
+        {amount > 0 && (
+          <div className="flex justify-between px-4 py-3 text-sm">
+            <span className="text-slate-500">Amount</span>
+            <span className="font-bold text-teal-700 text-base">₦{amount.toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-teal-700">
+        Your appointment is confirmed. Payment can be made up to 30 minutes before your visit.
+      </p>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function PublicBookingPage() {
   const { slug } = useParams<{ slug: string }>();
   const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [booked, setBooked] = useState<any>(null);
+  const [bookedDoctor, setBookedDoctor] = useState<any>(null);
 
   const { data: clinicData, isLoading: clinicLoading } = useQuery({
     queryKey: ['public-clinic', slug],
@@ -49,7 +123,11 @@ export default function PublicBookingPage() {
       doctor_id: selectedDoctor,
       scheduled_at: `${selectedDate}T${selectedSlot}:00`,
     }),
-    onSuccess: (data) => setBooked(data),
+    onSuccess: (data) => {
+      setBooked(data);
+      const doctors = clinicData?.doctors ?? [];
+      setBookedDoctor(doctors.find((d: any) => d.id === selectedDoctor) ?? null);
+    },
     onError: (err) => toast.error(getApiError(err)),
   });
 
@@ -69,21 +147,40 @@ export default function PublicBookingPage() {
     return { value: format(d, 'yyyy-MM-dd'), label: format(d, i === 0 ? "'Today'" : i === 1 ? "'Tomorrow'" : 'EEE MMM d') };
   });
 
+  // Determine payment amount: prefer doctor fee, then fall back to booked response amount
+  const paymentAmount = bookedDoctor?.consultation_fee || booked?.payment_amount || 0;
+
   if (booked) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center space-y-4">
-        <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto">
-          <CheckCircle className="w-8 h-8 text-teal-600" />
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <div className="bg-teal-700 text-white py-8 px-4">
+        <div className="max-w-2xl mx-auto text-center">
+          <h1 className="text-2xl font-bold">{clinic?.name}</h1>
         </div>
-        <h2 className="text-2xl font-bold text-slate-900">Appointment Confirmed!</h2>
-        <p className="text-slate-500">
-          You're booked with <strong>{clinic?.name}</strong> on <strong>{format(new Date(`${selectedDate}T${selectedSlot}`), 'EEEE, MMMM d at h:mm a')}</strong>
-        </p>
-        <p className="text-slate-400 text-sm">A confirmation will be sent to your phone/email.</p>
-        {booked.payment_required && (
-          <a href={booked.payment_url} className="block w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors">
-            Complete Payment
-          </a>
+      </div>
+
+      <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
+        {/* Confirmation card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center space-y-3">
+          <div className="w-14 h-14 bg-teal-100 rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle className="w-7 h-7 text-teal-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Appointment Confirmed!</h2>
+          <p className="text-slate-500 text-sm">
+            You're booked with <strong>{clinic?.name}</strong> on{' '}
+            <strong>{format(new Date(`${selectedDate}T${selectedSlot}`), 'EEEE, MMMM d at h:mm a')}</strong>
+          </p>
+          <p className="text-slate-400 text-xs">A confirmation will be sent to your phone/email.</p>
+        </div>
+
+        {/* Bank transfer instructions */}
+        {clinic?.patient_payment_enabled && clinic?.bank_name && clinic?.account_number && (
+          <BankTransferCard
+            clinicName={clinic.name}
+            bankName={clinic.bank_name}
+            accountNumber={clinic.account_number}
+            amount={paymentAmount}
+          />
         )}
       </div>
     </div>
@@ -193,6 +290,11 @@ export default function PublicBookingPage() {
               <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700">
                 <p className="font-medium">Booking Summary</p>
                 <p className="mt-1 text-slate-500">{format(new Date(`${selectedDate}T${selectedSlot}`), 'EEEE, MMMM d, yyyy at h:mm a')}</p>
+                {clinic?.patient_payment_enabled && (
+                  <p className="mt-1 text-teal-700 text-xs font-medium flex items-center gap-1">
+                    <Banknote className="w-3.5 h-3.5" /> Bank transfer payment required after booking
+                  </p>
+                )}
               </div>
 
               <button type="submit" disabled={isSubmitting}

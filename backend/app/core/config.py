@@ -35,10 +35,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://vitar:vitar@localhost:5432/vitar"
     DATABASE_POOL_SIZE: int = 15
     DATABASE_MAX_OVERFLOW: int = 25
-    # Optional read replica for read-heavy tasks (analytics, risk scoring, monitoring).
-    # When set, get_replica_db() connects here; write tasks always use DATABASE_URL.
-    # In docker-compose.yml this is set to postgresql://...@postgres-replica:5432/vitar
-    # Leave unset (empty string) to fall back to the primary for all reads.
     DATABASE_REPLICA_URL: str = ""
 
     # ─── Redis ────────────────────────────────────────────────────────────
@@ -51,29 +47,22 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    API_DOCS_ENABLED: bool = False
 
     # ─── CORS / Hosts ─────────────────────────────────────────────────────
-    # FIX: validator accepts both a JSON string env var AND a pre-parsed list,
-    # so the field works whether set via .env file or real environment variable.
     ALLOWED_ORIGINS: List[str] = [
-        "https://labvault.cloud",
+        "https://livevault.cloud",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
     ALLOWED_HOSTS: List[str] = [
         "localhost", "127.0.0.1",
-        "labvault.cloud", "www.labvault.cloud",
+        "livevault.cloud", "www.livevault.cloud",
     ]
 
     @field_validator("ALLOWED_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod
     def _parse_list(cls, v):
-        """
-        Accept either:
-          - A real list (already parsed by pydantic from JSON in .env)
-          - A JSON string: '["https://a.com","https://b.com"]'
-          - A comma-separated string (convenience): "https://a.com,https://b.com"
-        """
         if isinstance(v, list):
             return v
         if isinstance(v, str):
@@ -95,6 +84,15 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # ─── Vitar Owner Bank Details (for clinic subscription payments) ───────
+    # Clinics pay their subscription fee directly to this account via bank
+    # transfer. No Paystack account required on the clinic side.
+    # You manually activate their plan from the superadmin panel after
+    # confirming the transfer in your banking app.
+    OWNER_BANK_NAME: str = ""         # e.g. "GTBank"
+    OWNER_ACCOUNT_NUMBER: str = ""    # e.g. "0123456789"
+    OWNER_ACCOUNT_NAME: str = "Vitar Health"  # Account name as it appears
+
     # ─── Notifications ────────────────────────────────────────────────────
     TERMII_API_KEY: str = ""
     TERMII_SENDER_ID: str = "Vitar"
@@ -104,7 +102,7 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str = ""
     WHATSAPP_ACCESS_TOKEN: str = ""
     SENDGRID_API_KEY: str = ""
-    EMAIL_FROM: str = "no-reply@labvault.cloud"
+    EMAIL_FROM: str = "no-reply@livevault.cloud"
     EMAIL_FROM_NAME: str = "Vitar Health"
 
     # ─── AI / ML ──────────────────────────────────────────────────────────
@@ -119,18 +117,13 @@ class Settings(BaseSettings):
     EXCHANGE_RATE_API_KEY: str = ""
 
     # ─── Trial ────────────────────────────────────────────────────────────
-    TRIAL_DAYS: int = 14
+    TRIAL_DAYS: int = 30
     TRIAL_MAX_BOOKINGS: int = 50
     TRIAL_MAX_DOCTORS: int = 2
 
     # ─── Storage ──────────────────────────────────────────────────────────
-    # STORAGE_BACKEND controls where uploaded files are persisted.
-    # 's3'    → AWS S3. Required for multi-replica / 500-user scale.
-    #           All replicas share one bucket; files survive container restarts.
-    #           Requires: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET.
-    # 'local' → Local filesystem under UPLOAD_DIR. Dev/single-node only.
-    #           Files are NOT shared across replicas and lost on container restart.
     STORAGE_BACKEND: str = "local"
+    ALLOW_LOCAL_UPLOADS_IN_PRODUCTION: bool = False
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_S3_BUCKET: str = "vitar-uploads"
@@ -149,6 +142,13 @@ class Settings(BaseSettings):
     GRAFANA_USER: str = "admin"
     GRAFANA_PASSWORD: str = "vitar_grafana"
     SLOW_QUERY_THRESHOLD_S: float = 0.5
+    # p95 request latency (ms) above which an SLA-breach alert fires.
+    # Default (800ms) assumes app and DB are in the same region. If your DB
+    # is geographically distant from where the app runs (e.g. dev machine in
+    # one continent, DB hosted in another), raise this via .env to avoid
+    # false-positive alerts dominated by network round-trip time rather than
+    # actual application slowness.
+    API_LATENCY_ALERT_THRESHOLD_MS: float = 800.0
 
     # ─── Database hardening ───────────────────────────────────────────────
     DB_STATEMENT_TIMEOUT_MS: int = 30_000
@@ -184,7 +184,6 @@ class Settings(BaseSettings):
     OPS_MONITORING_ENABLED: bool = False
 
     # ─── PgBouncer ────────────────────────────────────────────────────────
-    # v12: PgBouncer is always-on. Default True matches docker-compose.yml.
     PGBOUNCER_ENABLED: bool = True
     PGBOUNCER_URL: str = "postgresql://vitar:vitar@pgbouncer:5432/vitar"
 

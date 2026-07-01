@@ -64,7 +64,27 @@ async def _read_and_validate(file: UploadFile) -> tuple[bytes, str]:
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
+    detected_type = _detect_image_content_type(data)
+    if detected_type != content_type:
+        raise HTTPException(
+            status_code=415,
+            detail="Uploaded file content does not match its declared image type.",
+        )
+
     return data, content_type
+
+
+def _detect_image_content_type(data: bytes) -> str | None:
+    """Detect supported image types from magic bytes, not client-supplied headers."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    return None
 
 
 # ── Doctor avatar ─────────────────────────────────────────────────────────────

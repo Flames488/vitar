@@ -3,28 +3,217 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vitar — Smart Appointment Scheduling for Healthcare</title>
-    <meta name="description" content="Modern appointment scheduling for clinics and hospitals worldwide. Reduce no-shows by up to 40% with AI-powered reminders." />
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" href="/vitar-logo.png" />
-    <link rel="apple-touch-icon" href="/vitar-logo.png" />
+    <!-- ═══════════════════════════════════════════════════════════════════
+         PRIMARY SEO — Brand + Product name linkage
+         Google learns: "Vitar" = livevault.cloud
+    ════════════════════════════════════════════════════════════════════ -->
+    <title>Vitar by LiveVault — Smart Clinic & Appointment Management Software</title>
+    <meta name="description" content="Vitar is LiveVault's clinic management platform for Nigerian and African healthcare providers. Book appointments, manage patients, reduce no-shows by 40% with AI reminders. Visit livevault.cloud." />
+    <meta name="keywords" content="Vitar, Vitar clinic software, Vitar appointment booking, LiveVault, livevault.cloud, clinic management Nigeria, hospital appointment system Nigeria, healthcare SaaS Africa, appointment scheduling software, patient management system, reduce no-shows, AI appointment reminders" />
+    <meta name="author" content="LiveVault (Vitar)" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
 
-    <!-- Open Graph / Social -->
+    <!-- Canonical — always points to your real domain -->
+    <link rel="canonical" href="https://livevault.cloud/" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         OPEN GRAPH — Social sharing (WhatsApp, LinkedIn, Facebook)
+    ════════════════════════════════════════════════════════════════════ -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Vitar — Healthcare Appointment Platform" />
-    <meta property="og:description" content="Reduce no-shows by up to 40% with AI-powered smart reminders. Built for clinics in Nigeria, UK, and beyond." />
-    <meta property="og:image" content="/vitar-logo.png" />
+    <meta property="og:site_name" content="Vitar — by LiveVault" />
+    <meta property="og:title" content="Vitar — Clinic Management Software | livevault.cloud" />
+    <meta property="og:description" content="Vitar by LiveVault helps Nigerian clinics manage appointments, patients, and billing. Reduce no-shows by 40% with AI-powered reminders. Start your free trial." />
+    <meta property="og:url" content="https://livevault.cloud/" />
+    <meta property="og:image" content="https://livevault.cloud/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Vitar clinic management dashboard by LiveVault" />
+    <meta property="og:locale" content="en_NG" />
 
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Vitar — Healthcare Appointment Platform" />
-    <meta name="twitter:description" content="Reduce no-shows by up to 40% with AI-powered smart reminders." />
-    <meta name="twitter:image" content="/vitar-logo.png" />
+    <!-- ═══════════════════════════════════════════════════════════════════
+         TWITTER CARD
+    ════════════════════════════════════════════════════════════════════ -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@vitarapp" />
+    <meta name="twitter:title" content="Vitar — Clinic Management Software | livevault.cloud" />
+    <meta name="twitter:description" content="Vitar by LiveVault: smart appointment scheduling for Nigerian clinics. Reduce no-shows by 40% with AI reminders." />
+    <meta name="twitter:image" content="https://livevault.cloud/twitter-card.png" />
+    <meta name="twitter:image:alt" content="Vitar by LiveVault — clinic management dashboard" />
 
-    <!-- PWA -->
-    <meta name="theme-color" content="#0d9488" />
+    <!-- ═══════════════════════════════════════════════════════════════════
+         GEO / LOCAL SEO — Nigerian market targeting
+    ════════════════════════════════════════════════════════════════════ -->
+    <meta name="geo.region" content="NG" />
+    <meta name="geo.placename" content="Nigeria" />
+    <meta name="ICBM" content="9.0765, 7.3986" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         STRUCTURED DATA (JSON-LD)
+         This is the most powerful SEO signal — tells Google exactly
+         that "Vitar" is a product/brand living at livevault.cloud
+    ════════════════════════════════════════════════════════════════════ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://livevault.cloud/#software",
+          "name": "Vitar",
+          "alternateName": ["Vitar by LiveVault", "LiveVault Vitar", "Vitar Clinic Software"],
+          "description": "Vitar is a clinic management and appointment scheduling platform built for Nigerian and African healthcare providers. It reduces patient no-shows by up to 40% using AI-powered reminders.",
+          "url": "https://livevault.cloud",
+          "applicationCategory": "HealthApplication",
+          "applicationSubCategory": "Clinic Management Software",
+          "operatingSystem": "Web, Android, iOS",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "NGN",
+            "description": "Free trial available. Paid plans in NGN."
+          },
+          "featureList": [
+            "Appointment scheduling and booking",
+            "Patient management",
+            "AI-powered no-show reminders",
+            "Billing and invoicing",
+            "QR code patient check-in",
+            "Push notifications",
+            "Analytics dashboard",
+            "Multi-clinic support"
+          ],
+          "screenshot": "https://livevault.cloud/screenshots/dashboard.png",
+          "softwareVersion": "1.0",
+          "inLanguage": "en",
+          "availableOnDevice": ["Desktop", "Mobile", "Tablet"],
+          "publisher": {
+            "@id": "https://livevault.cloud/#organization"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://livevault.cloud/#organization",
+          "name": "LiveVault",
+          "alternateName": "Vitar",
+          "url": "https://livevault.cloud",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://livevault.cloud/logo.svg",
+            "width": 200,
+            "height": 60
+          },
+          "description": "LiveVault builds Vitar — a healthcare SaaS platform for clinic and appointment management in Nigeria and Africa.",
+          "areaServed": ["NG", "GH", "KE", "ZA"],
+          "knowsAbout": ["clinic management", "healthcare software", "appointment scheduling", "patient management Nigeria"],
+          "sameAs": [
+            "https://livevault.cloud"
+          ]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://livevault.cloud/#website",
+          "url": "https://livevault.cloud",
+          "name": "Vitar — Clinic Management by LiveVault",
+          "description": "Vitar clinic management software. Visit livevault.cloud to manage appointments, patients, and billing for your clinic.",
+          "publisher": {
+            "@id": "https://livevault.cloud/#organization"
+          },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://livevault.cloud/search?q={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+          },
+          "inLanguage": "en-NG"
+        },
+        {
+          "@type": "WebPage",
+          "@id": "https://livevault.cloud/#webpage",
+          "url": "https://livevault.cloud",
+          "name": "Vitar — Smart Clinic & Appointment Management | livevault.cloud",
+          "description": "Vitar by LiveVault: reduce no-shows, manage patients, and streamline your clinic. Nigeria's leading clinic management SaaS.",
+          "isPartOf": { "@id": "https://livevault.cloud/#website" },
+          "about": { "@id": "https://livevault.cloud/#software" },
+          "breadcrumb": {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://livevault.cloud"
+              }
+            ]
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is Vitar?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Vitar is a clinic management and appointment scheduling platform by LiveVault, available at livevault.cloud. It helps Nigerian and African clinics manage patients, reduce no-shows with AI reminders, handle billing, and streamline operations."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Where can I find Vitar online?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Vitar is available at https://livevault.cloud. LiveVault is the company behind Vitar clinic management software."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is Vitar available in Nigeria?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. Vitar by LiveVault (livevault.cloud) is built specifically for Nigerian healthcare providers, with NGN pricing, local phone number support, and reminders optimised for the Nigerian market."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What is livevault.cloud?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "livevault.cloud is the official website and platform for Vitar — a clinic management and appointment scheduling software. LiveVault is the company that builds and operates Vitar."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         FAVICONS & PWA
+    ════════════════════════════════════════════════════════════════════ -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192x192.png" />
     <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0d9488" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Vitar" />
+    <meta name="application-name" content="Vitar by LiveVault" />
+    <meta name="msapplication-TileColor" content="#0d9488" />
+    <meta name="msapplication-TileImage" content="/icon-144x144.png" />
+
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://livevault.cloud" />
   </head>
   <body>
     <div id="root"></div>

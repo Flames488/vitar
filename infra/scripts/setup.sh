@@ -153,7 +153,7 @@ prod_setup() {
     log "═══════════════════════════════════════"
     log "  Vitar v6 is LIVE!"
     log "═══════════════════════════════════════"
-    log "  App + API: https://labvault.cloud"
+    log "  App + API: https://livevault.cloud"
     log "  Flower:    http://localhost:5555 (SSH tunnel only)"
     log "  Watchdog:  tail -f /var/log/vitar-watchdog.log"
     log "  Deploy:    ./infra/scripts/deploy.sh"

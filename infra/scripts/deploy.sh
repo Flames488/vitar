@@ -170,7 +170,7 @@ echo -e "${GREEN}${BOLD}══════════════════�
 echo -e "${GREEN}${BOLD}  ✅ Deploy complete!${NC}"
 echo -e "${GREEN}${BOLD}═══════════════════════════════════════${NC}"
 echo -e "  Status:  $STATUS"
-echo -e "  API:     $(curl -s --max-time 3 "${FRONTEND_URL:-https://labvault.cloud}" -o /dev/null -w '%{http_code}' || echo 'unknown')"
+echo -e "  API:     $(curl -s --max-time 3 "${FRONTEND_URL:-https://livevault.cloud}" -o /dev/null -w '%{http_code}' || echo 'unknown')"
 echo -e "  Rollback: ./infra/scripts/deploy.sh --rollback"
 echo ""
 

@@ -58,23 +58,34 @@ def _make_engine(url: str, retries: int = 5, delay: float = 2.0):
         kwargs.update(
             pool_size=settings.DATABASE_POOL_SIZE,
             max_overflow=settings.DATABASE_MAX_OVERFLOW,
-            pool_recycle=3600,
+            # Lowered from 3600s: Supabase's transaction pooler (port 6543)
+            # closes idle connections more aggressively than that on its end,
+            # especially on lower compute tiers. Recycling client-side every
+            # 5 min means SQLAlchemy retires a connection before Supabase
+            # kills it, turning a "server closed the connection unexpectedly"
+            # error into a quiet, transparent reconnect.
+            pool_recycle=300,
             pool_timeout=30,
             connect_args={
-                # GUC options (lock_timeout, statement_timeout, etc.) are intentionally
-                # NOT set here. When DATABASE_URL points to pgbouncer in transaction
-                # pooling mode, session-level SET commands sent by the client are
-                # silently dropped (pgbouncer doesn't maintain a persistent session per
-                # client). SQLAlchemy's pool_pre_ping then sees an unexpected connection
-                # state and closes immediately (age=0s in pgbouncer logs), cascading
-                # to healthcheck failure.
+                # NOTE: DATABASE_URL currently points straight at the Supabase
+                # session/transaction pooler (port 5432/6543 on
+                # *.pooler.supabase.com), not the local pgbouncer service defined
+                # in docker-compose.local.yml. That pgbouncer container is no
+                # longer in the live connection path for api/worker/beat (see
+                # entrypoint.sh, which also connects directly via DATABASE_URL) -
+                # it can be safely removed from compose, or re-wired as the actual
+                # DATABASE_URL target if you want local connection pooling again.
                 #
-                # These GUC values are now set once per real PG connection via
-                # pgbouncer's server_connect_query in pgbouncer/pgbouncer.ini:
-                #   server_connect_query = SET lock_timeout='10s'; SET statement_timeout='30s'; ...
+                # GUC options (lock_timeout, statement_timeout, etc.) are
+                # intentionally NOT set here, because Supabase's pooler in
+                # transaction-pooling mode silently drops session-level SET
+                # commands, which previously caused pool_pre_ping to see stale
+                # connection state and close immediately. If/when a real
+                # pgbouncer (or Supabase's session-mode pooler) is back in the
+                # path with server_connect_query configured, these can move back
+                # to being enforced server-side.
                 #
-                # For MIGRATION_DATABASE_URL (direct postgres, bypasses pgbouncer),
-                # Alembic handles DDL safely on its own connection.
+                # MIGRATION_DATABASE_URL bypasses any pooler for Alembic DDL.
                 "connect_timeout": 10,
             },
         )

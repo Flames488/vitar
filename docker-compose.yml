@@ -331,7 +331,7 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
-      - "--web.external-url=https://labvault.cloud/alertmanager"
+      - "--web.external-url=https://livevault.cloud/alertmanager"
     environment:
       SLACK_WEBHOOK_URL: "${SLACK_WEBHOOK_URL:-}"
     volumes:
@@ -400,7 +400,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: "${GRAFANA_USER:-admin}"
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-vitar_grafana}"
-      GF_SERVER_ROOT_URL: "https://labvault.cloud/grafana"
+      GF_SERVER_ROOT_URL: "https://livevault.cloud/grafana"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_USERS_ALLOW_SIGN_UP: "false"

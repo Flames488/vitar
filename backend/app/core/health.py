@@ -11,13 +11,25 @@ logger = logging.getLogger(__name__)
 
 
 def check_database(db) -> Dict[str, Any]:
-    """Verify DB connection is alive and measure latency."""
+    """
+    Verify DB connection is alive and measure latency.
+
+    Uses a raw autocommit connection (via the engine) instead of the ORM
+    session so the probe costs exactly 1 round trip (SELECT 1) rather than
+    3 (BEGIN → SELECT 1 → ROLLBACK).  The `db` arg is kept for API
+    compatibility but is only used to reach the engine.
+    """
     import time
     try:
         from sqlalchemy import text
-        t0 = time.perf_counter()
-        db.execute(text("SELECT 1"))
-        latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+        from app.core.database import engine
+
+        # execution_options(isolation_level="AUTOCOMMIT") avoids the implicit
+        # transaction that the ORM session always opens, cutting RTTs from 3→1.
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            t0 = time.perf_counter()
+            conn.execute(text("SELECT 1"))
+            latency_ms = round((time.perf_counter() - t0) * 1000, 2)
         return {"status": "ok", "latency_ms": latency_ms}
     except Exception as e:
         return {"status": "error", "error": str(e)}

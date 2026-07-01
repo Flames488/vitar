@@ -99,6 +99,9 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
             "logo_url": clinic.logo_url or "",
             "patient_payment_enabled": bool(clinic.patient_payment_enabled),
             "currency": clinic.currency or "NGN",
+            # Bank transfer details — only expose when payment is enabled
+            "bank_name": clinic.paystack_bank_name if clinic.patient_payment_enabled else None,
+            "account_number": clinic.paystack_account_number if clinic.patient_payment_enabled else None,
         },
         "doctors": [
             {

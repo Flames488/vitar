@@ -1,2 +1,11 @@
 cd C:\Users\USER\OneDrive\Documents\vitar
-docker compose up -d
+docker compose up --build
+
+
+
+
+
+docker compose build api (after update) 
+
+docker compose run --rm api alembic upgrade head
+docker compose up --build (to run)

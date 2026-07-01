@@ -1,6 +1,6 @@
 /**
  * Vitar v5 - Register Page
- * Creates clinic + owner in one step, auto-starts 14-day trial
+ * Creates clinic + owner in one step, auto-starts 30-day trial
  */
 
 import { useState } from 'react';
@@ -38,7 +38,7 @@ const COUNTRIES = [
 ];
 
 const PERKS = [
-  '14-day free trial, no credit card',
+  '30-day free trial, no credit card',
   'AI no-show prediction',
   'SMS, WhatsApp & Email reminders',
   'Public booking page',
@@ -67,7 +67,7 @@ export default function RegisterPage() {
     <>
       <div className="mb-5">
         <h2 className="text-2xl font-bold text-slate-900">Create your clinic</h2>
-        <p className="text-slate-500 text-sm mt-1">Start your 14-day free trial — no card required</p>
+        <p className="text-slate-500 text-sm mt-1">Start your 30-day free trial — no card required</p>
         <div className="mt-3 grid grid-cols-2 gap-1.5">
           {PERKS.map((p) => (
             <div key={p} className="flex items-center gap-1.5 text-xs text-slate-600">

@@ -82,7 +82,7 @@ receivers:
 #
 # global:
 #   smtp_smarthost: 'smtp.sendgrid.net:587'
-#   smtp_from: 'alerts@labvault.cloud'
+#   smtp_from: 'alerts@livevault.cloud'
 #   smtp_auth_username: 'apikey'
 #   smtp_auth_password: '${SENDGRID_API_KEY}'
 #

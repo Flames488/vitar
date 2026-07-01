@@ -100,7 +100,8 @@ app = FastAPI(
     title="Vitar API",
     description="Healthcare Appointment Platform — AI No-Show Reduction",
     version="11.0.0",
-    docs_url="/api/docs" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/api/v1/docs" if settings.API_DOCS_ENABLED or settings.ENVIRONMENT != "production" else None,
+    openapi_url="/api/v1/openapi.json" if settings.API_DOCS_ENABLED or settings.ENVIRONMENT != "production" else None,
     redoc_url=None,
     lifespan=lifespan,
 )

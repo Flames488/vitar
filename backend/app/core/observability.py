@@ -163,8 +163,23 @@ def get_queue_depths() -> dict:
 
 _latency_window: list[float] = []
 _latency_lock = threading.Lock()
-_LATENCY_ALERT_THRESHOLD_MS = 800.0   # p95 above this triggers alert
+# Configurable via env (API_LATENCY_ALERT_THRESHOLD_MS) so dev environments far
+# from the DB region (e.g. local dev hitting a US-hosted DB from another
+# continent) don't trip false-positive alerts. Defaults to 800ms.
+def _get_latency_alert_threshold_ms() -> float:
+    """Lazily resolved so this module has no import-time dependency on config."""
+    from app.core.config import settings
+    return float(getattr(settings, "API_LATENCY_ALERT_THRESHOLD_MS", 800.0))
+
+
+_LATENCY_ALERT_THRESHOLD_MS = _get_latency_alert_threshold_ms()
 _LATENCY_WINDOW_SIZE = 200            # rolling window of last N requests
+
+# Paths excluded from SLA tracking. Health/readiness probes are polled on a
+# fixed interval by Docker/orchestrators and round-trip the DB on every hit —
+# including them skews the p95 window with infrastructure noise that isn't
+# representative of real user-facing latency.
+_EXCLUDED_PATHS = ("/health", "/health/ready", "/health/live", "/", "/metrics")
 
 
 def record_request_latency(duration_ms: float, path: str) -> None:
@@ -173,7 +188,7 @@ def record_request_latency(duration_ms: float, path: str) -> None:
     Called from RequestLoggingMiddleware.
     Fires a Slack alert if rolling p95 exceeds threshold.
     """
-    if path in ("/health", "/", "/metrics"):
+    if path in _EXCLUDED_PATHS:
         return
 
     with _latency_lock:

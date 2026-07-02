@@ -1,0 +1,19 @@
+# Vitar by LiveVault — livevault.cloud
+# robots.txt
+
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+
+# Allow crawling of public pages
+Allow: /$
+Allow: /pricing
+Allow: /features
+Allow: /about
+Allow: /contact
+Allow: /blog
+
+Sitemap: https://livevault.cloud/sitemap.xml

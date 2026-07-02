@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up / Log In — Vitar by LiveVault</title>
+  <meta name="description" content="Self-serve sign up and login for Vitar is launching soon. Join the early access list to be notified the moment your clinic can register." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://livevault.cloud/signup.html" />
+  <meta name="theme-color" content="#0d9488" />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.json" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --teal: #0d9488; --teal-dark: #0f766e; --teal-lt: #ccfbf1;
+      --ink: #0a1628; --ink-2: #16304d; --slate: #64748b;
+      --mist: #f0fdf9; --white: #ffffff; --amber: #f59e0b;
+      --line: rgba(13,148,136,0.14); --r: 16px;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Inter',sans-serif; background:var(--white); color:var(--ink); -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+    a { color: inherit; }
+    img { display:block; max-width:100%; }
+
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 5vw; height: 68px;
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+    .nav-logo img { width:30px; height:30px; }
+    .nav-logo span { font-family:'Sora',sans-serif; font-size:1.15rem; font-weight:800; color:var(--ink); }
+    .nav-logo span em { color:var(--teal); font-style:normal; }
+    .nav-back { font-size:0.85rem; font-weight:600; color:var(--slate); text-decoration:none; display:flex; align-items:center; gap:6px; }
+    .nav-back:hover { color:var(--teal); }
+
+    main { flex:1; }
+
+    .wrap {
+      display:grid; grid-template-columns: 1fr 1fr;
+      min-height: calc(100vh - 68px);
+    }
+
+    /* LEFT: brand panel */
+    .side {
+      background: linear-gradient(160deg, #0f172a 0%, #0a1628 45%, #0f4a44 130%);
+      color:#fff; padding: 64px 5vw; position:relative; overflow:hidden;
+      display:flex; flex-direction:column; justify-content:center;
+    }
+    .side::before {
+      content:''; position:absolute; top:-20%; right:-20%;
+      width:480px; height:480px; border-radius:50%;
+      background: radial-gradient(circle, rgba(13,148,136,0.28) 0%, transparent 70%);
+    }
+    .side > * { position:relative; z-index:1; }
+    .side-eyebrow { display:inline-flex; align-items:center; gap:7px; background:rgba(13,148,136,0.18); color:var(--teal-lt); font-size:0.72rem; font-weight:700; padding:6px 14px; border-radius:50px; border:1px solid rgba(13,148,136,0.3); margin-bottom:24px; width:max-content; letter-spacing:0.03em; }
+    .side h1 { font-family:'Sora',sans-serif; font-size: clamp(1.8rem, 2.6vw, 2.4rem); font-weight:800; letter-spacing:-0.02em; line-height:1.22; max-width:460px; margin-bottom:18px; }
+    .side p.lead { color: rgba(255,255,255,0.6); font-size:1rem; line-height:1.7; max-width:420px; margin-bottom:40px; }
+    .side-list { display:flex; flex-direction:column; gap:20px; max-width:420px; }
+    .side-item { display:flex; gap:14px; align-items:flex-start; }
+    .side-item .ic { width:36px; height:36px; border-radius:10px; background:rgba(13,148,136,0.18); border:1px solid rgba(13,148,136,0.3); display:flex; align-items:center; justify-content:center; font-size:1rem; flex-shrink:0; }
+    .side-item h4 { font-size:0.92rem; font-weight:700; margin-bottom:3px; }
+    .side-item p { font-size:0.82rem; color:rgba(255,255,255,0.5); line-height:1.6; }
+
+    /* RIGHT: auth card */
+    .form-side { display:flex; align-items:center; justify-content:center; padding: 56px 5vw; background: var(--mist); }
+    .auth-card {
+      width:100%; max-width:420px; background:#fff;
+      border-radius: 20px; border:1px solid var(--line);
+      box-shadow: 0 20px 60px rgba(10,22,40,0.08);
+      padding: 8px; position:relative; overflow:hidden;
+    }
+    .ribbon {
+      position:absolute; top:22px; right:-46px; width:180px;
+      background: var(--amber); color:#3a2504;
+      font-size:0.68rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
+      text-align:center; padding:6px 0; transform: rotate(45deg);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index:5;
+    }
+    .tabs { display:flex; gap:4px; background:var(--mist); border-radius:12px; padding:4px; margin:20px 20px 0; }
+    .tab { flex:1; text-align:center; padding:10px; border-radius:9px; font-size:0.85rem; font-weight:700; color:var(--slate); cursor:pointer; transition: all 0.2s; user-select:none; }
+    .tab.active { background:#fff; color:var(--ink); box-shadow: 0 2px 8px rgba(10,22,40,0.08); }
+
+    .card-body { padding: 26px 24px 28px; position:relative; }
+    .disabled-layer { filter: saturate(0.5); opacity: 0.55; pointer-events: none; }
+    .card-body h2 { font-family:'Sora',sans-serif; font-size:1.3rem; font-weight:800; margin-bottom:6px; }
+    .card-body .sub { font-size:0.85rem; color:var(--slate); margin-bottom:22px; }
+
+    .field { margin-bottom:14px; }
+    .field label { display:block; font-size:0.78rem; font-weight:700; color:var(--ink-2); margin-bottom:6px; }
+    .field input {
+      width:100%; padding:12px 14px; border-radius:10px;
+      border:1.5px solid rgba(10,22,40,0.12); font-size:0.9rem; font-family:inherit;
+      background:#f8fafc; color: var(--ink);
+    }
+    .fake-btn {
+      width:100%; padding:13px; border-radius:10px; margin-top:6px;
+      background: var(--teal); color:#fff; font-weight:700; font-size:0.92rem;
+      border:none; text-align:center;
+    }
+    .divider { display:flex; align-items:center; gap:10px; margin:18px 0; color:var(--slate); font-size:0.75rem; }
+    .divider::before, .divider::after { content:''; flex:1; height:1px; background:rgba(10,22,40,0.1); }
+    .oauth-row { display:flex; gap:10px; }
+    .oauth-btn { flex:1; padding:11px; border-radius:10px; border:1.5px solid rgba(10,22,40,0.12); background:#fff; font-size:0.82rem; font-weight:600; text-align:center; color: var(--ink-2); }
+
+    .lock-overlay {
+      position:absolute; inset:0; z-index:4;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      text-align:center; padding: 20px;
+      background: rgba(255,255,255,0.62);
+      backdrop-filter: blur(1.5px);
+    }
+    .lock-badge {
+      width:52px; height:52px; border-radius:50%;
+      background: var(--teal); color:#fff; display:flex; align-items:center; justify-content:center;
+      font-size:1.4rem; margin-bottom:14px; box-shadow: 0 10px 24px rgba(13,148,136,0.35);
+    }
+    .lock-overlay h3 { font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:800; margin-bottom:8px; color:var(--ink); }
+    .lock-overlay p { font-size:0.84rem; color:var(--slate); max-width:280px; line-height:1.6; margin-bottom:18px; }
+
+    .waitlist-mini { display:flex; gap:8px; width:100%; max-width:300px; flex-wrap:wrap; justify-content:center; }
+    .waitlist-mini input {
+      flex:1; min-width:170px; padding:11px 14px; border-radius:50px;
+      border:1.5px solid rgba(13,148,136,0.3); font-size:0.85rem; font-family:inherit;
+      outline:none; background:#fff;
+    }
+    .waitlist-mini input:focus { border-color: var(--teal); }
+    .waitlist-mini button {
+      padding:11px 20px; border-radius:50px; border:none; background:var(--teal); color:#fff;
+      font-weight:700; font-size:0.85rem; cursor:pointer; transition: background 0.2s;
+    }
+    .waitlist-mini button:hover { background: var(--teal-dark); }
+    .mini-note { font-size:0.72rem; color:var(--slate); margin-top:12px; }
+    .mini-success { display:none; color: var(--teal-dark); font-weight:700; font-size:0.88rem; margin-top:14px; }
+
+    footer {
+      background: var(--ink); border-top:1px solid rgba(255,255,255,0.06);
+      padding: 26px 5vw; display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px;
+    }
+    footer p { font-size:0.78rem; color:rgba(255,255,255,0.45); }
+    footer .flinks { display:flex; gap:22px; }
+    footer a { font-size:0.8rem; color:rgba(255,255,255,0.6); text-decoration:none; }
+    footer a:hover { color: var(--teal-lt); }
+
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; }
+      .side { padding: 48px 6vw; min-height: 300px; }
+      .side-list { display:none; }
+      .form-side { padding: 40px 6vw; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="nav-logo">
+      <img src="icon-192x192.png" alt="Vitar logo" />
+      <span>Vitar <em>by LiveVault</em></span>
+    </a>
+    <a href="index.html" class="nav-back">← Back to home</a>
+  </nav>
+
+  <main>
+    <div class="wrap">
+      <!-- LEFT -->
+      <div class="side">
+        <div class="side-eyebrow"><span>●</span> Self-serve accounts launching soon</div>
+        <h1>One clinic account. Every appointment, handled.</h1>
+        <p class="lead">We're finishing the self-serve sign up and login experience so any clinic can create an account in minutes — no sales call required.</p>
+        <div class="side-list">
+          <div class="side-item">
+            <div class="ic">📅</div>
+            <div><h4>Your booking page, instantly</h4><p>Create an account and your public booking link goes live the same minute.</p></div>
+          </div>
+          <div class="side-item">
+            <div class="ic">🔔</div>
+            <div><h4>Reminders from day one</h4><p>SMS, WhatsApp, and email reminders are switched on by default.</p></div>
+          </div>
+          <div class="side-item">
+            <div class="ic">🔒</div>
+            <div><h4>Your data, protected</h4><p>Every clinic account is isolated and encrypted at rest.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="form-side">
+        <div class="auth-card">
+          <div class="ribbon">Coming soon</div>
+
+          <div class="tabs">
+            <div class="tab active" id="tab-signup" onclick="setMode('signup')">Sign up</div>
+            <div class="tab" id="tab-login" onclick="setMode('login')">Log in</div>
+          </div>
+
+          <div class="card-body">
+            <div class="disabled-layer" id="signup-form">
+              <h2>Create your clinic account</h2>
+              <p class="sub">Set up Vitar for your clinic in under 5 minutes.</p>
+              <div class="field"><label>Clinic name</label><input type="text" placeholder="e.g. Adeyemi Family Clinic" disabled></div>
+              <div class="field"><label>Work email</label><input type="email" placeholder="you@clinic.com" disabled></div>
+              <div class="field"><label>Password</label><input type="password" placeholder="••••••••" disabled></div>
+              <button class="fake-btn" disabled>Create account</button>
+              <div class="divider">or continue with</div>
+              <div class="oauth-row">
+                <div class="oauth-btn">Google</div>
+                <div class="oauth-btn">Phone number</div>
+              </div>
+            </div>
+
+            <div class="disabled-layer" id="login-form" style="display:none;">
+              <h2>Log in to Vitar</h2>
+              <p class="sub">Access your clinic's dashboard.</p>
+              <div class="field"><label>Work email</label><input type="email" placeholder="you@clinic.com" disabled></div>
+              <div class="field"><label>Password</label><input type="password" placeholder="••••••••" disabled></div>
+              <button class="fake-btn" disabled>Log in</button>
+              <div class="divider">or continue with</div>
+              <div class="oauth-row">
+                <div class="oauth-btn">Google</div>
+                <div class="oauth-btn">Phone number</div>
+              </div>
+            </div>
+
+            <div class="lock-overlay">
+              <div class="lock-badge">🔒</div>
+              <h3 id="lock-title">Sign up is almost ready</h3>
+              <p id="lock-sub">We're onboarding clinics in small batches while we finish self-serve accounts. Leave your email and we'll invite you the moment it's your turn.</p>
+              <div class="waitlist-mini">
+                <input type="email" id="mini-email" placeholder="clinic@example.com" />
+                <button type="button" onclick="handleMiniSignup()">Notify me</button>
+              </div>
+              <p class="mini-note">No spam. One email when your spot opens.</p>
+              <p class="mini-success" id="mini-success">✓ You're on the list — we'll be in touch soon.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>© 2026 LiveVault. Built for Nigerian healthcare.</p>
+    <div class="flinks">
+      <a href="index.html">Home</a>
+      <a href="contact.html">Contact</a>
+      <a href="mailto:hello@livevault.cloud">hello@livevault.cloud</a>
+    </div>
+  </footer>
+
+  <script>
+    function setMode(mode) {
+      const isSignup = mode === 'signup';
+      document.getElementById('tab-signup').classList.toggle('active', isSignup);
+      document.getElementById('tab-login').classList.toggle('active', !isSignup);
+      document.getElementById('signup-form').style.display = isSignup ? 'block' : 'none';
+      document.getElementById('login-form').style.display = isSignup ? 'none' : 'block';
+      document.getElementById('lock-title').textContent = isSignup ? 'Sign up is almost ready' : 'Log in is almost ready';
+      document.getElementById('lock-sub').textContent = isSignup
+        ? "We're onboarding clinics in small batches while we finish self-serve accounts. Leave your email and we'll invite you the moment it's your turn."
+        : "Existing pilot clinics will receive login access directly. Leave your email and we'll notify you when public login opens.";
+      const url = new URL(window.location);
+      url.searchParams.set('mode', mode);
+      window.history.replaceState({}, '', url);
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') === 'login') setMode('login');
+
+    function handleMiniSignup() {
+      const input = document.getElementById('mini-email');
+      const email = input.value.trim();
+      if (!email || !email.includes('@')) { input.style.borderColor = '#ef4444'; return; }
+      input.style.borderColor = '';
+      document.querySelector('.waitlist-mini').style.display = 'none';
+      document.querySelector('.mini-note').style.display = 'none';
+      document.getElementById('mini-success').style.display = 'block';
+    }
+    document.getElementById('mini-email').addEventListener('keydown', e => { if (e.key === 'Enter') handleMiniSignup(); });
+  </script>
+</body>
+</html>

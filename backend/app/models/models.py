@@ -38,6 +38,8 @@ class SubscriptionStatus(str, enum.Enum):
 
 class AppointmentStatus(str, enum.Enum):
     PENDING = "pending"
+    AWAITING_PAYMENT = "awaiting_payment"
+    APPROVED = "approved"
     CONFIRMED = "confirmed"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -74,6 +76,11 @@ class PendingPaymentStatus(str, enum.Enum):
     PAID = "paid"
     EXPIRED = "expired"
     AMOUNT_MISMATCH = "amount_mismatch"
+
+class PayoutStatus(str, enum.Enum):
+    PENDING_PAYOUT = "pending_payout"
+    SENT = "sent"
+    FAILED = "failed"
 
 class Region(str, enum.Enum):
     NG = "NG"
@@ -162,6 +169,7 @@ class Clinic(Base):
     subscription = relationship("Subscription", back_populates="clinic", uselist=False)
     notification_settings = relationship("NotificationSettings", back_populates="clinic", uselist=False)
     waiting_list = relationship("WaitingList", back_populates="clinic", cascade="all, delete-orphan")
+    bank_accounts = relationship("HospitalBankAccount", back_populates="clinic")
 
 
 # ─── Subscriptions ────────────────────────────────────────────────────────────
@@ -445,6 +453,48 @@ class PatientPayment(Base):
     created_at = Column(DateTime, default=func.now())
 
     appointment = relationship("Appointment", back_populates="payment_record")
+
+
+class HospitalBankAccount(Base):
+    __tablename__ = "hospital_bank_accounts"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    hospital_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_number = Column(String(20), nullable=False)
+    bank_code = Column(String(20), nullable=False)
+    bank_name = Column(String(100), nullable=False)
+    account_name = Column(String(255), nullable=False)
+    paystack_recipient_code = Column(String(100))
+    verified = Column(Boolean, default=False, nullable=False)
+    active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    clinic = relationship("Clinic", back_populates="bank_accounts")
+
+    __table_args__ = (
+        Index("ix_hospital_bank_active", "hospital_id", "active"),
+    )
+
+
+class Payout(Base):
+    __tablename__ = "payouts"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    appointment_id = Column(String(36), ForeignKey("appointments.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    hospital_id = Column(String(36), ForeignKey("clinics.id", ondelete="RESTRICT"), nullable=False, index=True)
+    amount = Column(Integer, nullable=False)
+    status = Column(String(20), default=PayoutStatus.PENDING_PAYOUT.value, nullable=False, index=True)
+    paystack_transfer_code = Column(String(100), nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now(), index=True)
+    sent_at = Column(DateTime, nullable=True)
+
+    appointment = relationship("Appointment")
+    clinic = relationship("Clinic")
+
+    __table_args__ = (
+        Index("ix_payout_status_created", "status", "created_at"),
+    )
 
 
 # ─── Notifications ────────────────────────────────────────────────────────────

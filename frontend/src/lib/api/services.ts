@@ -114,6 +114,24 @@ export const billingApi = {
     api.post('/billing/setup-subaccount', { bank_code, account_number }).then(r => r.data),
 };
 
+// ── Hospital Bank Account (Paystack payout destination) ─────────────────────────
+// Note: distinct from billingApi.getBanks/setupSubaccount above, which configure
+// the legacy split-payment subaccount. This is the payout flow: patient payments
+// route through Vitar's main Paystack balance, then get sent to the hospital's
+// resolved+verified account via the Transfers API.
+
+export const hospitalBankAccountApi = {
+  getBanks: () => api.get('/banks').then(r => r.data),
+  resolve: (hospitalId: string, account_number: string, bank_code: string) =>
+    api.post(`/hospitals/${hospitalId}/bank-account/resolve`, { account_number, bank_code }).then(r => r.data),
+  get: (hospitalId: string) =>
+    api.get(`/hospitals/${hospitalId}/bank-account`).then(r => r.data),
+  create: (hospitalId: string, account_number: string, bank_code: string) =>
+    api.post(`/hospitals/${hospitalId}/bank-account`, { account_number, bank_code }).then(r => r.data),
+  replace: (hospitalId: string, account_number: string, bank_code: string) =>
+    api.put(`/hospitals/${hospitalId}/bank-account`, { account_number, bank_code }).then(r => r.data),
+};
+
 // ── Geo ───────────────────────────────────────────────────────────────────────
 
 export const geoApi = {

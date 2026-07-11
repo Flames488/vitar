@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, addDays } from 'date-fns';
-import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Copy, Check } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, Loader2, User, Banknote } from 'lucide-react';
 import { bookingApi, doctorsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -20,77 +20,6 @@ const schema = z.object({
   reason: z.string().optional(),
 });
 
-// ── Bank Transfer instructions panel ─────────────────────────────────────────
-
-function BankTransferCard({
-  clinicName,
-  bankName,
-  accountNumber,
-  amount,
-}: {
-  clinicName: string;
-  bankName: string;
-  accountNumber: string;
-  amount: number;
-}) {
-  const [copiedAccount, setCopiedAccount] = useState(false);
-
-  function copyAccount() {
-    navigator.clipboard.writeText(accountNumber).then(() => {
-      setCopiedAccount(true);
-      setTimeout(() => setCopiedAccount(false), 2000);
-    });
-  }
-
-  return (
-    <div className="bg-teal-50 border border-teal-200 rounded-xl p-5 space-y-4">
-      <div className="flex items-center gap-2">
-        <Banknote className="w-5 h-5 text-teal-700" />
-        <h3 className="font-semibold text-teal-900">Payment Required</h3>
-      </div>
-
-      <p className="text-sm text-teal-800">
-        Please transfer your consultation fee to the account below before your appointment.
-        Use your <strong>name</strong> as the payment description so it can be confirmed.
-      </p>
-
-      <div className="bg-white rounded-lg border border-teal-200 divide-y divide-teal-100">
-        <div className="flex justify-between px-4 py-3 text-sm">
-          <span className="text-slate-500">Bank</span>
-          <span className="font-medium text-slate-900">{bankName}</span>
-        </div>
-        <div className="flex justify-between items-center px-4 py-3 text-sm">
-          <span className="text-slate-500">Account number</span>
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-semibold text-slate-900 tracking-wider">{accountNumber}</span>
-            <button
-              onClick={copyAccount}
-              className="text-teal-600 hover:text-teal-800 transition-colors"
-              title="Copy account number"
-            >
-              {copiedAccount ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-        <div className="flex justify-between px-4 py-3 text-sm">
-          <span className="text-slate-500">Account name</span>
-          <span className="font-medium text-slate-900">{clinicName}</span>
-        </div>
-        {amount > 0 && (
-          <div className="flex justify-between px-4 py-3 text-sm">
-            <span className="text-slate-500">Amount</span>
-            <span className="font-bold text-teal-700 text-base">₦{amount.toLocaleString()}</span>
-          </div>
-        )}
-      </div>
-
-      <p className="text-xs text-teal-700">
-        Your appointment is confirmed. Payment can be made up to 30 minutes before your visit.
-      </p>
-    </div>
-  );
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function PublicBookingPage() {
@@ -99,7 +28,6 @@ export default function PublicBookingPage() {
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [booked, setBooked] = useState<any>(null);
-  const [bookedDoctor, setBookedDoctor] = useState<any>(null);
 
   const { data: clinicData, isLoading: clinicLoading } = useQuery({
     queryKey: ['public-clinic', slug],
@@ -117,6 +45,8 @@ export default function PublicBookingPage() {
     resolver: zodResolver(schema),
   });
 
+  const [redirecting, setRedirecting] = useState(false);
+
   const bookMutation = useMutation({
     mutationFn: (formData: any) => bookingApi.book(slug!, {
       ...formData,
@@ -124,9 +54,16 @@ export default function PublicBookingPage() {
       scheduled_at: `${selectedDate}T${selectedSlot}:00`,
     }),
     onSuccess: (data) => {
+      // If payment is required, the appointment is only tentatively held
+      // (AWAITING_PAYMENT) until Paystack confirms it via webhook. Never show
+      // a "confirmed" screen or accept payment as done until that happens —
+      // send the patient straight to the real Paystack checkout.
+      if (data.payment_required && data.payment_url) {
+        setRedirecting(true);
+        window.location.href = data.payment_url;
+        return;
+      }
       setBooked(data);
-      const doctors = clinicData?.doctors ?? [];
-      setBookedDoctor(doctors.find((d: any) => d.id === selectedDoctor) ?? null);
     },
     onError: (err) => toast.error(getApiError(err)),
   });
@@ -146,9 +83,6 @@ export default function PublicBookingPage() {
     const d = addDays(new Date(), i);
     return { value: format(d, 'yyyy-MM-dd'), label: format(d, i === 0 ? "'Today'" : i === 1 ? "'Tomorrow'" : 'EEE MMM d') };
   });
-
-  // Determine payment amount: prefer doctor fee, then fall back to booked response amount
-  const paymentAmount = bookedDoctor?.consultation_fee || booked?.payment_amount || 0;
 
   if (booked) return (
     <div className="min-h-screen bg-slate-50">
@@ -172,16 +106,6 @@ export default function PublicBookingPage() {
           </p>
           <p className="text-slate-400 text-xs">A confirmation will be sent to your phone/email.</p>
         </div>
-
-        {/* Bank transfer instructions */}
-        {clinic?.patient_payment_enabled && clinic?.bank_name && clinic?.account_number && (
-          <BankTransferCard
-            clinicName={clinic.name}
-            bankName={clinic.bank_name}
-            accountNumber={clinic.account_number}
-            amount={paymentAmount}
-          />
-        )}
       </div>
     </div>
   );
@@ -292,15 +216,15 @@ export default function PublicBookingPage() {
                 <p className="mt-1 text-slate-500">{format(new Date(`${selectedDate}T${selectedSlot}`), 'EEEE, MMMM d, yyyy at h:mm a')}</p>
                 {clinic?.patient_payment_enabled && (
                   <p className="mt-1 text-teal-700 text-xs font-medium flex items-center gap-1">
-                    <Banknote className="w-3.5 h-3.5" /> Bank transfer payment required after booking
+                    <Banknote className="w-3.5 h-3.5" /> You'll be redirected to secure payment (Paystack) after booking
                   </p>
                 )}
               </div>
 
-              <button type="submit" disabled={isSubmitting}
+              <button type="submit" disabled={isSubmitting || redirecting}
                 className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
-                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                Confirm Appointment
+                {(isSubmitting || redirecting) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {redirecting ? 'Redirecting to payment…' : 'Confirm Appointment'}
               </button>
             </form>
           </div>

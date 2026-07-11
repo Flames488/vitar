@@ -60,11 +60,11 @@ class TestGetPlanPricing:
     def test_ngn_basic_monthly(self):
         pricing = get_plan_pricing("basic", "NGN")
         assert "monthly" in pricing
-        assert pricing["monthly"] == 15000
+        assert pricing["monthly"] == 6000
 
     def test_ngn_pro_monthly(self):
         pricing = get_plan_pricing("pro", "NGN")
-        assert pricing["monthly"] == 35000
+        assert pricing["monthly"] == 15000
 
     def test_usd_basic_monthly(self):
         pricing = get_plan_pricing("basic", "USD")

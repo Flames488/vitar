@@ -684,6 +684,36 @@ def retry_failed_payments(self):
         db.close()
 
 
+@celery.task(bind=True, max_retries=2, autoretry_for=(Exception,), retry_backoff=30, retry_jitter=True, queue="billing")
+def auto_send_pending_payouts(self):
+    db = SessionLocal()
+    try:
+        from app.core.config import settings
+        from app.models.models import Payout, PayoutStatus
+        from app.api.v1.endpoints.admin_payouts import send_payout_to_hospital
+
+        cutoff = utcnow() - timedelta(hours=settings.PAYOUT_AUTO_SEND_AFTER_HOURS)
+        pending = db.query(Payout).filter(
+            Payout.status == PayoutStatus.PENDING_PAYOUT.value,
+            Payout.created_at <= cutoff,
+        ).order_by(Payout.created_at.asc()).limit(50).all()
+
+        sent = 0
+        failed = 0
+        for payout in pending:
+            try:
+                run_async(send_payout_to_hospital(payout.id, db))
+                sent += 1
+            except Exception as exc:
+                failed += 1
+                logger.error(f"auto_send_pending_payouts failed for payout={payout.id}: {exc}")
+
+        logger.info(f"auto_send_pending_payouts: sent={sent} failed={failed}")
+        return {"sent": sent, "failed": failed}
+    finally:
+        db.close()
+
+
 # ─── Dead-Letter Queue ────────────────────────────────────────────────────────
 
 # In-process dead-letter store (Redis-backed via Celery result backend).

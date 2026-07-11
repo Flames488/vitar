@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     SECRET_KEY: str = "change-me-in-production-use-32-char-min"
     DEBUG: bool = False
+    API_DOCS_ENABLED: bool = False
 
     # ─── Database ─────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql://vitar:vitar@localhost:5432/vitar"
@@ -47,7 +48,6 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
-    API_DOCS_ENABLED: bool = False
 
     # ─── CORS / Hosts ─────────────────────────────────────────────────────
     ALLOWED_ORIGINS: List[str] = [
@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     PAYSTACK_PUBLIC_KEY: str = ""
     PAYSTACK_WEBHOOK_SECRET: str = ""
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
+    PAYOUT_AUTO_SEND_AFTER_HOURS: int = 24
     FLUTTERWAVE_SECRET_KEY: str = ""
     FLUTTERWAVE_PUBLIC_KEY: str = ""
     FLUTTERWAVE_WEBHOOK_SECRET: str = ""
@@ -123,7 +124,6 @@ class Settings(BaseSettings):
 
     # ─── Storage ──────────────────────────────────────────────────────────
     STORAGE_BACKEND: str = "local"
-    ALLOW_LOCAL_UPLOADS_IN_PRODUCTION: bool = False
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_S3_BUCKET: str = "vitar-uploads"

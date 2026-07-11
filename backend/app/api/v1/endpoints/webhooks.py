@@ -38,6 +38,67 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
+def finalize_paid_appointment(appointment, data: dict, db: Session):
+    from app.core.cache import cache
+    from app.models.models import (
+        AppointmentStatus,
+        PatientPayment,
+        PaymentProvider,
+        PaymentStatus,
+        Payout,
+        PayoutStatus,
+    )
+
+    reference = data.get("reference") or appointment.payment_provider_ref
+    amount_kobo = int(data.get("amount") or round(float(appointment.payment_amount or 0) * 100))
+    amount = amount_kobo / 100
+    now = utcnow()
+
+    appointment.payment_status = PaymentStatus.PAID
+    appointment.status = AppointmentStatus.APPROVED
+    appointment.paid_at = now
+    appointment.payment_provider_ref = reference
+
+    payment = db.query(PatientPayment).filter(PatientPayment.appointment_id == appointment.id).first()
+    if not payment:
+        payment = PatientPayment(
+            appointment_id=appointment.id,
+            clinic_id=appointment.clinic_id,
+            patient_id=appointment.patient_id,
+            provider=PaymentProvider.PAYSTACK,
+            provider_reference=reference,
+            total_amount=amount,
+            clinic_share=amount,
+            platform_share=0,
+            currency=data.get("currency", appointment.payment_currency or "NGN"),
+            status=PaymentStatus.PAID,
+            paid_at=now,
+            extra_data={"paystack_status": data.get("status")},
+        )
+        db.add(payment)
+    else:
+        payment.status = PaymentStatus.PAID
+        payment.paid_at = now
+
+    payout = db.query(Payout).filter(Payout.appointment_id == appointment.id).first()
+    if not payout:
+        payout = Payout(
+            appointment_id=appointment.id,
+            hospital_id=appointment.clinic_id,
+            amount=amount_kobo,
+            status=PayoutStatus.PENDING_PAYOUT.value,
+        )
+        db.add(payout)
+
+    db.commit()
+    cache.set(
+        "admin:payouts:latest",
+        {"payout_id": payout.id, "appointment_id": appointment.id, "hospital_id": appointment.clinic_id},
+        ttl=24 * 60 * 60,
+    )
+    return payout
+
+
 # ─── Paystack Webhook ────────────────────────────────────────────────────────
 
 @router.post("/paystack")
@@ -81,6 +142,16 @@ async def paystack_webhook(
 
     if event == "charge.success":
         reference = data.get("reference", "")
+        from app.models.models import Appointment
+        appointment = db.query(Appointment).filter(Appointment.payment_provider_ref == reference).first()
+        metadata_appointment_id = metadata.get("appointment_id")
+        if not appointment and metadata_appointment_id:
+            appointment = db.query(Appointment).filter(Appointment.id == metadata_appointment_id).first()
+
+        if appointment:
+            finalize_paid_appointment(appointment, data, db)
+            return {"status": "ok"}
+
         from app.models.models import PendingSubscriptionPayment
         is_automated = bool(reference) and db.query(PendingSubscriptionPayment).filter(
             PendingSubscriptionPayment.paystack_reference == reference
@@ -140,6 +211,17 @@ async def paystack_webhook(
             provider="paystack",
             reason=data.get("gateway_response", "charge_failed"),
         )
+
+    elif event in ("transfer.success", "transfer.failed"):
+        from app.models.models import Payout, PayoutStatus
+        transfer_code = data.get("transfer_code") or data.get("reference")
+        if transfer_code:
+            payout = db.query(Payout).filter(Payout.paystack_transfer_code == transfer_code).first()
+            if payout:
+                payout.status = PayoutStatus.SENT.value if event == "transfer.success" else PayoutStatus.FAILED.value
+                if event == "transfer.success" and not payout.sent_at:
+                    payout.sent_at = utcnow()
+                db.commit()
 
     return {"status": "ok"}
 

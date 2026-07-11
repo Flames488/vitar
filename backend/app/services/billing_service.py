@@ -126,7 +126,7 @@ class PaystackBilling:
         return {"verified": False, "error": str(last_error)}
 
     async def initiate_bank_transfer_charge(
-        self, email: str, amount_kobo: int, reference: str, metadata: Dict
+        self, email: str, amount_kobo: int, reference: str, metadata: Dict, expires_at
     ) -> Dict:
         """
         Smart payment system: Paystack's "Pay with Transfer" charge.
@@ -135,14 +135,17 @@ class PaystackBilling:
         once the transfer lands — no polling of Paystack required, no
         manual admin confirmation needed.
 
-        Docs: POST /charge with a `bank_transfer` channel hint.
+        Docs: POST /charge with a `bank_transfer` channel hint. Paystack
+        requires `account_expires_at` to be set explicitly (must be null or
+        a future date) — leaving it out or passing {} is rejected.
         """
+        expires_iso = expires_at.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         payload = {
             "email": email,
             "amount": amount_kobo,
             "reference": reference,
             "metadata": metadata,
-            "bank_transfer": {},  # use Paystack defaults for account expiry
+            "bank_transfer": {"account_expires_at": expires_iso},
         }
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
@@ -161,7 +164,7 @@ class PaystackBilling:
                 "bank_name": transfer.get("bank_name") or transfer.get("name"),
                 "account_number": transfer.get("account_number"),
                 "account_name": transfer.get("account_name", "Vitar Health"),
-                "account_expires_at": transfer.get("account_expires_at"),
+                "account_expires_at": transfer.get("account_expires_at", expires_iso),
                 "raw": inner,
             }
 
@@ -370,6 +373,7 @@ class BillingService:
                     "billing_cycle": billing_cycle,
                     "pending_payment_id": pending.id,
                 },
+                expires_at=expires_at,
             )
         except Exception:
             db.rollback()

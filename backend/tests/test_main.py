@@ -163,8 +163,8 @@ def test_geo_plans_ng():
     data = response.json()
     assert data["currency"] == "NGN"
     plans = {p["plan"]: p for p in data["plans"]}
-    assert plans["basic"]["monthly"] == 15000
-    assert plans["pro"]["monthly"] == 35000
+    assert plans["basic"]["monthly"] == 6000
+    assert plans["pro"]["monthly"] == 15000
 
 
 def test_geo_plans_usd():

@@ -22,9 +22,10 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.logging import get_logger, log_booking_event
 from app.models.models import (
-    Clinic, Doctor, Patient, Appointment, WaitingList, AppointmentStatus,
+    Clinic, Doctor, Patient, Appointment, WaitingList, AppointmentStatus, PaymentStatus,
 )
 from app.services.trial_guard import check_trial_booking_limit
+from app.services.hospital_payments import hospital_payments
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -120,7 +121,7 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
 
 
 @router.post("/clinic/{slug}/book", status_code=201)
-def public_book_appointment(
+async def public_book_appointment(
     slug: str,
     body: PublicBookingRequest,
     background_tasks: BackgroundTasks,
@@ -220,6 +221,10 @@ def public_book_appointment(
         if body.email:
             patient.email = body.email
 
+    payment_amount = doctor.consultation_fee or getattr(clinic, "consultation_fee", None) or 0
+    payment_required = bool(clinic.patient_payment_enabled and payment_amount and payment_amount > 0)
+    payment_reference = f"VITAR-APT-{secrets.token_urlsafe(12).replace('_', '').replace('-', '').upper()}"
+
     # ── Create appointment ────────────────────────────────────────────────
     appointment = Appointment(
         clinic_id=clinic.id,
@@ -228,11 +233,13 @@ def public_book_appointment(
         scheduled_at=body.scheduled_at,
         duration_mins=slot_duration,
         reason=body.reason or "",
-        status=AppointmentStatus.CONFIRMED,
+        status=AppointmentStatus.AWAITING_PAYMENT if payment_required else AppointmentStatus.APPROVED,
         booked_via="booking_page",
-        payment_required=bool(clinic.patient_payment_enabled),
-        payment_amount=doctor.consultation_fee or getattr(clinic, "consultation_fee", None) or 0,
+        payment_required=payment_required,
+        payment_status=PaymentStatus.PENDING if payment_required else PaymentStatus.UNPAID,
+        payment_amount=payment_amount,
         payment_currency=clinic.currency or "NGN",
+        payment_provider_ref=payment_reference if payment_required else None,
         confirmation_token=secrets.token_urlsafe(16),
         cancel_token=secrets.token_urlsafe(16),
     )
@@ -250,9 +257,6 @@ def public_book_appointment(
         logger.error(f"Booking commit failed: {e}", exc_info=True)
         raise HTTPException(status_code=409, detail="Booking failed — slot may already be taken")
 
-    log_booking_event("public_booked", appointment.id, clinic.id, body.doctor_id, patient.id)
-    background_tasks.add_task(_dispatch_risk_and_reminders, appointment.id)
-
     response = {
         "appointment_id": appointment.id,
         "confirmation_token": appointment.confirmation_token,
@@ -260,16 +264,71 @@ def public_book_appointment(
         "scheduled_at": appointment.scheduled_at.isoformat(),
         "doctor": doctor.full_name or "",
         "clinic": clinic.name or "",
-        "payment_required": False,
+        "payment_required": payment_required,
+        "status": appointment.status.value if hasattr(appointment.status, "value") else appointment.status,
+        "payment_status": appointment.payment_status.value if hasattr(appointment.payment_status, "value") else appointment.payment_status,
     }
 
-    if clinic.patient_payment_enabled and (appointment.payment_amount or 0) > 0:
-        response["payment_required"] = True
+    if payment_required:
+        callback_url = f"{settings.FRONTEND_URL.rstrip('/')}/book/{slug}/pay/verify?reference={payment_reference}"
+        patient_email = body.email or f"{body.phone}@noemail.livevault.cloud"
+        try:
+            checkout = await hospital_payments.initialize_booking_transaction(
+                email=patient_email,
+                amount_kobo=int(round(float(appointment.payment_amount) * 100)),
+                reference=payment_reference,
+                metadata={"appointment_id": appointment.id, "hospital_id": clinic.id},
+                callback_url=callback_url,
+            )
+        except Exception as e:
+            appointment.payment_status = PaymentStatus.FAILED
+            appointment.status = AppointmentStatus.CANCELLED
+            db.commit()
+            logger.error(f"Paystack booking initialize failed: {e}", exc_info=True)
+            raise HTTPException(status_code=502, detail="Payment provider unavailable. Please try again.")
         response["payment_amount"] = float(appointment.payment_amount)
         response["currency"] = clinic.currency or "NGN"
-        response["payment_url"] = f"{settings.FRONTEND_URL}/book/{slug}/pay/{appointment.id}"
+        response["payment_reference"] = payment_reference
+        response["payment_url"] = checkout.get("authorization_url")
+        response["access_code"] = checkout.get("access_code")
+
+    log_booking_event("public_booked", appointment.id, clinic.id, body.doctor_id, patient.id)
+    if not payment_required:
+        background_tasks.add_task(_dispatch_risk_and_reminders, appointment.id)
 
     return response
+
+
+@router.get("/appointments/{appointment_id}/status")
+def get_public_appointment_status(appointment_id: str, db: Session = Depends(get_db)):
+    apt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not apt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return {
+        "appointment_id": apt.id,
+        "status": apt.status.value if hasattr(apt.status, "value") else apt.status,
+        "payment_status": apt.payment_status.value if hasattr(apt.payment_status, "value") else apt.payment_status,
+        "payment_reference": apt.payment_provider_ref,
+    }
+
+
+@router.get("/payments/verify/{reference}")
+async def verify_booking_payment(reference: str, db: Session = Depends(get_db)):
+    apt = db.query(Appointment).filter(Appointment.payment_provider_ref == reference).first()
+    if not apt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    try:
+        data = await hospital_payments.verify_transaction(reference)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Unable to verify payment")
+    if data.get("status") == "success" and apt.payment_status != PaymentStatus.PAID:
+        from app.api.v1.endpoints.webhooks import finalize_paid_appointment
+        finalize_paid_appointment(apt, data, db)
+    return {
+        "appointment_id": apt.id,
+        "status": apt.status.value if hasattr(apt.status, "value") else apt.status,
+        "payment_status": apt.payment_status.value if hasattr(apt.payment_status, "value") else apt.payment_status,
+    }
 
 
 @router.get("/confirm/{token}")

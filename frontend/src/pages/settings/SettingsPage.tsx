@@ -2,10 +2,11 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { clinicsApi } from '@/lib/api/services';
+import { clinicsApi, hospitalBankAccountApi } from '@/lib/api/services';
 import { useAuthStore } from '@/stores/authStore';
+import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
-import { Loader2, Copy, Check, Link2, Banknote, Info } from 'lucide-react';
+import { Loader2, Copy, Check, Link2, Banknote, Info, Landmark, ShieldCheck } from 'lucide-react';
 
 // ── Clinic ID copy panel ──────────────────────────────────────────────────────
 
@@ -56,37 +57,31 @@ function ClinicIdPanel({ clinicId }: { clinicId: string }) {
   );
 }
 
-// ── Bank Transfer panel ───────────────────────────────────────────────────────
+// ── Payment collection toggle ─────────────────────────────────────────────────
+// Controls whether patients must pay before an appointment is confirmed. When
+// on, the booking flow always collects payment through Paystack's checkout —
+// there is no manual/unverified payment path, so patients can't claim they
+// paid when they didn't; only a Paystack webhook can mark an appointment paid.
 
-interface BankTransferFormValues {
+interface PaymentToggleFormValues {
   patient_payment_enabled: boolean;
-  bank_name: string;
-  account_number: string;
 }
 
-function BankTransferPanel({ clinicId }: { clinicId: string }) {
+function PaymentTogglePanel() {
   const { data, isLoading } = useQuery({
     queryKey: ['clinic-me'],
     queryFn: clinicsApi.getMe,
   });
 
-  const { register, handleSubmit, watch, formState: { isSubmitting } } = useForm<BankTransferFormValues>({
+  const { register, handleSubmit, formState: { isSubmitting } } = useForm<PaymentToggleFormValues>({
     values: {
       patient_payment_enabled: data?.patient_payment_enabled ?? false,
-      bank_name: data?.bank_name ?? '',
-      account_number: data?.account_number ?? '',
     },
   });
 
-  const paymentEnabled = watch('patient_payment_enabled');
-
   const mutation = useMutation({
-    mutationFn: (values: BankTransferFormValues) =>
-      clinicsApi.update({
-        patient_payment_enabled: values.patient_payment_enabled,
-        bank_name: values.bank_name || null,
-        account_number: values.account_number || null,
-      }),
+    mutationFn: (values: PaymentToggleFormValues) =>
+      clinicsApi.update({ patient_payment_enabled: values.patient_payment_enabled }),
     onSuccess: () => toast.success('Payment settings saved'),
     onError: () => toast.error('Failed to save payment settings'),
   });
@@ -97,15 +92,16 @@ function BankTransferPanel({ clinicId }: { clinicId: string }) {
     <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
       <div className="flex items-center gap-2">
         <Banknote className="w-4 h-4 text-teal-600" />
-        <h2 className="text-sm font-semibold text-slate-900">Patient Payment — Bank Transfer</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Patient Payment</h2>
       </div>
 
       <div className="flex items-start gap-3 rounded-lg bg-blue-50 border border-blue-100 p-3">
         <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
         <p className="text-xs text-blue-700 leading-relaxed">
-          When enabled, patients see your bank account details on the booking confirmation page
-          and are asked to pay via direct bank transfer before their appointment. Vitar does
-          not process the payment — patients transfer directly to your account.
+          When enabled, patients pay their consultation fee through Paystack's secure checkout
+          right after booking. The appointment only moves to confirmed once Paystack verifies
+          the payment — there's no manual "I already paid" step, so there's nothing for a
+          patient to dispute.
         </p>
       </div>
 
@@ -119,32 +115,6 @@ function BankTransferPanel({ clinicId }: { clinicId: string }) {
           <span className="text-sm font-medium text-slate-700">Require payment before appointments</span>
         </label>
 
-        {paymentEnabled && (
-          <div className="space-y-3 pl-7">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Bank name</label>
-              <input
-                {...register('bank_name')}
-                placeholder="e.g. GTBank, Zenith Bank, Access Bank"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Account number</label>
-              <input
-                {...register('account_number')}
-                placeholder="10-digit NUBAN"
-                maxLength={10}
-                inputMode="numeric"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono tracking-wider"
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                Account name shown to patients will be your clinic name.
-              </p>
-            </div>
-          </div>
-        )}
-
         <button
           type="submit"
           disabled={isSubmitting}
@@ -154,6 +124,172 @@ function BankTransferPanel({ clinicId }: { clinicId: string }) {
           Save Payment Settings
         </button>
       </form>
+    </div>
+  );
+}
+
+// ── Payout account panel ──────────────────────────────────────────────────────
+// This is a different thing from the toggle above: it's where Vitar sends YOUR
+// share of the money after Paystack collects it from patients (via the
+// Transfers API). Same verified resolve+confirm flow used during onboarding.
+
+function PayoutAccountPanel({ clinicId }: { clinicId: string }) {
+  const { data: account, isLoading, refetch } = useQuery({
+    queryKey: ['hospital-bank-account', clinicId],
+    queryFn: async () => (await hospitalBankAccountApi.get(clinicId)).bank_account,
+  });
+  const { data: banksData } = useQuery({
+    queryKey: ['payout-banks'],
+    queryFn: hospitalBankAccountApi.getBanks,
+  });
+  const banks: { code: string; name: string }[] = banksData?.banks ?? [];
+
+  const [editing, setEditing] = useState(false);
+  const [bankCode, setBankCode] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [resolvedName, setResolvedName] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleResolve() {
+    if (accountNumber.length !== 10 || !bankCode) return;
+    setResolving(true);
+    setResolvedName(null);
+    try {
+      const res = await hospitalBankAccountApi.resolve(clinicId, accountNumber, bankCode);
+      setResolvedName(res.account_name || null);
+      if (!res.account_name) toast.error('Could not verify this account. Double-check the number and bank.');
+    } catch (err) {
+      toast.error(getApiError(err) || 'Could not verify this account with Paystack');
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!resolvedName) return;
+    setSaving(true);
+    try {
+      if (account) {
+        await hospitalBankAccountApi.replace(clinicId, accountNumber, bankCode);
+      } else {
+        await hospitalBankAccountApi.create(clinicId, accountNumber, bankCode);
+      }
+      toast.success('Payout account saved');
+      setEditing(false);
+      setAccountNumber('');
+      setBankCode('');
+      setResolvedName(null);
+      refetch();
+    } catch (err) {
+      toast.error(getApiError(err) || 'Could not save payout account');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isLoading) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Landmark className="w-4 h-4 text-teal-600" />
+        <h2 className="text-sm font-semibold text-slate-900">Payout Account</h2>
+      </div>
+      <p className="text-xs text-slate-500 leading-relaxed">
+        We send your share of each payment here after Paystack confirms it, via a verified
+        bank transfer — not a raw account number typed into a settings form.
+      </p>
+
+      {account && !editing ? (
+        <div className="rounded-lg border border-slate-200 divide-y divide-slate-100">
+          <div className="flex justify-between px-4 py-3 text-sm">
+            <span className="text-slate-500">Bank</span>
+            <span className="font-medium text-slate-900">{account.bank_name}</span>
+          </div>
+          <div className="flex justify-between px-4 py-3 text-sm">
+            <span className="text-slate-500">Account number</span>
+            <span className="font-mono font-medium text-slate-900 tracking-wider">{account.account_number}</span>
+          </div>
+          <div className="flex justify-between px-4 py-3 text-sm">
+            <span className="text-slate-500">Account name</span>
+            <span className="font-medium text-slate-900">{account.account_name}</span>
+          </div>
+          <div className="flex justify-between items-center px-4 py-3 text-sm">
+            <span className="text-slate-500">Status</span>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${account.verified ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'}`}>
+              {account.verified ? 'Verified' : 'Unverified'}
+            </span>
+          </div>
+        </div>
+      ) : !editing ? (
+        <p className="text-sm text-slate-400 italic">No payout account on file yet.</p>
+      ) : null}
+
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Bank</label>
+            <select
+              value={bankCode}
+              onChange={(e) => { setBankCode(e.target.value); setResolvedName(null); }}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+            >
+              <option value="">Select your bank</option>
+              {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Account number</label>
+            <input
+              value={accountNumber}
+              onChange={(e) => { setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10)); setResolvedName(null); }}
+              placeholder="10-digit NUBAN"
+              maxLength={10}
+              inputMode="numeric"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono tracking-wider"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleResolve}
+            disabled={!bankCode || accountNumber.length !== 10 || resolving}
+            className="w-full border border-teal-600 text-teal-700 hover:bg-teal-50 font-semibold py-2 rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {resolving && <Loader2 className="w-4 h-4 animate-spin" />}
+            Verify account
+          </button>
+          {resolvedName && (
+            <div className="flex items-center gap-2 rounded-lg bg-teal-50 border border-teal-200 p-3">
+              <ShieldCheck className="w-4 h-4 text-teal-600 flex-shrink-0" />
+              <p className="text-sm text-teal-800">Verified: <span className="font-semibold">{resolvedName}</span></p>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!resolvedName || saving}
+              className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold py-2 rounded-lg text-sm flex items-center justify-center gap-2"
+            >
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              Save
+            </button>
+            <button type="button" onClick={() => { setEditing(false); setResolvedName(null); }}
+              className="flex-1 text-slate-500 text-sm hover:text-slate-700">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-2 rounded-lg text-sm transition-colors"
+        >
+          {account ? 'Replace payout account' : 'Add payout account'}
+        </button>
+      )}
     </div>
   );
 }
@@ -185,8 +321,11 @@ export function SettingsPage() {
       {/* Clinic UUID panel — required for Wabizz integration */}
       {clinic?.id && <ClinicIdPanel clinicId={clinic.id} />}
 
-      {/* Bank transfer payment settings */}
-      {clinic?.id && <BankTransferPanel clinicId={clinic.id} />}
+      {/* Whether patients must pay (via Paystack checkout) before booking is confirmed */}
+      {clinic?.id && <PaymentTogglePanel />}
+
+      {/* Where Vitar sends the clinic's share after Paystack collects payment */}
+      {clinic?.id && <PayoutAccountPanel clinicId={clinic.id} />}
 
       <form onSubmit={handleSubmit(d => updateMutation.mutate(d))} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
         <h2 className="text-sm font-semibold text-slate-900">General Information</h2>

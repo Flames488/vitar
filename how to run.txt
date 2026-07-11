@@ -1,9 +1,12 @@
 cd C:\Users\USER\OneDrive\Documents\vitar
 docker compose up --build
+docker compose up -d --build
 
+cd C:\Users\USER\OneDrive\Documents\vitar
+docker compose -f docker-compose.local.yml up --build api worker beat
 
-
-
+cd backend
+alembic upgrade head
 
 docker compose build api (after update) 
 

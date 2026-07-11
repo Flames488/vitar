@@ -103,7 +103,7 @@ export default function PricingPage() {
   };
 
   const paidPlans = (plans.length > 0 ? plans : [
-    { plan: 'basic',      name: 'Starter',    monthly: 2500,  annual: 25000, annual_savings_percent: 17, features: PLAN_FEATURES.basic },
+    { plan: 'basic',      name: 'Starter',    monthly: 6000,  annual: 25000, annual_savings_percent: 17, features: PLAN_FEATURES.basic },
     { plan: 'pro',        name: 'Pro',        monthly: 7500,  annual: 75000, annual_savings_percent: 17, features: PLAN_FEATURES.pro },
     { plan: 'enterprise', name: 'Enterprise', monthly: null,  annual: null,  features: PLAN_FEATURES.enterprise },
   ]).filter((p: any) => p.plan !== 'trial');

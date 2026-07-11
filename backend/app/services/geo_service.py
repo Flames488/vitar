@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 PRICING_TIERS: Dict[str, Dict] = {
     "NGN": {
         "basic": {
-            "monthly": 2500,      # ₦2,500/month
-            "annual": 25000,      # ₦25,000/year (save 17%)
+            "monthly": 6000,      # ₦6,000/month (updated from ₦2,500)
+            "annual": 60000,      # ₦60,000/year (save 17% off ₦72,000)
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 7500,      # ₦7,500/month
-            "annual": 75000,      # ₦75,000/year (save 17%)
+            "monthly": 15000,     # ₦15,000/month (updated from ₦7,500)
+            "annual": 150000,     # ₦150,000/year (save 17% off ₦180,000)
             "annual_savings_percent": 17,
         },
         "enterprise": {
@@ -35,13 +35,13 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "USD": {
         "basic": {
-            "monthly": 29,
-            "annual": 290,
+            "monthly": 33,        # updated from $29 (moderate ~14% bump)
+            "annual": 329,        # $33 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 79,
-            "annual": 758,
+            "monthly": 89,        # updated from $79 (moderate ~13% bump)
+            "annual": 854,        # $89 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {
@@ -52,13 +52,13 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "GBP": {
         "basic": {
-            "monthly": 24,
-            "annual": 230,
+            "monthly": 27,        # updated from £24 (moderate ~13% bump)
+            "annual": 269,        # £27 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 65,
-            "annual": 624,
+            "monthly": 72,        # updated from £65 (moderate ~11% bump)
+            "annual": 691,        # £72 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {
@@ -69,13 +69,13 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "EUR": {
         "basic": {
-            "monthly": 27,
-            "annual": 259,
+            "monthly": 31,        # updated from €27 (moderate ~15% bump)
+            "annual": 309,        # €31 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 72,
-            "annual": 691,
+            "monthly": 80,        # updated from €72 (moderate ~11% bump)
+            "annual": 768,        # €80 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {

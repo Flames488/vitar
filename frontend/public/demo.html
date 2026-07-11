@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-NG6RJXZMNG"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-NG6RJXZMNG');
+  </script>
+
+  <!-- Microsoft Clarity -->
+  <script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "xgqbv36pqd");
+  </script>
+  <script>
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      window.location.replace('https://' + window.location.hostname + window.location.pathname + window.location.search + window.location.hash);
+    }
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactive Product Demo — Vitar</title>
+  <meta name="description" content="Click through a mock Vitar clinic dashboard: appointment scheduling, patient records, no-show predictions, analytics, and QR check-in." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://livevault.cloud/demo.html" />
+  <meta name="theme-color" content="#0d9488" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Vitar Interactive Demo" />
+  <meta property="og:description" content="Try a mock Vitar clinic dashboard before self-serve signup opens." />
+  <meta property="og:url" content="https://livevault.cloud/demo.html" />
+  <meta property="og:image" content="https://livevault.cloud/og-image.png" />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.json" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --teal: #0d9488;
+      --teal-dark: #0f766e;
+      --teal-lt: #ccfbf1;
+      --ink: #0a1628;
+      --ink-2: #16304d;
+      --ink-3: #234a73;
+      --slate: #64748b;
+      --mist: #f0fdf9;
+      --white: #ffffff;
+      --amber: #f59e0b;
+      --red: #dc2626;
+      --green: #15803d;
+      --line: rgba(13,148,136,0.14);
+      --r: 16px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--mist);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+    a { color: inherit; }
+    button, input, select { font: inherit; }
+    img { display: block; max-width: 100%; }
+
+    nav {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 68px; padding: 0 5vw;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
+      gap: 12px; flex-wrap: wrap;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-logo img { width: 30px; height: 30px; }
+    .nav-logo span { font-family: 'Sora', sans-serif; font-size: 1.15rem; font-weight: 800; color: var(--ink); }
+    .nav-logo span em { color: var(--teal); font-style: normal; }
+    .nav-actions { display: flex; align-items: center; gap: 10px; }
+    .nav-link {
+      color: var(--slate); text-decoration: none; font-size: 0.88rem; font-weight: 700;
+      padding: 10px 14px; border-radius: 999px;
+    }
+    .nav-link:hover { color: var(--teal); background: var(--mist); }
+
+    .demo-shell { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 68px); }
+    .sidebar {
+      background: var(--ink);
+      color: #fff;
+      padding: 26px 20px;
+      position: sticky;
+      top: 68px;
+      height: calc(100vh - 68px);
+      overflow: auto;
+    }
+    .clinic-badge {
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.05);
+      border-radius: var(--r);
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+    .demo-label {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(13,148,136,0.18); color: var(--teal-lt);
+      border: 1px solid rgba(13,148,136,0.3);
+      border-radius: 999px; padding: 5px 11px;
+      font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .clinic-badge h1 {
+      font-family: 'Sora', sans-serif;
+      font-size: 1.16rem;
+      line-height: 1.25;
+      margin-bottom: 6px;
+    }
+    .clinic-badge p { color: rgba(255,255,255,0.55); font-size: 0.82rem; line-height: 1.55; }
+    .tabs { display: grid; gap: 8px; margin: 18px 0; }
+    .tab-btn {
+      width: 100%;
+      border: 1px solid transparent;
+      background: transparent;
+      color: rgba(255,255,255,0.68);
+      border-radius: 12px;
+      padding: 12px 14px;
+      text-align: left;
+      cursor: pointer;
+      font-weight: 700;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .tab-btn:hover, .tab-btn.active { background: rgba(255,255,255,0.08); color: #fff; border-color: rgba(255,255,255,0.08); }
+    .sidebar-note { color: rgba(255,255,255,0.45); font-size: 0.76rem; line-height: 1.55; margin-top: 18px; }
+
+    .main { padding: 28px 5vw 46px; overflow: hidden; }
+    .topbar {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 16px; margin-bottom: 22px;
+    }
+    .topbar h2 { font-family: 'Sora', sans-serif; font-size: clamp(1.5rem, 3vw, 2.25rem); line-height: 1.15; letter-spacing: -0.02em; }
+    .topbar p { color: var(--slate); margin-top: 7px; line-height: 1.55; max-width: 720px; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn {
+      border: 1.5px solid rgba(10,22,40,0.12);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 11px 16px;
+      font-weight: 800;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+      min-height: 42px;
+    }
+    .btn.primary { background: var(--teal); color: #fff; border-color: var(--teal); box-shadow: 0 8px 24px rgba(13,148,136,0.22); }
+    .btn.warn { color: #7c2d12; border-color: rgba(245,158,11,0.35); background: #fffbeb; }
+    .btn:hover { transform: translateY(-1px); }
+
+    .grid { display: grid; gap: 18px; }
+    .metrics { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+    .two-col { grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr); align-items: start; }
+    .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: 0 12px 38px rgba(10,22,40,0.06);
+    }
+    .metric { padding: 18px; }
+    .metric span { color: var(--slate); font-size: 0.76rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric strong { display: block; font-family: 'Sora', sans-serif; font-size: 1.75rem; margin-top: 7px; }
+    .metric small { color: var(--teal-dark); font-weight: 700; }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .card-head h3 { font-size: 1rem; }
+    .card-body { padding: 20px; }
+    .section { display: none; }
+    .section.active { display: block; animation: fadeUp 0.3s ease; }
+    @media (prefers-reduced-motion: reduce) { .section.active { animation: none; } }
+
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { padding: 13px 10px; border-bottom: 1px solid rgba(10,22,40,0.06); text-align: left; font-size: 0.86rem; vertical-align: middle; }
+    .table th { color: var(--slate); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .table tr:last-child td { border-bottom: none; }
+    .status, .risk {
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 999px; padding: 4px 9px; font-size: 0.72rem; font-weight: 800;
+      white-space: nowrap;
+    }
+    .status.confirmed, .risk.low { background: #dcfce7; color: var(--green); }
+    .status.pending, .risk.medium { background: #fef3c7; color: #92400e; }
+    .status.checked-in { background: var(--teal-lt); color: var(--teal-dark); }
+    .risk.high { background: #fee2e2; color: var(--red); }
+    .riskbar { height: 7px; background: #e2e8f0; border-radius: 999px; overflow: hidden; min-width: 90px; }
+    .riskbar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #f59e0b, #dc2626); }
+
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .field { display: grid; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: 0.78rem; color: var(--ink-2); font-weight: 800; }
+    .field input, .field select {
+      width: 100%;
+      border: 1.5px solid rgba(10,22,40,0.12);
+      border-radius: 12px;
+      background: #f8fafc;
+      color: var(--ink);
+      padding: 12px 13px;
+      outline: none;
+    }
+    .field input:focus, .field select:focus { border-color: var(--teal); background: #fff; }
+    .success {
+      display: none;
+      margin-top: 14px;
+      color: var(--teal-dark);
+      font-weight: 800;
+      background: var(--mist);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .patient-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .patient-card { padding: 18px; cursor: pointer; transition: transform 0.2s, border-color 0.2s; }
+    .patient-card:hover { transform: translateY(-2px); border-color: rgba(13,148,136,0.35); }
+    .patient-card h4 { margin-bottom: 6px; }
+    .patient-card p { color: var(--slate); font-size: 0.84rem; line-height: 1.55; }
+    .patient-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .chip { border-radius: 999px; padding: 5px 9px; background: var(--mist); color: var(--teal-dark); font-size: 0.72rem; font-weight: 800; }
+
+    .chart { display: grid; gap: 12px; }
+    .bar-row { display: grid; grid-template-columns: 90px 1fr 48px; align-items: center; gap: 10px; font-size: 0.84rem; }
+    .bar-track { height: 12px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+    .bar-track i { display: block; height: 100%; background: var(--teal); border-radius: 999px; }
+    .insight-list { display: grid; gap: 12px; }
+    .insight { padding: 14px; border: 1px solid rgba(10,22,40,0.08); border-radius: 14px; background: #fff; }
+    .insight strong { display: block; margin-bottom: 5px; }
+    .insight p { color: var(--slate); font-size: 0.84rem; line-height: 1.55; }
+
+    .qr-wrap {
+      display: grid; grid-template-columns: 220px 1fr; gap: 22px; align-items: center;
+    }
+    .qr {
+      width: 200px; aspect-ratio: 1;
+      background:
+        linear-gradient(90deg, var(--ink) 10px, transparent 10px) 0 0 / 20px 20px,
+        linear-gradient(var(--ink) 10px, transparent 10px) 0 0 / 20px 20px,
+        #fff;
+      border: 14px solid #fff;
+      outline: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(10,22,40,0.12);
+      position: relative;
+    }
+    .qr::before, .qr::after {
+      content: '';
+      position: absolute;
+      width: 48px; height: 48px;
+      background: #fff;
+      border: 12px solid var(--ink);
+      border-radius: 6px;
+    }
+    .qr::before { left: 8px; top: 8px; }
+    .qr::after { right: 8px; bottom: 8px; }
+    .waiting-list { display: grid; gap: 10px; margin-top: 16px; }
+    .queue-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 13px 14px; border-radius: 12px; background: #f8fafc; border: 1px solid rgba(10,22,40,0.06);
+    }
+    .queue-item strong { font-size: 0.9rem; }
+    .queue-item span { color: var(--slate); font-size: 0.78rem; }
+
+    .persona {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .toast {
+      position: fixed;
+      right: 18px; bottom: 18px; z-index: 50;
+      background: var(--ink);
+      color: #fff;
+      border-radius: 14px;
+      padding: 13px 16px;
+      box-shadow: 0 16px 40px rgba(10,22,40,0.2);
+      max-width: min(340px, calc(100vw - 36px));
+      display: none;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+
+    @media (max-width: 980px) {
+      .demo-shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .tab-btn { justify-content: center; text-align: center; }
+      .metrics, .two-col, .qr-wrap, .persona { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      nav { height: auto; min-height: 68px; flex-wrap: wrap; gap: 10px; padding: 12px 6vw; }
+      .nav-actions { width: 100%; justify-content: space-between; }
+      .main { padding: 22px 6vw 40px; }
+      .tabs { grid-template-columns: 1fr 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
+      .table { min-width: 680px; }
+      .table-wrap { overflow-x: auto; }
+    }
+    @media (max-width: 480px) {
+      .nav-logo span { font-size: 1rem; }
+      .mode-btn { font-size: 0.74rem; padding: 8px 10px; }
+      .nav-link { padding: 8px 10px; font-size: 0.82rem; }
+      .clinic-badge { padding: 14px; }
+      .clinic-badge h1 { font-size: 1.02rem; }
+      .topbar { gap: 12px; }
+      .button-row { width: 100%; }
+      .button-row .btn { flex: 1; justify-content: center; }
+      .metric strong { font-size: 1.4rem; }
+      .card-head { flex-wrap: wrap; padding: 14px 16px; }
+      .card-body { padding: 16px; }
+      #patient-search { max-width: 100% !important; }
+      .qr-wrap { text-align: center; }
+      .qr { margin: 0 auto; width: 160px; }
+      .persona { grid-template-columns: 1fr; }
+      .pv-actions { flex-direction: column; }
+      .toast { left: 12px; right: 12px; max-width: none; text-align: center; }
+    }
+    /* ── MODE SWITCH ── */
+    .mode-switch {
+      display: inline-flex; gap: 4px; background: rgba(10,22,40,0.06);
+      border-radius: 999px; padding: 4px;
+    }
+    .mode-btn {
+      border: none; background: transparent; color: var(--slate);
+      font-size: 0.82rem; font-weight: 700; padding: 8px 16px; border-radius: 999px;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .mode-btn.active { background: #fff; color: var(--ink); box-shadow: 0 2px 8px rgba(10,22,40,0.1); }
+    @media (max-width: 640px) { .mode-switch { order: 3; width: 100%; justify-content: center; } }
+
+    /* Note: section switching uses display:none/block (see base .section rule below)
+       rather than an opacity crossfade, since fading from display:none doesn't animate. */
+
+    /* ── PAGE LOAD SKELETON ── */
+    .page-loading {
+      position: fixed; inset: 0; z-index: 999;
+      background: var(--mist);
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.35s ease, visibility 0.35s ease;
+    }
+    .page-loading.done { opacity: 0; visibility: hidden; pointer-events: none; }
+    .loader-ring {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 3px solid rgba(13,148,136,0.18); border-top-color: var(--teal);
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── PATIENT VIEW ── */
+    .patient-view { display: none; max-width: 480px; margin: 36px auto 60px; padding: 0 6vw; }
+    .patient-view.active { display: block; }
+    .pv-card {
+      background: #fff; border: 1px solid var(--line); border-radius: 20px;
+      box-shadow: 0 20px 50px -14px rgba(10,22,40,0.18); padding: 26px;
+      animation: fadeUp 0.4s ease;
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .pv-eyebrow { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--teal-dark); margin-bottom: 8px; }
+    .pv-card h2 { font-family: 'Sora', sans-serif; font-size: 1.3rem; margin-bottom: 4px; }
+    .pv-card .pv-sub { color: var(--slate); font-size: 0.85rem; margin-bottom: 20px; }
+    .pv-appt {
+      background: var(--mist); border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px; margin-bottom: 18px;
+    }
+    .pv-appt strong { display: block; font-size: 1rem; margin-bottom: 4px; }
+    .pv-appt span { color: var(--slate); font-size: 0.84rem; }
+    .pv-status { display: inline-block; margin-top: 10px; }
+    .pv-timeline { display: grid; gap: 10px; margin-bottom: 20px; }
+    .pv-msg {
+      background: #fff; border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px 14px; font-size: 0.85rem; color: var(--ink-2); line-height: 1.55;
+      box-shadow: 0 2px 10px rgba(10,22,40,0.05);
+    }
+    .pv-msg b { color: var(--teal-dark); }
+    .pv-actions { display: flex; gap: 10px; }
+    .pv-actions .btn { flex: 1; justify-content: center; }
+    .pv-note { text-align: center; font-size: 0.78rem; color: var(--slate); margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="page-loading" id="page-loading"><div class="loader-ring"></div></div>
+
+  <nav>
+    <a href="/" class="nav-logo">
+      <img src="icon-192x192.png" alt="Vitar logo" />
+      <span>Vitar</span>
+    </a>
+    <div class="mode-switch" role="tablist" aria-label="Demo perspective">
+      <button class="mode-btn active" id="mode-staff" type="button">🏥 Hospital / Doctor</button>
+      <button class="mode-btn" id="mode-patient" type="button">🧑 Patient</button>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-link" href="/">Home</a>
+      <a class="nav-link" href="/feedback">Give feedback</a>
+    </div>
+  </nav>
+
+  <div class="demo-shell" id="staff-view">
+    <aside class="sidebar">
+      <div class="clinic-badge">
+        <div class="demo-label">Live mock demo</div>
+        <h1 id="clinic-title">Adeyemi Family Clinic</h1>
+        <p>Seeded browser-only data. No patient details are real and nothing is sent to a server.</p>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Demo screens">
+        <button class="tab-btn active" data-screen="overview">📊 Overview</button>
+        <button class="tab-btn" data-screen="schedule">📅 Schedule</button>
+        <button class="tab-btn" data-screen="patients">👥 Patients</button>
+        <button class="tab-btn" data-screen="risk">🧠 No-show risk</button>
+        <button class="tab-btn" data-screen="checkin">🏥 QR check-in</button>
+        <button class="tab-btn" data-screen="personalize">⚙️ Personalize</button>
+      </div>
+      <button class="btn warn" type="button" id="reset-demo">Reset Demo</button>
+      <p class="sidebar-note">Use the personalize screen to swap in a hospital name and doctor names before a pitch.</p>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h2 id="screen-title">Clinic command centre</h2>
+          <p id="screen-subtitle">See today&apos;s bookings, risk levels, patient flow, and reminders in one click-through dashboard.</p>
+        </div>
+        <div class="button-row">
+          <button class="btn primary" type="button" data-jump="schedule">Book appointment</button>
+          <button class="btn" type="button" data-jump="checkin">Run check-in</button>
+        </div>
+      </div>
+
+      <section class="section active" id="overview">
+        <div class="grid metrics" id="metrics"></div>
+        <div class="grid two-col" style="margin-top:18px;">
+          <div class="card">
+            <div class="card-head"><h3>Today&apos;s appointments</h3><span class="chip" id="today-count"></span></div>
+            <div class="card-body table-wrap">
+              <table class="table">
+                <thead><tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Reason</th><th>Status</th></tr></thead>
+                <tbody id="appointments-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Operational insights</h3><span class="chip">Auto-generated</span></div>
+            <div class="card-body insight-list" id="insights"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="schedule">
+        <div class="grid two-col">
+          <div class="card">
+            <div class="card-head"><h3>Book a new appointment</h3><span class="chip">Mock action</span></div>
+            <div class="card-body">
+              <form id="booking-form" class="form-grid">
+                <div class="field">
+                  <label for="patient-name">Patient name</label>
+                  <input id="patient-name" name="patientName" value="Nneka Okoro" required />
+                </div>
+                <div class="field">
+                  <label for="patient-phone">Phone</label>
+                  <input id="patient-phone" name="phone" value="+234 803 555 0194" required />
+                </div>
+                <div class="field">
+                  <label for="doctor-select">Doctor</label>
+                  <select id="doctor-select" name="doctor"></select>
+                </div>
+                <div class="field">
+                  <label for="time-select">Time</label>
+                  <select id="time-select" name="time">
+                    <option>09:30 AM</option>
+                    <option selected>11:30 AM</option>
+                    <option>01:00 PM</option>
+                    <option>03:30 PM</option>
+                  </select>
+                </div>
+                <div class="field full">
+                  <label for="visit-reason">Reason for visit</label>
+                  <input id="visit-reason" name="reason" value="Follow-up consultation" required />
+                </div>
+                <div class="field full">
+                  <button class="btn primary" type="submit">Create appointment and send reminder</button>
+                </div>
+              </form>
+              <div class="success" id="booking-success"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>What Vitar simulates</h3></div>
+            <div class="card-body insight-list">
+              <div class="insight"><strong>Instant slot validation</strong><p>Reception can choose available doctor slots without checking a paper register.</p></div>
+              <div class="insight"><strong>Reminder creation</strong><p>The mock appointment receives WhatsApp, SMS, and email reminder states locally.</p></div>
+              <div class="insight"><strong>Risk score assignment</strong><p>Every new booking gets a seeded no-show risk score so staff know who needs follow-up.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="patients">
+        <div class="card">
+          <div class="card-head">
+            <h3>Patient list</h3>
+            <input id="patient-search" aria-label="Search patients" placeholder="Search by patient, phone, or condition" style="max-width:320px; width:100%; padding:10px 12px; border-radius:999px; border:1.5px solid rgba(10,22,40,0.12);" />
+          </div>
+          <div class="card-body">
+            <div class="grid patient-grid" id="patient-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="risk">
+        <div class="grid two-col">
+          <div class="card">
+            <div class="card-head"><h3>No-show prediction queue</h3><span class="chip">Prioritized follow-up</span></div>
+            <div class="card-body table-wrap">
+              <table class="table">
+                <thead><tr><th>Patient</th><th>Appointment</th><th>Risk</th><th>Reason</th><th>Action</th></tr></thead>
+                <tbody id="risk-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Monthly analytics</h3></div>
+            <div class="card-body">
+              <div class="chart" id="chart"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="checkin">
+        <div class="card">
+          <div class="card-head"><h3>Waiting room QR check-in</h3><span class="chip">Reception-light flow</span></div>
+          <div class="card-body qr-wrap">
+            <div class="qr" aria-label="Decorative mock QR code"></div>
+            <div>
+              <div class="insight"><strong>Patients scan at arrival</strong><p>The waiting room QR code opens the clinic check-in page. In this mock demo, clicking below marks the next pending appointment as checked in.</p></div>
+              <div class="button-row" style="margin-top:14px;">
+                <button class="btn primary" type="button" id="scan-next">Simulate patient scan</button>
+                <button class="btn" type="button" id="clear-queue">Clear checked-in queue</button>
+              </div>
+              <div class="waiting-list" id="waiting-list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="personalize">
+        <div class="card">
+          <div class="card-head"><h3>Personalize this pitch</h3><span class="chip">Stored in this browser</span></div>
+          <div class="card-body">
+            <form id="persona-form" class="persona">
+              <div class="field">
+                <label for="clinic-name-input">Clinic or hospital name</label>
+                <input id="clinic-name-input" name="clinicName" />
+              </div>
+              <div class="field">
+                <label for="doctor-one">Doctor 1</label>
+                <input id="doctor-one" name="doctorOne" />
+              </div>
+              <div class="field">
+                <label for="doctor-two">Doctor 2</label>
+                <input id="doctor-two" name="doctorTwo" />
+              </div>
+              <div class="field">
+                <label for="doctor-three">Doctor 3</label>
+                <input id="doctor-three" name="doctorThree" />
+              </div>
+              <div class="field">
+                <label for="city-input">City</label>
+                <input id="city-input" name="city" />
+              </div>
+              <div class="field">
+                <label>&nbsp;</label>
+                <button class="btn primary" type="submit">Apply to demo</button>
+              </div>
+            </form>
+            <div class="success" id="persona-success">Demo names updated. Use Reset Demo to return to the seeded clinic.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="patient-view" id="patient-view">
+    <div class="pv-card">
+      <p class="pv-eyebrow">Patient view</p>
+      <h2>Your upcoming visit</h2>
+      <p class="pv-sub">This is what a patient sees after booking with your clinic — no app to download.</p>
+      <div class="pv-appt" id="pv-appt">
+        <!-- filled by JS -->
+      </div>
+      <div class="pv-timeline" id="pv-timeline">
+        <!-- filled by JS -->
+      </div>
+      <div class="pv-actions">
+        <button class="btn primary" type="button" id="pv-confirm">Confirm visit</button>
+        <button class="btn" type="button" id="pv-reschedule">Reschedule</button>
+      </div>
+      <p class="pv-note">Patients confirm or reschedule with one tap from WhatsApp — no phone calls to the front desk.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const seed = {
+      clinic: { name: 'Adeyemi Family Clinic', city: 'Enugu' },
+      doctors: ['Dr. Tunde Adeyemi', 'Dr. Amara Nwosu', 'Dr. Ibrahim Bello'],
+      patients: [
+        { name: 'Chiamaka Eze', phone: '+234 801 234 1188', age: 34, condition: 'Hypertension', lastVisit: '2 weeks ago', visits: 8 },
+        { name: 'Musa Danjuma', phone: '+234 802 480 4421', age: 47, condition: 'Diabetes review', lastVisit: '1 month ago', visits: 5 },
+        { name: 'Amina Yusuf', phone: '+234 803 991 7720', age: 29, condition: 'Antenatal care', lastVisit: '6 days ago', visits: 4 },
+        { name: 'Emeka Obi', phone: '+234 806 118 9033', age: 41, condition: 'Lab result review', lastVisit: '3 months ago', visits: 2 },
+        { name: 'Sade Williams', phone: '+234 809 221 7604', age: 38, condition: 'Malaria follow-up', lastVisit: '1 week ago', visits: 3 },
+        { name: 'Nneka Okoro', phone: '+234 803 555 0194', age: 31, condition: 'General consultation', lastVisit: 'New patient', visits: 0 }
+      ],
+      appointments: [
+        { time: '08:30 AM', patient: 'Chiamaka Eze', doctor: 'Dr. Tunde Adeyemi', reason: 'Blood pressure review', status: 'confirmed', risk: 12, riskReason: 'Confirmed last reminder' },
+        { time: '09:15 AM', patient: 'Musa Danjuma', doctor: 'Dr. Amara Nwosu', reason: 'Diabetes review', status: 'pending', risk: 64, riskReason: 'Missed 1 visit and no SMS reply' },
+        { time: '10:00 AM', patient: 'Amina Yusuf', doctor: 'Dr. Ibrahim Bello', reason: 'Antenatal check', status: 'checked-in', risk: 8, riskReason: 'Arrived early on past visits' },
+        { time: '12:30 PM', patient: 'Emeka Obi', doctor: 'Dr. Tunde Adeyemi', reason: 'Lab result review', status: 'pending', risk: 78, riskReason: 'No confirmation after 2 reminders' },
+        { time: '02:00 PM', patient: 'Sade Williams', doctor: 'Dr. Amara Nwosu', reason: 'Follow-up consultation', status: 'confirmed', risk: 22, riskReason: 'Confirmed via WhatsApp' }
+      ],
+      monthly: [
+        { label: 'Jan', value: 118 },
+        { label: 'Feb', value: 132 },
+        { label: 'Mar', value: 149 },
+        { label: 'Apr', value: 141 },
+        { label: 'May', value: 166 },
+        { label: 'Jun', value: 184 }
+      ]
+    };
+
+    const storageKey = 'vitar-demo-state';
+    let state = loadState();
+
+    function clone(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        return saved ? JSON.parse(saved) : clone(seed);
+      } catch (err) {
+        return clone(seed);
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    }
+
+    function resetState() {
+      state = clone(seed);
+      saveState();
+      renderAll();
+      showToast('Demo reset to the seeded clinic.');
+    }
+
+    function riskLabel(score) {
+      if (score >= 65) return 'high';
+      if (score >= 35) return 'medium';
+      return 'low';
+    }
+
+    function setScreen(screen) {
+      document.querySelectorAll('.section').forEach((section) => section.classList.toggle('active', section.id === screen));
+      document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.screen === screen));
+      const copy = {
+        overview: ['Clinic command centre', 'See today&apos;s bookings, risk levels, patient flow, and reminders in one click-through dashboard.'],
+        schedule: ['Appointment scheduling', 'Create a fake booking and watch it appear in the clinic schedule with reminders and a risk score.'],
+        patients: ['Patient management', 'Search mock patients by name, phone, condition, or visit history.'],
+        risk: ['No-show prediction', 'Prioritize calls and WhatsApp follow-ups based on appointment risk scores.'],
+        checkin: ['QR check-in', 'Simulate a patient scanning the waiting-room QR code and joining the queue.'],
+        personalize: ['Pitch personalization', 'Swap in a hospital name and doctor names without editing code.']
+      };
+      document.getElementById('screen-title').innerHTML = copy[screen][0];
+      document.getElementById('screen-subtitle').innerHTML = copy[screen][1];
+    }
+
+    function renderMetrics() {
+      const total = state.appointments.length;
+      const checkedIn = state.appointments.filter((a) => a.status === 'checked-in').length;
+      const highRisk = state.appointments.filter((a) => a.risk >= 65).length;
+      const avgRisk = Math.round(state.appointments.reduce((sum, a) => sum + a.risk, 0) / total);
+      const metrics = [
+        ['Today&apos;s bookings', total, '+2 since morning'],
+        ['Checked in', checkedIn, 'QR queue updated'],
+        ['High-risk visits', highRisk, 'Needs follow-up'],
+        ['Avg. no-show risk', avgRisk + '%', 'Across today']
+      ];
+      document.getElementById('metrics').innerHTML = metrics.map((m) => `
+        <div class="card metric"><span>${m[0]}</span><strong>${m[1]}</strong><small>${m[2]}</small></div>
+      `).join('');
+      document.getElementById('today-count').textContent = `${total} visits`;
+    }
+
+    function renderAppointments() {
+      document.getElementById('appointments-table').innerHTML = state.appointments.map((a) => `
+        <tr>
+          <td>${a.time}</td>
+          <td><strong>${a.patient}</strong></td>
+          <td>${a.doctor}</td>
+          <td>${a.reason}</td>
+          <td><span class="status ${a.status}">${a.status}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    function renderInsights() {
+      const busiestDoctor = state.doctors[0];
+      const highRisk = state.appointments.filter((a) => a.risk >= 65).length;
+      document.getElementById('insights').innerHTML = [
+        [`${highRisk} appointments need follow-up`, 'Vitar highlights high-risk bookings so reception can call before slots go empty.'],
+        [`${busiestDoctor} is busiest today`, 'Use doctor-level volume to adjust front-desk staffing and patient expectations.'],
+        ['WhatsApp confirmations are strongest', 'Confirmed patients in this demo show lower no-show scores than pending patients.']
+      ].map((item) => `<div class="insight"><strong>${item[0]}</strong><p>${item[1]}</p></div>`).join('');
+    }
+
+    function renderDoctorOptions() {
+      document.getElementById('doctor-select').innerHTML = state.doctors.map((doctor) => `<option>${doctor}</option>`).join('');
+    }
+
+    function renderPatients(filter = '') {
+      const needle = filter.trim().toLowerCase();
+      const patients = state.patients.filter((p) => [p.name, p.phone, p.condition, p.lastVisit].join(' ').toLowerCase().includes(needle));
+      document.getElementById('patient-grid').innerHTML = patients.map((p) => `
+        <div class="card patient-card" onclick="showToast('${p.name}: ${p.condition}, ${p.visits} recorded visits.')">
+          <h4>${p.name}</h4>
+          <p>${p.phone}</p>
+          <p>${p.age} years · ${p.condition}</p>
+          <div class="patient-meta">
+            <span class="chip">${p.visits} visits</span>
+            <span class="chip">Last: ${p.lastVisit}</span>
+          </div>
+        </div>
+      `).join('') || '<p style="color:var(--slate);">No mock patients match that search.</p>';
+    }
+
+    function renderRisk() {
+      const sorted = [...state.appointments].sort((a, b) => b.risk - a.risk);
+      document.getElementById('risk-table').innerHTML = sorted.map((a) => `
+        <tr>
+          <td><strong>${a.patient}</strong></td>
+          <td>${a.time}<br><span style="color:var(--slate);">${a.doctor}</span></td>
+          <td>
+            <span class="risk ${riskLabel(a.risk)}">${a.risk}% ${riskLabel(a.risk)}</span>
+            <div class="riskbar" style="margin-top:8px;"><i style="width:${a.risk}%"></i></div>
+          </td>
+          <td>${a.riskReason}</td>
+          <td><button class="btn" type="button" onclick="confirmReminder('${a.patient}')">Send reminder</button></td>
+        </tr>
+      `).join('');
+    }
+
+    function renderChart() {
+      const max = Math.max(...state.monthly.map((m) => m.value));
+      document.getElementById('chart').innerHTML = state.monthly.map((m) => `
+        <div class="bar-row">
+          <strong>${m.label}</strong>
+          <div class="bar-track"><i style="width:${Math.round((m.value / max) * 100)}%"></i></div>
+          <span>${m.value}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderQueue() {
+      const checked = state.appointments.filter((a) => a.status === 'checked-in');
+      document.getElementById('waiting-list').innerHTML = checked.map((a, index) => `
+        <div class="queue-item">
+          <div><strong>${index + 1}. ${a.patient}</strong><br><span>${a.reason} with ${a.doctor}</span></div>
+          <span class="status checked-in">checked-in</span>
+        </div>
+      `).join('') || '<div class="queue-item"><strong>No patients checked in yet</strong><span>Scan to add one</span></div>';
+    }
+
+    function renderPersonaForm() {
+      document.getElementById('clinic-name-input').value = state.clinic.name;
+      document.getElementById('doctor-one').value = state.doctors[0] || '';
+      document.getElementById('doctor-two').value = state.doctors[1] || '';
+      document.getElementById('doctor-three').value = state.doctors[2] || '';
+      document.getElementById('city-input').value = state.clinic.city;
+      document.getElementById('clinic-title').textContent = state.clinic.name;
+    }
+
+    function renderAll() {
+      renderMetrics();
+      renderAppointments();
+      renderInsights();
+      renderDoctorOptions();
+      renderPatients(document.getElementById('patient-search')?.value || '');
+      renderRisk();
+      renderChart();
+      renderQueue();
+      renderPersonaForm();
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.style.display = 'block';
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => { toast.style.display = 'none'; }, 3200);
+    }
+
+    function confirmReminder(patient) {
+      showToast(`Reminder queued for ${patient} via WhatsApp and SMS.`);
+    }
+
+    document.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => setScreen(btn.dataset.screen)));
+    document.querySelectorAll('[data-jump]').forEach((btn) => btn.addEventListener('click', () => setScreen(btn.dataset.jump)));
+    document.getElementById('reset-demo').addEventListener('click', resetState);
+    document.getElementById('patient-search').addEventListener('input', (event) => renderPatients(event.target.value));
+
+    document.getElementById('booking-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const patientName = data.get('patientName').toString().trim();
+      const phone = data.get('phone').toString().trim();
+      const doctor = data.get('doctor').toString();
+      const time = data.get('time').toString();
+      const reason = data.get('reason').toString().trim();
+      const risk = Math.floor(18 + Math.random() * 54);
+      state.appointments.push({ time, patient: patientName, doctor, reason, status: 'pending', risk, riskReason: 'New booking awaiting confirmation' });
+      if (!state.patients.some((p) => p.name.toLowerCase() === patientName.toLowerCase())) {
+        state.patients.push({ name: patientName, phone, age: 31, condition: reason, lastVisit: 'New patient', visits: 0 });
+      }
+      saveState();
+      renderAll();
+      const success = document.getElementById('booking-success');
+      success.textContent = `${patientName} booked for ${time}. Mock reminders and risk score created.`;
+      success.style.display = 'block';
+      showToast("Appointment added to today's schedule.");
+    });
+
+    document.getElementById('scan-next').addEventListener('click', () => {
+      const next = state.appointments.find((a) => a.status !== 'checked-in');
+      if (!next) {
+        showToast('Every mock patient is already checked in.');
+        return;
+      }
+      next.status = 'checked-in';
+      next.risk = Math.max(4, Math.round(next.risk / 2));
+      next.riskReason = 'Patient scanned QR code at reception';
+      saveState();
+      renderAll();
+      showToast(`${next.patient} checked in from the QR flow.`);
+    });
+
+    document.getElementById('clear-queue').addEventListener('click', () => {
+      state.appointments.forEach((a) => {
+        if (a.status === 'checked-in') a.status = 'confirmed';
+      });
+      saveState();
+      renderAll();
+      showToast('Checked-in queue cleared for the demo.');
+    });
+
+    document.getElementById('persona-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      state.clinic.name = data.get('clinicName').toString().trim() || seed.clinic.name;
+      state.clinic.city = data.get('city').toString().trim() || seed.clinic.city;
+      state.doctors = [data.get('doctorOne'), data.get('doctorTwo'), data.get('doctorThree')]
+        .map((name) => name.toString().trim())
+        .filter(Boolean);
+      while (state.doctors.length < 3) state.doctors.push(seed.doctors[state.doctors.length]);
+      state.appointments = state.appointments.map((a, index) => ({ ...a, doctor: state.doctors[index % state.doctors.length] }));
+      saveState();
+      renderAll();
+      document.getElementById('persona-success').style.display = 'block';
+      showToast('Pitch details applied to the demo.');
+    });
+
+    renderAll();
+
+    // ── Page load skeleton ──
+    window.addEventListener('load', () => {
+      setTimeout(() => document.getElementById('page-loading').classList.add('done'), 280);
+    });
+
+    // ── Hospital/Doctor vs Patient mode ──
+    const staffView = document.getElementById('staff-view');
+    const patientView = document.getElementById('patient-view');
+    const modeStaffBtn = document.getElementById('mode-staff');
+    const modePatientBtn = document.getElementById('mode-patient');
+
+    function renderPatientView() {
+      const appt = state.appointments.find((a) => a.status !== 'checked-in') || state.appointments[0];
+      if (!appt) return;
+      document.getElementById('pv-appt').innerHTML = `
+        <strong>${appt.patient}'s appointment</strong>
+        <span>${appt.reason} with ${appt.doctor} · ${appt.time}</span><br>
+        <span class="status ${appt.status} pv-status">${appt.status}</span>
+      `;
+      document.getElementById('pv-timeline').innerHTML = `
+        <div class="pv-msg">Hi ${appt.patient.split(' ')[0]} 👋 this is a reminder that your appointment with <b>${appt.doctor}</b> is <b>${appt.time}</b>.</div>
+        <div class="pv-msg">Reply <b>1</b> to confirm or <b>2</b> to reschedule.</div>
+      `;
+    }
+
+    function setMode(mode) {
+      const isPatient = mode === 'patient';
+      staffView.style.display = isPatient ? 'none' : 'grid';
+      patientView.classList.toggle('active', isPatient);
+      modeStaffBtn.classList.toggle('active', !isPatient);
+      modePatientBtn.classList.toggle('active', isPatient);
+      if (isPatient) renderPatientView();
+    }
+
+    modeStaffBtn.addEventListener('click', () => setMode('staff'));
+    modePatientBtn.addEventListener('click', () => setMode('patient'));
+
+    document.getElementById('pv-confirm').addEventListener('click', () => {
+      const appt = state.appointments.find((a) => a.status !== 'checked-in') || state.appointments[0];
+      if (appt) { appt.status = 'confirmed'; appt.riskReason = 'Confirmed by patient'; appt.risk = Math.max(5, Math.round(appt.risk / 2)); }
+      saveState();
+      renderAll();
+      renderPatientView();
+      showToast('Visit confirmed — thanks!');
+    });
+
+    document.getElementById('pv-reschedule').addEventListener('click', () => {
+      showToast('Reschedule request sent to the front desk.');
+    });
+  </script>
+</body>
+</html>

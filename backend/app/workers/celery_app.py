@@ -51,6 +51,10 @@ beat_schedule = {
         "task": "app.workers.tasks.dead_letter_processor",
         "schedule": crontab(minute=0, hour="*/6"),
     },
+    "auto-send-pending-payouts": {
+        "task": "app.workers.tasks.auto_send_pending_payouts",
+        "schedule": crontab(minute=0),
+    },
     "cleanup-expired-refresh-tokens": {
         "task": "app.workers.tasks.cleanup_expired_refresh_tokens",
         "schedule": crontab(hour=3, minute=0),
@@ -120,6 +124,7 @@ celery.conf.update(
         "app.workers.tasks.expire_trial_subscriptions":     {"queue": "billing"},
         "app.workers.tasks.retry_failed_notifications":     {"queue": "notifications"},
         "app.workers.tasks.retry_failed_payments":          {"queue": "billing"},
+        "app.workers.tasks.auto_send_pending_payouts":      {"queue": "billing"},
         "app.workers.tasks.refresh_upcoming_risk_scores":   {"queue": "ai"},
         "app.workers.tasks.dead_letter_processor":          {"queue": "dead_letter"},
         "app.workers.tasks.update_patient_attendance":      {"queue": "notifications"},

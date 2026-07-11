@@ -16,7 +16,7 @@ Events:
 Usage (from webhooks.py, billing.py, tasks.py):
 
     from app.core.subscription_analytics import track_subscription_event
-    track_subscription_event("subscription_started", clinic_id="...", plan="growth", amount=25000, currency="NGN")
+    track_subscription_event("subscription_started", clinic_id="...", plan="growth", amount=60000, currency="NGN")
 """
 
 import logging

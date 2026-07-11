@@ -23,6 +23,12 @@ import AuthLayout from '@/layouts/AuthLayout';
 // Marketing
 import LandingPage from '@/pages/marketing/LandingPage';
 import PricingPage from '@/pages/marketing/PricingPage';
+import ContactPage from '@/pages/marketing/ContactPage';
+import GrowthPage from '@/pages/marketing/GrowthPage';
+import ScreensPage from '@/pages/marketing/ScreensPage';
+import FeedbackPage from '@/pages/marketing/FeedbackPage';
+import PrivacyPage from '@/pages/marketing/PrivacyPage';
+import TermsPage from '@/pages/marketing/TermsPage';
 
 // Auth
 import LoginPage from '@/pages/auth/LoginPage';
@@ -160,8 +166,19 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
 
           <Routes>
             {/* ── Public Marketing ──────────────────────────────────────── */}
+            {/* LandingPage renders its own nav/footer (converted from the
+                LiveVault demo design), so it stays outside MarketingLayout
+                to avoid a duplicate header/footer. Same for the small
+                marketing subpages below, which use MarketingSubpageChrome. */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/growth" element={<GrowthPage />} />
+            <Route path="/screens" element={<ScreensPage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+
             <Route element={<MarketingLayout />}>
-              <Route path="/" element={<LandingPage />} />
               <Route path="/pricing" element={<PricingPage />} />
             </Route>
 

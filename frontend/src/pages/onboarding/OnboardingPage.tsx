@@ -3,14 +3,14 @@
  * 5-step guided setup: Profile → Doctor → Availability → Notifications → Test Booking
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import VitarLogo from '@/components/shared/VitarLogo';
-import { CheckCircle, ChevronRight, Loader2, Building2, UserPlus, Clock, Bell, Rocket } from 'lucide-react';
-import { clinicsApi, doctorsApi, onboardingApi } from '@/lib/api/services';
+import { CheckCircle, ChevronRight, Loader2, Building2, UserPlus, Clock, Bell, Rocket, Banknote, ShieldCheck } from 'lucide-react';
+import { clinicsApi, doctorsApi, onboardingApi, hospitalBankAccountApi } from '@/lib/api/services';
 import { useAuthStore } from '@/stores/authStore';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -18,9 +18,10 @@ import { toast } from 'sonner';
 const STEPS = [
   { id: 1, label: 'Clinic Profile',   icon: Building2 },
   { id: 2, label: 'Add Doctor',       icon: UserPlus },
-  { id: 3, label: 'Set Availability', icon: Clock },
-  { id: 4, label: 'Notifications',    icon: Bell },
-  { id: 5, label: 'You\'re Live!',    icon: Rocket },
+  { id: 3, label: 'Payout Account',   icon: Banknote },
+  { id: 4, label: 'Set Availability', icon: Clock },
+  { id: 5, label: 'Notifications',    icon: Bell },
+  { id: 6, label: 'You\'re Live!',    icon: Rocket },
 ];
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -29,8 +30,22 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [doctorId, setDoctorId] = useState<string | null>(null);
   const [selectedDays, setSelectedDays] = useState([0,1,2,3,4]);
-  const { refreshClinic } = useAuthStore();
+  const { refreshClinic, clinic } = useAuthStore();
   const navigate = useNavigate();
+
+  // Step 3: Payout account
+  const [banks, setBanks] = useState<{ code: string; name: string }[]>([]);
+  const [bankCode, setBankCode] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [resolvedName, setResolvedName] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [savingBank, setSavingBank] = useState(false);
+
+  useEffect(() => {
+    hospitalBankAccountApi.getBanks()
+      .then(res => setBanks(res.banks || []))
+      .catch(() => setBanks([]));
+  }, []);
 
   // Step 1: Clinic profile
   const profileForm = useForm({
@@ -71,25 +86,54 @@ export default function OnboardingPage() {
     } catch (err) { toast.error(getApiError(err)); }
   };
 
+  const handleResolveAccount = async () => {
+    if (!clinic?.id || accountNumber.length !== 10 || !bankCode) return;
+    setResolving(true);
+    setResolvedName(null);
+    try {
+      const res = await hospitalBankAccountApi.resolve(clinic.id, accountNumber, bankCode);
+      setResolvedName(res.account_name || null);
+      if (!res.account_name) toast.error('Could not verify this account. Double-check the number and bank.');
+    } catch (err) {
+      toast.error(getApiError(err) || 'Could not verify this account with Paystack');
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const handleSaveBankAccount = async () => {
+    if (!clinic?.id || !resolvedName) return;
+    setSavingBank(true);
+    try {
+      await hospitalBankAccountApi.create(clinic.id, accountNumber, bankCode);
+      toast.success('Payout account saved');
+      await advance(4);
+    } catch (err) {
+      toast.error(getApiError(err) || 'Could not save payout account');
+    } finally {
+      setSavingBank(false);
+    }
+  };
+
   const handleAvailabilitySubmit = async () => {
-    if (!doctorId) { await advance(4); return; }
+    if (!doctorId) { await advance(5); return; }
     try {
       const slots = selectedDays.map(day => ({
         day_of_week: day, start_time: '09:00', end_time: '17:00',
         slot_duration_mins: 30, is_available: true,
       }));
       await doctorsApi.setAvailability(doctorId, slots);
-      await advance(4);
+      await advance(5);
     } catch (err) { toast.error(getApiError(err)); }
   };
 
   const handleNotificationsSubmit = async () => {
-    await advance(5);
+    await advance(6);
   };
 
   const handleFinish = async () => {
     try {
-      await onboardingApi.completeStep(5);
+      await onboardingApi.completeStep(6);
       await refreshClinic();
       navigate('/dashboard');
     } catch { navigate('/dashboard'); }
@@ -203,8 +247,85 @@ export default function OnboardingPage() {
             </form>
           )}
 
-          {/* ── Step 3: Availability ───────────────────────────── */}
+          {/* ── Step 3: Payout Account ─────────────────────────── */}
           {step === 3 && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Where should we send your payouts?</h2>
+                <p className="text-slate-500 text-sm mt-1">
+                  Patients pay through Vitar's secure checkout. We hold the funds, then transfer
+                  your share to this account after each confirmed appointment.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Bank</label>
+                <select
+                  value={bankCode}
+                  onChange={(e) => { setBankCode(e.target.value); setResolvedName(null); }}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                >
+                  <option value="">Select your bank</option>
+                  {banks.map(b => (
+                    <option key={b.code} value={b.code}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Account number</label>
+                <input
+                  value={accountNumber}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setAccountNumber(digits);
+                    setResolvedName(null);
+                  }}
+                  placeholder="10-digit NUBAN"
+                  maxLength={10}
+                  inputMode="numeric"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono tracking-wider"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleResolveAccount}
+                disabled={!bankCode || accountNumber.length !== 10 || resolving}
+                className="w-full border border-teal-600 text-teal-700 hover:bg-teal-50 font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resolving && <Loader2 className="w-4 h-4 animate-spin" />}
+                Verify account
+              </button>
+
+              {resolvedName && (
+                <div className="flex items-center gap-2 rounded-lg bg-teal-50 border border-teal-200 p-3">
+                  <ShieldCheck className="w-4 h-4 text-teal-600 flex-shrink-0" />
+                  <p className="text-sm text-teal-800">
+                    Verified: <span className="font-semibold">{resolvedName}</span>
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveBankAccount}
+                disabled={!resolvedName || savingBank}
+                className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingBank && <Loader2 className="w-4 h-4 animate-spin" />}
+                Save & Continue
+              </button>
+
+              <button type="button" onClick={() => advance(4)}
+                className="w-full text-slate-500 text-sm hover:text-slate-700">
+                Skip for now — you can add this later in Settings
+              </button>
+            </div>
+          )}
+
+          {/* ── Step 4: Availability ───────────────────────────── */}
+          {step === 4 && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Set working days</h2>
@@ -236,8 +357,8 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ── Step 4: Notifications ──────────────────────────── */}
-          {step === 4 && (
+          {/* ── Step 5: Notifications ──────────────────────────── */}
+          {step === 5 && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Smart reminder setup</h2>
@@ -275,8 +396,8 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ── Step 5: Done! ──────────────────────────────────── */}
-          {step === 5 && (
+          {/* ── Step 6: Done! ──────────────────────────────────── */}
+          {step === 6 && (
             <div className="text-center space-y-4">
               <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto">
                 <Rocket className="w-8 h-8 text-teal-600" />

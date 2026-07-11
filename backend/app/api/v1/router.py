@@ -26,6 +26,8 @@ from app.api.v1.endpoints import (
     admin_subscriptions,
     admin_analytics,
     admin_audit,
+    admin_payouts,
+    hospital_bank_accounts,
     qr,
     push_notifications,   # ← NEW
 )
@@ -40,6 +42,7 @@ api_router.include_router(appointments.router, prefix="/appointments", tags=["Ap
 api_router.include_router(booking.router, prefix="/booking", tags=["Public Booking"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
+api_router.include_router(hospital_bank_accounts.router, tags=["Hospital Bank Accounts"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(ai.router, prefix="/ai", tags=["AI Features"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
@@ -57,3 +60,4 @@ api_router.include_router(admin_clinics.router, tags=["Admin — Clinics"])
 api_router.include_router(admin_subscriptions.router, tags=["Admin — Subscriptions"])
 api_router.include_router(admin_analytics.router, tags=["Admin — Analytics"])
 api_router.include_router(admin_audit.router, tags=["Admin — Audit Log"])
+api_router.include_router(admin_payouts.router)

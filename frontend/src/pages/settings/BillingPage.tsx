@@ -34,6 +34,8 @@ function BankTransferModal({
   data,
   onClose,
   onActivated,
+  onRegenerate,
+  regenerating,
 }: {
   data: {
     amount: number;
@@ -48,6 +50,8 @@ function BankTransferModal({
   };
   onClose: () => void;
   onActivated: () => void;
+  onRegenerate: () => void;
+  regenerating: boolean;
 }) {
   const [copiedRef, setCopiedRef] = useState(false);
   const [copiedAcc, setCopiedAcc] = useState(false);
@@ -137,10 +141,11 @@ function BankTransferModal({
             <p className="font-semibold text-amber-800">Payment session expired</p>
             <p className="text-sm text-amber-700">This payment window has closed.</p>
             <button
-              onClick={onClose}
-              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
+              onClick={onRegenerate}
+              disabled={regenerating}
+              className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
             >
-              Generate New Payment
+              {regenerating ? 'Generating…' : 'Generate New Payment'}
             </button>
           </div>
         )}
@@ -307,6 +312,11 @@ export default function BillingPage() {
           data={transferData}
           onClose={() => { setTransferData(null); refetchSub(); }}
           onActivated={() => { refetchSub(); refreshClinic(); }}
+          onRegenerate={() => {
+            if (!selectedPlan) return;
+            subscribeMutation.mutate({ plan: selectedPlan, cycle: billingCycle });
+          }}
+          regenerating={subscribeMutation.isPending}
         />
       )}
 

@@ -55,6 +55,10 @@ async def _send(to_email: str, subject: str, html: str):
             if resp.status_code >= 400:
                 raise Exception(f"{provider} {resp.status_code}: {resp.text[:200]}")
             email_circuit._on_success()
+            logger.info(
+                "Email sent",
+                extra={"to": to_email[:4] + "***", "subject": subject, "provider": provider},
+            )
     except Exception as e:
         email_circuit._on_failure()
         logger.error(

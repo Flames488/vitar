@@ -10,7 +10,12 @@ services:
       FRONTEND_URL: https://livevault.cloud
       VITE_API_URL: https://livevault.cloud/api/v1
       ALLOWED_ORIGINS: '["https://livevault.cloud","https://www.livevault.cloud"]'
-      ALLOWED_HOSTS: '["livevault.cloud","www.livevault.cloud"]'
+      # localhost/127.0.0.1 must stay in this list — Docker's own healthcheck
+      # (docker-compose.yml api service) hits http://localhost:8000/health/ready
+      # directly, bypassing nginx, and TrustedHostMiddleware rejects that Host
+      # header otherwise ("Invalid host header"), which Docker reports as the
+      # container being unhealthy even though it booted fine.
+      ALLOWED_HOSTS: '["localhost","127.0.0.1","livevault.cloud","www.livevault.cloud"]'
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       SKIP_MIGRATIONS: "false"
 

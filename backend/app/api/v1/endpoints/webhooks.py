@@ -96,6 +96,11 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
         {"payout_id": payout.id, "appointment_id": appointment.id, "hospital_id": appointment.clinic_id},
         ttl=24 * 60 * 60,
     )
+    try:
+        from app.workers.push_tasks import notify_new_booking
+        notify_new_booking.delay(appointment.id)
+    except Exception as e:
+        logger.error(f"Failed to dispatch new-booking notification: {e}")
     return payout
 
 

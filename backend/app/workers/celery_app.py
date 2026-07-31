@@ -19,7 +19,7 @@ celery = Celery(
     "vitar",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.workers.tasks"],
+    include=["app.workers.tasks", "app.workers.push_tasks"],
 )
 
 beat_schedule = {

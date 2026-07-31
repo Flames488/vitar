@@ -68,6 +68,14 @@ def _dispatch_waiting_list_notify(clinic_id: str, doctor_id: str, slot_iso: str)
         logger.error(f"Failed to dispatch waiting-list notification: {e}")
 
 
+def _dispatch_new_booking_notify(appointment_id: str):
+    try:
+        from app.workers.push_tasks import notify_new_booking
+        notify_new_booking.delay(appointment_id)
+    except Exception as e:
+        logger.error(f"Failed to dispatch new-booking notification: {e}")
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/clinic/{slug}")
@@ -295,6 +303,7 @@ async def public_book_appointment(
     log_booking_event("public_booked", appointment.id, clinic.id, body.doctor_id, patient.id)
     if not payment_required:
         background_tasks.add_task(_dispatch_risk_and_reminders, appointment.id)
+        background_tasks.add_task(_dispatch_new_booking_notify, appointment.id)
 
     return response
 

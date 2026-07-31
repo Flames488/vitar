@@ -16,7 +16,7 @@ import { useState, useEffect, useCallback } from 'react'
 import apiClient from '@/lib/api/client'
 import { analytics } from '@/lib/analytics'
 
-const PUSH_API = '/api/v1/push'
+const PUSH_API = '/push'
 
 async function getVapidKey(): Promise<string> {
   const res = await apiClient.get<{ publicKey: string }>(`${PUSH_API}/vapid-key`)

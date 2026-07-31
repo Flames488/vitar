@@ -117,6 +117,33 @@ def build_reminder_payload(
     }
 
 
+def build_new_booking_payload(
+    patient_name: str,
+    doctor_name: str,
+    scheduled_at,
+    appointment_id: str,
+    frontend_url: str,
+) -> dict:
+    """Push payload sent to clinic staff the moment a new booking comes in."""
+    from datetime import datetime
+    if isinstance(scheduled_at, str):
+        scheduled_at = datetime.fromisoformat(scheduled_at)
+
+    date_str = scheduled_at.strftime("%a %d %b, %I:%M %p")
+    return {
+        "title": "New appointment booked",
+        "body": f"{patient_name} booked with {doctor_name} for {date_str}.",
+        "icon": "/icon-192x192.png",
+        "badge": "/icon-72x72.png",
+        "tag": f"new-booking-{appointment_id}",
+        "data": {
+            "url": f"{frontend_url}/appointments/{appointment_id}",
+            "appointment_id": appointment_id,
+            "event": "new_booking_opened",
+        },
+    }
+
+
 def _sentry_breadcrumb(message: str, data: dict):
     try:
         import sentry_sdk

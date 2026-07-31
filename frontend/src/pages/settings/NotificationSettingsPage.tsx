@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { notificationsApi } from '@/lib/api/services';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
+import PushNotificationToggle from '@/components/shared/PushNotificationToggle';
 
 export function NotificationSettingsPage() {
   const { data, isLoading } = useQuery({ queryKey: ['notification-settings'], queryFn: notificationsApi.getSettings });
@@ -31,6 +32,8 @@ export function NotificationSettingsPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-slate-900">Notification Settings</h1>
+
+      <PushNotificationToggle />
 
       <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
         {TOGGLES.map(({ key, label, desc }) => (

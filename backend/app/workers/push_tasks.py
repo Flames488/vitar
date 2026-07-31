@@ -1,11 +1,16 @@
 """
 Vitar — Push Notification Celery Tasks
 
-Add these tasks to your existing tasks.py or import this module in celery_app.py.
+Registered with Celery via the `include` list in celery_app.py.
 
 Tasks:
+  notify_new_booking(appointment_id)
+    — fires the moment a booking is made (or payment confirmed): push +
+      email to clinic staff. Dispatched from booking.py / webhooks.py.
+
   send_push_reminders(appointment_id)
     — fires Web Push to all subscribed users of the clinic owning the appointment.
+    — scheduled (via eta) from schedule_appointment_reminders in tasks.py.
     — tracks: appointment_reminder_sent
 
   cleanup_expired_push_subscriptions
@@ -123,6 +128,107 @@ def send_push_reminders(self, appointment_id: str):
     except Exception as exc:
         db.rollback()
         logger.error(f"send_push_reminders failed: {exc}", exc_info=True)
+        raise self.retry(exc=exc)
+    finally:
+        db.close()
+
+
+@celery.task(
+    name="app.workers.push_tasks.notify_new_booking",
+    bind=True,
+    max_retries=2,
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_jitter=True,
+    queue="notifications",
+)
+def notify_new_booking(self, appointment_id: str):
+    """
+    Alert clinic staff the moment a new appointment is booked (or, for
+    payment-required bookings, the moment payment is confirmed): push to
+    every subscribed browser for the clinic, plus an email to the clinic
+    owner as a fallback for staff who haven't enabled push.
+    """
+    from app.core.config import settings
+    from app.workers.tasks import run_async
+
+    db = SessionLocal()
+    try:
+        from app.models.models import Appointment, Patient, Doctor, Clinic, User
+        from app.models.models import PushSubscription
+        from app.services.push_service import send_push_notification, build_new_booking_payload
+        from app.services.email_service import send_new_booking_email
+
+        apt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if not apt:
+            return
+
+        patient = db.query(Patient).filter(Patient.id == apt.patient_id).first()
+        doctor = db.query(Doctor).filter(Doctor.id == apt.doctor_id).first()
+        clinic = db.query(Clinic).filter(Clinic.id == apt.clinic_id).first()
+
+        if not patient or not clinic:
+            return
+
+        doctor_name = doctor.full_name if doctor else "Doctor"
+
+        # ── Push ──────────────────────────────────────────────────────────
+        vapid_private = getattr(settings, "VAPID_PRIVATE_KEY", "")
+        vapid_public = getattr(settings, "VAPID_PUBLIC_KEY", "")
+        vapid_email = getattr(settings, "VAPID_CLAIMS_EMAIL", "vitarhealthcare@gmail.com")
+
+        if vapid_private and vapid_public:
+            subscriptions = (
+                db.query(PushSubscription)
+                .filter(PushSubscription.clinic_id == apt.clinic_id)
+                .all()
+            )
+            if subscriptions:
+                payload = build_new_booking_payload(
+                    patient_name=patient.full_name,
+                    doctor_name=doctor_name,
+                    scheduled_at=apt.scheduled_at,
+                    appointment_id=str(apt.id),
+                    frontend_url=settings.FRONTEND_URL,
+                )
+                expired_ids = []
+                for sub in subscriptions:
+                    success = send_push_notification(
+                        endpoint=sub.endpoint,
+                        p256dh=sub.p256dh,
+                        auth=sub.auth,
+                        payload=payload,
+                        vapid_private_key=vapid_private,
+                        vapid_public_key=vapid_public,
+                        vapid_claims_email=vapid_email,
+                    )
+                    if not success:
+                        expired_ids.append(sub.id)
+                if expired_ids:
+                    db.query(PushSubscription).filter(
+                        PushSubscription.id.in_(expired_ids)
+                    ).delete(synchronize_session=False)
+                    db.commit()
+        else:
+            logger.info("notify_new_booking: VAPID keys not configured — skipping push")
+
+        # ── Email fallback ───────────────────────────────────────────────
+        owner = db.query(User).filter(User.id == clinic.owner_id).first()
+        if owner and owner.email:
+            run_async(send_new_booking_email(
+                to_email=owner.email,
+                clinic_name=clinic.name,
+                patient_name=patient.full_name,
+                patient_phone=patient.phone or "",
+                doctor_name=doctor_name,
+                scheduled_at_str=apt.scheduled_at.strftime("%A, %B %d at %I:%M %p"),
+                reason=apt.reason or "",
+                appointment_id=str(apt.id),
+            ))
+
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"notify_new_booking failed: {exc}", exc_info=True)
         raise self.retry(exc=exc)
     finally:
         db.close()

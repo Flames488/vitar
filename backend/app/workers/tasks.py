@@ -221,6 +221,20 @@ def schedule_appointment_reminders(self, appointment_id: str):
         db.commit()
         logger.info(f"Scheduled {created} notifications for appointment {appointment_id}")
 
+        # Push reminders go to clinic staff (not the patient — patients have
+        # no login), so they're scheduled independently of the sms/whatsapp/
+        # email channel gating above: one per reminder checkpoint, fired via
+        # Celery's own eta rather than the Notification/fire_pending_reminders
+        # polling loop (push has no per-recipient DB row to poll).
+        try:
+            from app.workers.push_tasks import send_push_reminders
+            for r in reminders:
+                send_at = datetime.fromisoformat(r["send_at"])
+                if send_at > utcnow():
+                    send_push_reminders.apply_async(args=[appointment_id], eta=send_at)
+        except Exception as e:
+            logger.error(f"Failed to schedule push reminders for {appointment_id}: {e}")
+
     except Exception as exc:
         db.rollback()
         logger.error(f"schedule_appointment_reminders failed: {exc}")

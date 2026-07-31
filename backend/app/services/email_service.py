@@ -157,6 +157,32 @@ async def send_appointment_confirmation_email(
     await _send(to_email, f"Appointment confirmed — {scheduled_at_str}", html)
 
 
+async def send_new_booking_email(
+    to_email: str,
+    clinic_name: str,
+    patient_name: str,
+    patient_phone: str,
+    doctor_name: str,
+    scheduled_at_str: str,
+    reason: str,
+    appointment_id: str,
+):
+    html = _base_template(
+        "New Appointment Booked",
+        f"""
+        <p>A new appointment was just booked at <strong>{clinic_name}</strong>:</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Patient</td><td style="padding:8px;">{patient_name} ({patient_phone})</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Doctor</td><td style="padding:8px;">Dr. {doctor_name}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Date & Time</td><td style="padding:8px;">{scheduled_at_str}</td></tr>
+          {f'<tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Reason</td><td style="padding:8px;">{reason}</td></tr>' if reason else ''}
+        </table>
+        <a href="{settings.FRONTEND_URL}/dashboard/appointments/{appointment_id}" class="btn">View Appointment →</a>
+        """,
+    )
+    await _send(to_email, f"New booking: {patient_name} — {scheduled_at_str}", html)
+
+
 async def send_subscription_activated_email(to_email: str, clinic_name: str, plan: str, amount: str):
     html = _base_template(
         "Subscription Activated 🎉",

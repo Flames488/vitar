@@ -267,7 +267,21 @@ function BankTransferModal({
 
         {status === 'pending' && !isExpired && (
           <button
-            onClick={onClose}
+            onClick={async () => {
+              // Check the real status before closing — otherwise clicking
+              // this without actually having paid gives zero feedback (the
+              // modal just vanishes with no confirmation either way).
+              const result = await refetchStatus();
+              const latest = result.data?.status ?? status;
+              if (latest === 'paid') {
+                // The status === 'paid' effect above handles the success
+                // toast + onActivated; just let this click close the modal.
+                onClose();
+              } else {
+                toast.info("We haven't received your payment yet. We'll keep checking automatically and confirm as soon as it comes through — no need to try again.");
+                onClose();
+              }
+            }}
             className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
           >
             Done — I've made the transfer

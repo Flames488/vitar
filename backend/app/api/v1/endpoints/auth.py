@@ -152,6 +152,7 @@ def _create_default_notification_settings(clinic_id: str, db: Session):
     s = NotificationSettings(
         clinic_id=clinic_id,
         sms_enabled=True,
+        whatsapp_enabled=True,
         email_enabled=True,
         reminder_hours_before=24,
         second_reminder_hours=2,

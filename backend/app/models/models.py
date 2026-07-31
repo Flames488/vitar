@@ -560,7 +560,7 @@ class NotificationSettings(Base):
     clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), unique=True, nullable=False)
 
     sms_enabled = Column(Boolean, default=True)
-    whatsapp_enabled = Column(Boolean, default=False)
+    whatsapp_enabled = Column(Boolean, default=True)
     email_enabled = Column(Boolean, default=True)
 
     reminder_hours_before = Column(Integer, default=24)

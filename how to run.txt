@@ -1,6 +1,50 @@
+⚠️ IMPORTANT — on the VPS, bare `docker compose up -d --build` does NOT load
+docker-compose.prod.yml (TLS/cert config, port 443). Plain `docker compose`
+only auto-merges docker-compose.yml + docker-compose.override.yml. Every
+"docker compose up -d --build" run directly on the VPS below should instead
+be:
+    make prod-up
+(defined in the Makefile as: docker compose --profile observability
+ -f docker-compose.yml -f docker-compose.prod.yml up -d --build)
+Otherwise a routine redeploy can silently drop back to HTTP-only on port 80
+with no TLS certs mounted.
+
 cd C:\Users\USER\OneDrive\Documents\vitar
-docker compose up --build
-docker compose up -d --build
+ssh root@162.35.183.95   (into my vps)
+
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL6Q5aLikzRVsyckgHmuQt8vsbCw93zA7JAwubuJubav flames@Flames
+
+(505 error)
+docker compose restart nginx
+
+
+
+cd /root/vitar
+echo "PLATFORM_PAYOUT_FEE_PCT=0.02" >> backend/.env
+make prod-up
+
+
+
+cd /root/vitar
+docker compose build api web
+make prod-up
+docker compose logs api --tail=50
+
+
+
+
+make prod-up
+
+
+
+
+docker compose build api
+make prod-up
+docker compose logs api --tail=50
+
+docker compose exec api python -c "from PIL import Image; print('Pillow OK')"
+curl http://localhost:80/health
+
 
 cd C:\Users\USER\OneDrive\Documents\vitar
 docker compose -f docker-compose.local.yml up --build api worker beat
@@ -8,7 +52,7 @@ docker compose -f docker-compose.local.yml up --build api worker beat
 cd backend
 alembic upgrade head
 
-docker compose build api (after update) 
+docker compose build api (after update)
 
 docker compose run --rm api alembic upgrade head
-docker compose up --build (to run)
+make prod-up (to run, on the VPS — NOT bare `docker compose up --build`)

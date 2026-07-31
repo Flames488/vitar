@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_clinic
+from app.core.cache import cache, booking_page_key, doctor_list_key
 from app.models.models import Doctor
 from app.services.storage_service import (
     storage,
@@ -133,6 +134,9 @@ async def upload_doctor_avatar(
     # Persist URL
     doctor.avatar_url = url
     db.commit()
+    cache.delete(doctor_list_key(str(clinic.id)))
+    if clinic.slug:
+        cache.delete(booking_page_key(clinic.slug))
 
     logger.info(f"[uploads] Doctor {doctor_id} avatar updated → {url}")
     return {"avatar_url": url, "doctor_id": doctor_id}
@@ -174,6 +178,8 @@ async def upload_clinic_logo(
     # Persist URL
     clinic.logo_url = url
     db.commit()
+    if clinic.slug:
+        cache.delete(booking_page_key(clinic.slug))
 
     logger.info(f"[uploads] Clinic {clinic.id} logo updated → {url}")
     return {"logo_url": url, "clinic_id": clinic.id}

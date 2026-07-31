@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.core.database import get_db
 from app.core.security import get_current_clinic
+from app.core.cache import cache, booking_page_key
 from app.services.trial_guard import get_trial_status
 
 router = APIRouter()
@@ -74,4 +75,11 @@ def update_clinic(
 
     db.commit()
     db.refresh(clinic)
+    if clinic.slug:
+        # Contact/payment toggles here (contact_whatsapp_enabled,
+        # contact_call_enabled, patient_payment_enabled, bank details) are
+        # embedded in the cached public booking page — without this it can
+        # keep serving stale contact/payment info for up to TTL_MEDIUM after
+        # a clinic turns it off.
+        cache.delete(booking_page_key(clinic.slug))
     return {"message": "Clinic updated", "id": clinic.id}

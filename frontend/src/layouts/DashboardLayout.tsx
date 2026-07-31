@@ -8,7 +8,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, Users, UserCheck, BarChart3,
   Banknote, Settings, Brain, Clock, Bell, LogOut, Menu,
-  X, AlertTriangle, MessageSquare, ListOrdered, Key, QrCode,
+  X, AlertTriangle, MessageSquare, ListOrdered, QrCode,
   ChevronRight, Sparkles,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
@@ -49,7 +49,6 @@ const SETTINGS_ITEMS = [
   { to: '/settings',                label: 'General',       icon: Settings },
   { to: '/settings/billing',        label: 'Billing',       icon: Banknote },
   { to: '/settings/notifications',  label: 'Notifications', icon: Bell },
-  { to: '/settings/api-keys',       label: 'API Keys',      icon: Key },
 ];
 
 export default function DashboardLayout() {

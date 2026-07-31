@@ -52,6 +52,51 @@ def cleanup_expired_refresh_tokens(self):
 
 
 
+@celery.task(
+    name="app.workers.tasks.cancel_stale_awaiting_payment_appointments",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=300,
+)
+def cancel_stale_awaiting_payment_appointments(self):
+    """
+    An AWAITING_PAYMENT appointment is created the instant a patient starts
+    checkout, before Paystack confirms anything. If they abandon it, nothing
+    else ever moves that appointment out of AWAITING_PAYMENT — it sits there
+    forever, and both booking conflict-checks treat it as occupying its slot
+    (see AWAITING_PAYMENT_TIMEOUT_MINUTES gating in booking.py/appointments.py).
+    This actually cancels those rows once stale, instead of just working
+    around them at query time, so the appointments list doesn't fill up with
+    dead entries either.
+    """
+    from app.core.database import SessionLocal
+    from app.core.config import settings
+    from app.core.utils import utcnow
+    from app.models.models import Appointment, AppointmentStatus, PaymentStatus
+
+    db = SessionLocal()
+    try:
+        cutoff = utcnow() - timedelta(minutes=settings.AWAITING_PAYMENT_TIMEOUT_MINUTES)
+        stale = db.query(Appointment).filter(
+            Appointment.status == AppointmentStatus.AWAITING_PAYMENT,
+            Appointment.created_at < cutoff,
+        ).all()
+        for apt in stale:
+            apt.status = AppointmentStatus.CANCELLED
+            apt.payment_status = PaymentStatus.FAILED
+            apt.cancelled_reason = "Payment not completed within time limit"
+            apt.cancelled_at = utcnow()
+        db.commit()
+        logger.info(f"[stale_payment_cleanup] Cancelled {len(stale)} abandoned checkout appointments")
+        return {"cancelled": len(stale)}
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"[stale_payment_cleanup] Failed: {exc}")
+        raise self.retry(exc=exc, countdown=300)
+    finally:
+        db.close()
+
+
 def run_async(coro):
     """
     FIX: Always create a brand-new event loop.

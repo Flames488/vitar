@@ -206,10 +206,16 @@ class PaystackBilling:
                 for b in data.get("data", [])
             ] if data.get("status") else []
 
-    def verify_webhook(self, payload: bytes, signature: str) -> bool:
+    def verify_webhook(self, payload: bytes, signature: Optional[str]) -> bool:
+        # Fail closed, always — no environment-based bypass. A webhook that
+        # can't be verified (secret unconfigured, or signature missing) is
+        # rejected regardless of ENVIRONMENT, since that value is operator-set
+        # and a misconfiguration there must never turn into an auth bypass.
         if not settings.PAYSTACK_WEBHOOK_SECRET:
-            logger.warning("PAYSTACK_WEBHOOK_SECRET not set — cannot verify Paystack webhook")
-            return settings.ENVIRONMENT != "production"
+            logger.error("PAYSTACK_WEBHOOK_SECRET not set — rejecting Paystack webhook")
+            return False
+        if not signature:
+            return False
         expected = hmac.new(
             settings.PAYSTACK_WEBHOOK_SECRET.encode(),
             payload,
@@ -238,9 +244,9 @@ class StripeBilling:
             return resp.status_code == 200
 
     def verify_webhook(self, payload: bytes, signature: str) -> Dict:
-        if not settings.STRIPE_WEBHOOK_SECRET:
-            logger.warning("STRIPE_WEBHOOK_SECRET not set — skipping verification")
-            return {"valid": True}
+        if not settings.STRIPE_WEBHOOK_SECRET or not signature:
+            logger.error("STRIPE_WEBHOOK_SECRET or signature missing — rejecting Stripe webhook")
+            return {"valid": False, "error": "Signature or secret missing"}
         try:
             import time
             parts = {p.split("=")[0]: p.split("=")[1] for p in signature.split(",")}
@@ -545,12 +551,15 @@ class BillingService:
                 metadata = payload.get("metadata") or payload.get("extra_data") or {}
                 clinic_id = metadata.get("clinic_id")
                 plan = metadata.get("plan", "basic")
+                billing_cycle = metadata.get("billing_cycle", "monthly")
                 amount = payload.get("amount", 0) / 100
                 reference = payload.get("reference")
                 sub_code = payload.get("subscription_code", "")
             else:
-                clinic_id = payload.get("metadata", {}).get("clinic_id")
-                plan = payload.get("metadata", {}).get("plan", "basic")
+                metadata = payload.get("metadata", {})
+                clinic_id = metadata.get("clinic_id")
+                plan = metadata.get("plan", "basic")
+                billing_cycle = metadata.get("billing_cycle", "monthly")
                 amount = payload.get("amount_total", 0) / 100
                 reference = payload.get("id")
                 sub_code = payload.get("subscription", "")
@@ -575,7 +584,10 @@ class BillingService:
 
             sub = db.query(Subscription).filter(Subscription.clinic_id == clinic_id).first()
             now = utcnow()
-            period_end = now + timedelta(days=30)
+            # Matches finalize_paystack_payment's branching — this path was
+            # previously hardcoded to 30 days regardless of billing_cycle,
+            # silently shortchanging annual payments routed through it.
+            period_end = now + timedelta(days=30 if billing_cycle == "monthly" else 365)
             prov_enum = PaymentProvider.PAYSTACK if provider == "paystack" else PaymentProvider.STRIPE
 
             if sub:
@@ -586,12 +598,13 @@ class BillingService:
                 sub.current_period_start = now
                 sub.current_period_end = period_end
                 sub.amount = amount
+                sub.billing_cycle = billing_cycle
             else:
                 sub = Subscription(
                     clinic_id=clinic_id, plan=plan, status=SubscriptionStatus.ACTIVE,
                     provider=prov_enum, provider_subscription_id=sub_code,
                     current_period_start=now, current_period_end=period_end,
-                    amount=amount, currency=clinic.currency,
+                    amount=amount, currency=clinic.currency, billing_cycle=billing_cycle,
                 )
                 db.add(sub)
 

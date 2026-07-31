@@ -227,7 +227,6 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
               <Route path="/settings/billing" element={<BillingPage />} />
               <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
               <Route path="/settings/booking-page" element={<BookingPageSettings />} />
-              <Route path="/settings/api-keys" element={<ApiKeysPage />} />
               <Route path="/settings/qr-code" element={<QrCodeSettings />} />
             </Route>
 
@@ -246,6 +245,7 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
               <Route path="/admin/subscriptions" element={<AdminSubscriptionsPage />} />
               <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
               <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
+              <Route path="/admin/api-keys" element={<ApiKeysPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

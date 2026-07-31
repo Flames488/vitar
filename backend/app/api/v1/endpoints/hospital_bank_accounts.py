@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_clinic
@@ -122,14 +123,22 @@ async def create_bank_account(
 ):
     if str(clinic.id) != hospital_id:
         raise HTTPException(status_code=403, detail="Cannot configure another hospital's bank account")
+    # Lock any existing active row(s) for this hospital so a concurrent
+    # request can't pass this same check before either commits — the
+    # uq_hospital_bank_account_active partial index is the hard backstop,
+    # this lock just avoids relying on that alone under normal timing.
     existing = db.query(HospitalBankAccount).filter(
         HospitalBankAccount.hospital_id == hospital_id,
         HospitalBankAccount.active == True,  # noqa: E712
-    ).first()
+    ).with_for_update().first()
     if existing:
         raise HTTPException(status_code=409, detail="Bank account already exists; use PUT to replace it")
     account = await _create_account(clinic, body, db)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Bank account already exists; use PUT to replace it")
     db.refresh(account)
     return {"bank_account": _serialize(account)}
 
@@ -143,13 +152,20 @@ async def replace_bank_account(
 ):
     if str(clinic.id) != hospital_id:
         raise HTTPException(status_code=403, detail="Cannot configure another hospital's bank account")
+    # Lock existing active row(s) before deactivating them, so a concurrent
+    # replace/create request serializes behind this one instead of both
+    # deactivating the same rows and inserting two new active accounts.
     existing = db.query(HospitalBankAccount).filter(
         HospitalBankAccount.hospital_id == hospital_id,
         HospitalBankAccount.active == True,  # noqa: E712
-    ).all()
+    ).with_for_update().all()
     for row in existing:
         row.active = False
     account = await _create_account(clinic, body, db)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Bank account update conflicted with another request — please retry")
     db.refresh(account)
     return {"bank_account": _serialize(account)}

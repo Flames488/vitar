@@ -114,15 +114,11 @@ async def paystack_webhook(
 ):
     body = await request.body()
 
-    if x_paystack_signature:
-        if not billing_service.paystack.verify_webhook(body, x_paystack_signature):
-            logger.warning("Paystack webhook signature mismatch", extra={"path": str(request.url)})
-            raise HTTPException(status_code=400, detail="Invalid signature")
-    else:
-        from app.core.config import settings
-        if settings.ENVIRONMENT == "production":
-            logger.error("Paystack webhook received without signature in production")
-            raise HTTPException(status_code=400, detail="Missing signature")
+    # No environment-based bypass — verify_webhook fails closed on both a
+    # missing signature and an unconfigured secret, regardless of ENVIRONMENT.
+    if not billing_service.paystack.verify_webhook(body, x_paystack_signature):
+        logger.warning("Paystack webhook signature missing or invalid", extra={"path": str(request.url)})
+        raise HTTPException(status_code=400, detail="Invalid signature")
 
     try:
         payload = json.loads(body)
@@ -244,18 +240,19 @@ async def stripe_webhook(
     from app.core.config import settings
     webhook_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", "")
 
-    if stripe_signature and webhook_secret:
-        try:
-            import stripe  # type: ignore
-            event_obj = stripe.Webhook.construct_event(body, stripe_signature, webhook_secret)
-        except Exception as exc:
-            logger.warning(f"Stripe webhook validation failed: {exc}")
-            raise HTTPException(status_code=400, detail="Invalid Stripe signature")
-    else:
-        try:
-            event_obj = json.loads(body)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid JSON")
+    # Fail closed — no unverified fallback. A missing signature header or an
+    # unconfigured secret must reject the request, not silently accept an
+    # unsigned payload.
+    if not webhook_secret or not stripe_signature:
+        logger.warning("Stripe webhook rejected — signature or secret missing")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    try:
+        import stripe  # type: ignore
+        event_obj = stripe.Webhook.construct_event(body, stripe_signature, webhook_secret)
+    except Exception as exc:
+        logger.warning(f"Stripe webhook validation failed: {exc}")
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
     event_type = event_obj.get("type", "") if isinstance(event_obj, dict) else event_obj.type
     event_id = (event_obj.get("id", "") if isinstance(event_obj, dict) else event_obj.id)

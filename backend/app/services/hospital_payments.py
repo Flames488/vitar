@@ -93,18 +93,36 @@ class PaystackHospitalPayments:
             raise Exception(f"Paystack verify failed: {data.get('message')}")
         return data["data"]
 
-    async def initiate_transfer(self, amount_kobo: int, recipient_code: str, reason: str) -> Dict:
+    async def initiate_transfer(self, amount_kobo: int, recipient_code: str, reason: str, reference: str) -> Dict:
+        # `reference` must be caller-supplied and stable across retries (e.g.
+        # derived from the payout id) — Paystack deduplicates transfers by
+        # reference, which is what makes a retry after a client-side timeout
+        # safe instead of double-paying the recipient.
         payload = {
             "source": "balance",
             "amount": amount_kobo,
             "recipient": recipient_code,
             "reason": reason,
+            "reference": reference,
         }
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(f"{self.BASE}/transfer", headers=self.headers, json=payload)
             data = resp.json()
         if not data.get("status"):
             raise Exception(f"Paystack transfer failed: {data.get('message')}")
+        return data["data"]
+
+    async def verify_transfer(self, reference: str) -> Dict:
+        """
+        Look up a transfer's real status by reference. Used after a
+        "duplicate reference" error to find out whether an earlier attempt
+        actually went through, instead of assuming it failed.
+        """
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(f"{self.BASE}/transfer/verify/{reference}", headers=self.headers)
+            data = resp.json()
+        if not data.get("status"):
+            raise Exception(f"Paystack transfer verify failed: {data.get('message')}")
         return data["data"]
 
 

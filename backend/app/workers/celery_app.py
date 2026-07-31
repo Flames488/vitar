@@ -60,6 +60,10 @@ beat_schedule = {
         "schedule": crontab(hour=3, minute=0),
         "options": {"queue": "celery"},
     },
+    "cancel-stale-awaiting-payment-appointments": {
+        "task": "app.workers.tasks.cancel_stale_awaiting_payment_appointments",
+        "schedule": 900.0,
+    },
 }
 
 if settings.OPS_MONITORING_ENABLED:

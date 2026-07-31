@@ -5,10 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.logging import get_logger
 from app.core.security import get_current_superadmin
 from app.core.utils import utcnow
 from app.models.models import Clinic, HospitalBankAccount, Payout, PayoutStatus, User
 from app.services.hospital_payments import hospital_payments
+
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/admin/payouts", tags=["Admin — Payouts"])
@@ -47,16 +50,43 @@ async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
     if not account or not account.paystack_recipient_code:
         raise HTTPException(status_code=409, detail="Hospital has no verified payout account")
 
+    # Deterministic, stable across retries: if a prior attempt timed out on
+    # our side after Paystack had already accepted it, resending with the
+    # same reference lets Paystack tell us "duplicate" instead of moving
+    # money twice.
+    transfer_reference = f"vitar-payout-{payout.id}"
     try:
         transfer = await hospital_payments.initiate_transfer(
             amount_kobo=payout.amount,
             recipient_code=account.paystack_recipient_code,
             reason=f"Vitar booking payout - appointment {payout.appointment_id}",
+            reference=transfer_reference,
         )
-    except Exception:
-        payout.status = PayoutStatus.FAILED.value
-        db.commit()
-        raise HTTPException(status_code=502, detail="Paystack transfer failed")
+    except Exception as exc:
+        if "duplicate" in str(exc).lower():
+            # We've already sent this exact transfer before. Find out what
+            # actually happened instead of assuming failure and letting a
+            # future retry pay the hospital again.
+            try:
+                transfer = await hospital_payments.verify_transfer(transfer_reference)
+            except Exception:
+                logger.error(f"Payout {payout.id}: duplicate transfer reference, status verify failed", exc_info=True)
+                raise HTTPException(
+                    status_code=502,
+                    detail="Transfer status could not be confirmed — check Paystack dashboard before retrying",
+                )
+            if transfer.get("status") != "success":
+                # Still pending/processing on Paystack's side. Leave the
+                # payout row as-is (NOT failed) so it isn't picked up for
+                # another automatic retry while the original is in flight.
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Transfer already in progress (status: {transfer.get('status')})",
+                )
+        else:
+            payout.status = PayoutStatus.FAILED.value
+            db.commit()
+            raise HTTPException(status_code=502, detail="Paystack transfer failed")
 
     payout.status = PayoutStatus.SENT.value
     payout.paystack_transfer_code = transfer.get("transfer_code")

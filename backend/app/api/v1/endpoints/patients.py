@@ -231,10 +231,17 @@ async def wabizz_create_patient(
     Wabizz calls this to create a patient using only data it knows from WhatsApp.
     Uses async SQLAlchemy for non-blocking I/O.
     """
-    # Prevent duplicate phone across all clinics
+    # Prevent duplicate phone WITHIN this clinic only. Phone is not a unique
+    # platform-wide identity — matching across clinics would silently hand
+    # clinic B a patient row that belongs to clinic A (wrong clinic_id,
+    # wrong history) instead of creating clinic B's own record.
     result = await db.execute(
         select(Patient).where(
-            and_(Patient.phone == body.phone, Patient.is_active == True)  # noqa: E712
+            and_(
+                Patient.phone == body.phone,
+                Patient.clinic_id == body.clinic_id,
+                Patient.is_active == True,  # noqa: E712
+            )
         )
     )
     existing = result.scalar_one_or_none()

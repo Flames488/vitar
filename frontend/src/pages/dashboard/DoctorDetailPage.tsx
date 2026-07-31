@@ -7,7 +7,8 @@ import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { doctorsApi } from '@/lib/api/services';
 import { toast } from 'sonner';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import DoctorDetailsSection, { type DoctorDetailsValue } from '@/components/shared/DoctorDetailsSection';
 
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
@@ -15,6 +16,7 @@ export default function DoctorDetailPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const [selectedSlots, setSelectedSlots] = useState<number[]>([0,1,2,3,4]);
+  const [details, setDetails] = useState<DoctorDetailsValue>({ email: '', phone: '', doctor_details_enabled: true });
 
   const { data: doctor, isLoading } = useQuery({
     queryKey: ['doctor', id],
@@ -22,11 +24,22 @@ export default function DoctorDetailPage() {
     enabled: !!id,
   });
 
-  // FIX: useEffect instead of deprecated onSuccess
+  // Only sync local form state from the server ONCE per doctor id, not on
+  // every refetch — otherwise saving either form (which invalidates and
+  // refetches ['doctor', id]) re-runs this effect and clobbers whatever
+  // unsaved edits the user has sitting in the *other* form.
+  const initializedIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (doctor?.availability?.length > 0) {
+    if (!doctor || initializedIdRef.current === doctor.id) return;
+    if (doctor.availability?.length > 0) {
       setSelectedSlots(doctor.availability.map((a: any) => a.day_of_week));
     }
+    setDetails({
+      email: doctor.email || '',
+      phone: doctor.phone || '',
+      doctor_details_enabled: !!doctor.doctor_details_enabled,
+    });
+    initializedIdRef.current = doctor.id;
   }, [doctor]);
 
   const availMutation = useMutation({
@@ -36,6 +49,26 @@ export default function DoctorDetailPage() {
       toast.success('Availability saved');
     },
     onError: () => toast.error('Failed to save'),
+  });
+
+  const detailsMutation = useMutation({
+    mutationFn: (next: DoctorDetailsValue) => doctorsApi.update(id!, next),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['doctor', id] });
+      toast.success('Doctor Details saved');
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail?.message || 'Failed to save Doctor Details';
+      toast.error(msg);
+      // Revert the optimistic toggle if the save was rejected (e.g. trial expired mid-edit)
+      if (doctor) {
+        setDetails({
+          email: doctor.email || '',
+          phone: doctor.phone || '',
+          doctor_details_enabled: !!doctor.doctor_details_enabled,
+        });
+      }
+    },
   });
 
   if (isLoading) return <div className="p-6 text-slate-400">Loading...</div>;
@@ -67,6 +100,20 @@ export default function DoctorDetailPage() {
             <p className="text-slate-500">{doctor.specialty ?? 'General Practitioner'}</p>
             {doctor.email && <p className="text-slate-400 text-sm">{doctor.email}</p>}
           </div>
+        </div>
+
+        <div className="mb-6">
+          <DoctorDetailsSection
+            value={details}
+            onChange={setDetails}
+          />
+          <button
+            onClick={() => detailsMutation.mutate(details)}
+            disabled={detailsMutation.isPending}
+            className="mt-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-medium px-6 py-2 rounded-lg text-sm transition-colors"
+          >
+            {detailsMutation.isPending ? 'Saving...' : 'Save Doctor Details'}
+          </button>
         </div>
 
         <h3 className="font-semibold text-slate-900 mb-3">Working Days</h3>

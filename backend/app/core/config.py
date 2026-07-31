@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     PAYSTACK_WEBHOOK_SECRET: str = ""
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
     PAYOUT_AUTO_SEND_AFTER_HOURS: int = 24
+    # An AWAITING_PAYMENT appointment (patient started checkout but never
+    # completed it) holds its slot as a conflict for this long, then stops
+    # blocking new bookings — otherwise an abandoned checkout permanently
+    # occupies that slot (and, with enough abandoned test/real attempts,
+    # can make a doctor look booked solid on every date).
+    AWAITING_PAYMENT_TIMEOUT_MINUTES: int = 30
     FLUTTERWAVE_SECRET_KEY: str = ""
     FLUTTERWAVE_PUBLIC_KEY: str = ""
     FLUTTERWAVE_WEBHOOK_SECRET: str = ""

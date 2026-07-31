@@ -9,7 +9,7 @@ Vitar v5.2 - Public Booking Endpoints (HARDENED)
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime, timedelta, timezone
@@ -182,12 +182,23 @@ async def public_book_appointment(
     # Locks conflicting rows so concurrent requests cannot book the same slot.
     # SKIP LOCKED means another transaction won't block — it will detect the
     # conflict immediately rather than waiting.
+    #
+    # A stale AWAITING_PAYMENT appointment (checkout started but abandoned)
+    # stops blocking the slot once past AWAITING_PAYMENT_TIMEOUT_MINUTES —
+    # otherwise an abandoned checkout occupies that slot forever, and enough
+    # of them make a doctor look booked solid on every date.
+    payment_cutoff = utcnow() - timedelta(minutes=settings.AWAITING_PAYMENT_TIMEOUT_MINUTES)
+    not_stale_awaiting_payment = or_(
+        Appointment.status != AppointmentStatus.AWAITING_PAYMENT,
+        Appointment.created_at >= payment_cutoff,
+    )
     try:
         conflict = (
             db.query(Appointment)
             .filter(
                 Appointment.doctor_id == body.doctor_id,
                 Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
+                not_stale_awaiting_payment,
                 Appointment.scheduled_at < slot_end,
                 Appointment.scheduled_at >= slot_start - timedelta(minutes=slot_duration),
             )
@@ -199,6 +210,7 @@ async def public_book_appointment(
         conflict = db.query(Appointment).filter(
             Appointment.doctor_id == body.doctor_id,
             Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
+            not_stale_awaiting_payment,
             Appointment.scheduled_at < slot_end,
             Appointment.scheduled_at >= slot_start - timedelta(minutes=slot_duration),
         ).first()
@@ -254,12 +266,38 @@ async def public_book_appointment(
     db.add(appointment)
 
     try:
-        # Increment trial counter atomically with the booking commit
         sub = getattr(clinic, "subscription", None)
         if not sub or getattr(sub, "plan", "trial") == "trial":
-            clinic.trial_bookings_used = (clinic.trial_bookings_used or 0) + 1
+            # Atomic, race-free conditional increment. A plain Python
+            # read-modify-write here (clinic.trial_bookings_used += 1) let two
+            # concurrent requests both read the same pre-increment count and
+            # both pass check_trial_booking_limit() above, letting a trial
+            # clinic exceed TRIAL_MAX_BOOKINGS. A single UPDATE ... WHERE ...
+            # is atomic in Postgres regardless of concurrent callers.
+            row = db.execute(
+                text("""
+                    UPDATE clinics
+                    SET trial_bookings_used = COALESCE(trial_bookings_used, 0) + 1
+                    WHERE id = :id AND COALESCE(trial_bookings_used, 0) < :limit
+                    RETURNING trial_bookings_used
+                """),
+                {"id": clinic.id, "limit": settings.TRIAL_MAX_BOOKINGS},
+            ).first()
+            if row is None:
+                db.rollback()
+                raise HTTPException(
+                    status_code=402,
+                    detail={
+                        "code": "TRIAL_BOOKING_LIMIT",
+                        "message": f"You've used all {settings.TRIAL_MAX_BOOKINGS} free trial bookings. Upgrade to continue.",
+                        "limit": settings.TRIAL_MAX_BOOKINGS,
+                        "upgrade_url": "/settings/billing",
+                    },
+                )
         db.commit()
         db.refresh(appointment)
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Booking commit failed: {e}", exc_info=True)
@@ -413,6 +451,14 @@ def join_waiting_list(slug: str, body: WaitingListRequest, db: Session = Depends
     ).first()
     if not clinic:
         raise HTTPException(status_code=404, detail="Clinic not found")
+
+    doctor = db.query(Doctor).filter(
+        Doctor.id == body.doctor_id,
+        Doctor.clinic_id == clinic.id,
+        Doctor.is_active == True,
+    ).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
 
     entry = WaitingList(
         clinic_id=clinic.id,

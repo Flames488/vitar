@@ -5,7 +5,10 @@ GET  /api/v1/admin/api-keys         List all keys (no hashes)
 POST /api/v1/admin/api-keys         Generate new key (returns raw once)
 DELETE /api/v1/admin/api-keys/{id}  Revoke a key
 
-These routes require clinic admin JWT auth — not API key auth.
+These manage the single platform-wide integration key (ApiKey has no
+clinic_id — see app/middleware/api_key_auth.py), so they require superadmin
+auth, not clinic admin auth. A clinic owner must never be able to mint or
+revoke this key.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,7 +16,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.core.security import get_current_clinic
+from app.core.security import get_current_superadmin
 from app.models.api_key import ApiKey
 
 router = APIRouter(prefix="/admin/api-keys", tags=["admin-api-keys"])
@@ -25,7 +28,7 @@ class GenerateKeyRequest(BaseModel):
 
 @router.get("/")
 def list_api_keys(
-    clinic=Depends(get_current_clinic),
+    admin=Depends(get_current_superadmin),
     db: Session = Depends(get_db),
 ):
     """List all API keys for the clinic. Raw hashes are never returned."""
@@ -45,7 +48,7 @@ def list_api_keys(
 @router.post("/", status_code=201)
 def generate_api_key(
     body: GenerateKeyRequest,
-    clinic=Depends(get_current_clinic),
+    admin=Depends(get_current_superadmin),
     db: Session = Depends(get_db),
 ):
     """
@@ -71,7 +74,7 @@ def generate_api_key(
 @router.delete("/{key_id}", status_code=204)
 def revoke_api_key(
     key_id: str,
-    clinic=Depends(get_current_clinic),
+    admin=Depends(get_current_superadmin),
     db: Session = Depends(get_db),
 ):
     """Revoke an API key by setting is_active = false."""

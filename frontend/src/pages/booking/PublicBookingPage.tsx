@@ -29,16 +29,18 @@ export default function PublicBookingPage() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [booked, setBooked] = useState<any>(null);
 
-  const { data: clinicData, isLoading: clinicLoading } = useQuery({
+  const { data: clinicData, isLoading: clinicLoading, isError: clinicError } = useQuery({
     queryKey: ['public-clinic', slug],
     queryFn: () => bookingApi.getClinic(slug!),
     enabled: !!slug,
+    retry: 1,
   });
 
-  const { data: slotsData, isLoading: slotsLoading } = useQuery({
+  const { data: slotsData, isLoading: slotsLoading, isError: slotsError } = useQuery({
     queryKey: ['available-slots', selectedDoctor, selectedDate],
     queryFn: () => doctorsApi.getAvailableSlots(selectedDoctor!, selectedDate),
     enabled: !!selectedDoctor && !!selectedDate,
+    retry: 1,
   });
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
@@ -71,6 +73,18 @@ export default function PublicBookingPage() {
   if (clinicLoading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
       <Loader2 className="w-8 h-8 text-teal-600 animate-spin" />
+    </div>
+  );
+
+  if (clinicError || !clinicData?.clinic) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+      <div className="max-w-sm text-center space-y-2">
+        <h1 className="text-xl font-bold text-slate-900">Booking page not found</h1>
+        <p className="text-slate-500 text-sm">
+          This link may be mistyped, or the clinic has disabled online booking. Please check the link
+          or contact the clinic directly.
+        </p>
+      </div>
     </div>
   );
 
@@ -168,6 +182,10 @@ export default function PublicBookingPage() {
             </h2>
             {slotsLoading ? (
               <div className="text-center py-4 text-slate-400 text-sm">Loading slots...</div>
+            ) : slotsError ? (
+              <p className="text-red-500 text-sm text-center py-4">
+                Couldn't load availability. Please try a different date or refresh the page.
+              </p>
             ) : availableSlots.length === 0 ? (
               <p className="text-slate-500 text-sm text-center py-4">No available slots on this date</p>
             ) : (

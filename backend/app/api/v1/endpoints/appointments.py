@@ -11,10 +11,11 @@ from datetime import datetime, timedelta, timezone
 import secrets
 
 from app.core.utils import utcnow
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.database_async import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_, text
 from app.core.security import get_current_clinic
 from app.core.logging import get_logger, log_booking_event
 from app.models.models import (
@@ -57,10 +58,18 @@ class AppointmentReschedule(BaseModel):
 
 def _check_double_booking(db, doctor_id, scheduled_at, duration_mins, exclude_id=None):
     end_at = scheduled_at + timedelta(minutes=duration_mins)
-    # Pull candidates in a 4-hour window around the slot
+    payment_cutoff = utcnow() - timedelta(minutes=settings.AWAITING_PAYMENT_TIMEOUT_MINUTES)
+    # Pull candidates in a 4-hour window around the slot. A stale
+    # AWAITING_PAYMENT appointment (checkout started but never completed)
+    # no longer blocks the slot once past the timeout — otherwise an
+    # abandoned checkout occupies that slot forever.
     q = db.query(Appointment).filter(
         Appointment.doctor_id == doctor_id,
         Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
+        or_(
+            Appointment.status != AppointmentStatus.AWAITING_PAYMENT,
+            Appointment.created_at >= payment_cutoff,
+        ),
         Appointment.scheduled_at >= (scheduled_at - timedelta(hours=4)),
         Appointment.scheduled_at < (end_at + timedelta(hours=4)),
     )
@@ -245,7 +254,28 @@ def create_appointment(
         raise HTTPException(status_code=409, detail={"code": "SLOT_BUSY", "message": "Slot temporarily unavailable, please try again"})
 
     if not clinic.subscription or getattr(clinic.subscription, 'plan', 'trial') == 'trial':
-        clinic.trial_bookings_used = (clinic.trial_bookings_used or 0) + 1
+        # Atomic, race-free conditional increment — see booking.py's public
+        # booking endpoint for why a plain read-modify-write here is unsafe
+        # under concurrent requests.
+        row = db.execute(
+            text("""
+                UPDATE clinics
+                SET trial_bookings_used = COALESCE(trial_bookings_used, 0) + 1
+                WHERE id = :id AND COALESCE(trial_bookings_used, 0) < :limit
+                RETURNING trial_bookings_used
+            """),
+            {"id": clinic.id, "limit": settings.TRIAL_MAX_BOOKINGS},
+        ).first()
+        if row is None:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "TRIAL_BOOKING_LIMIT",
+                    "message": f"You've used all {settings.TRIAL_MAX_BOOKINGS} free trial bookings. Upgrade to continue.",
+                    "limit": settings.TRIAL_MAX_BOOKINGS,
+                    "upgrade_url": "/settings/billing",
+                },
+            )
 
     appointment = Appointment(
         clinic_id=clinic.id,

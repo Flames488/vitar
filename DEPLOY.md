@@ -93,10 +93,18 @@ Let's Encrypt certificates expire every 90 days. Add this to cron on the server 
 
 ## Updating the app
 
+⚠️ Plain `docker compose` only auto-merges `docker-compose.yml` +
+`docker-compose.override.yml` — it does **not** load
+`docker-compose.prod.yml`, which is what actually adds TLS (port 443, cert
+mounts, `nginx.prod.conf`). Always include both `-f` flags (or use
+`make prod-up`, defined in the Makefile) when redeploying, or the site can
+silently drop back to HTTP-only on port 80 with no certs mounted.
+
 ```bash
 git pull   # or re-upload zip
-docker compose build api worker worker_dead_letter beat frontend
-docker compose up -d
+docker compose --profile observability -f docker-compose.yml -f docker-compose.prod.yml build api worker worker_dead_letter beat frontend
+docker compose --profile observability -f docker-compose.yml -f docker-compose.prod.yml up -d
+# equivalently: make prod-up
 ```
 
 ---

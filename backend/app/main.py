@@ -113,6 +113,38 @@ _upload_dir = settings.UPLOAD_DIR
 _os.makedirs(_upload_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_upload_dir), name="uploads")
 
+# ── Global unhandled-exception handler ─────────────────────────────────────
+# IMPORTANT: this must be a FastAPI exception_handler, not more logic inside
+# RequestLoggingMiddleware's try/except. Starlette's BaseHTTPMiddleware (which
+# RequestLoggingMiddleware, RateLimitMiddleware and MetricsMiddleware all are)
+# has a well-known bug where an exception raised deep in the route handler
+# gets swallowed by an internal anyio memory stream and re-raised as a
+# meaningless `anyio.EndOfStream` / `AttributeError: 'MemoryObjectItemReceiver'
+# object has no attribute 'item'` in the outer middleware, hiding the real
+# traceback. Registering the handler here (which FastAPI wires into
+# ExceptionMiddleware, sitting *inside* the BaseHTTPMiddleware stack, right
+# next to the router) catches the actual exception before it can be mangled,
+# so `exc_info=exc` below logs the real traceback every time.
+import uuid as _uuid
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = str(_uuid.uuid4())[:8]
+    logger.error(
+        "Unhandled exception",
+        exc_info=exc,
+        extra={"method": request.method, "path": request.url.path, "request_id": request_id},
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "internal",
+            "request_id": request_id,
+            "detail": str(exc) if settings.DEBUG else "An unexpected error occurred",
+        },
+    )
+
 # ── CORS — Fix 9 ─────────────────────────────────────────────────────────────
 # ALLOWED_ORIGINS must be set explicitly in .env. No automatic appending of
 # *.workers.dev — that wildcard covers ALL Cloudflare Workers projects, not
@@ -189,17 +221,3 @@ async def root():
     return {"service": "Vitar API", "version": "13.0.0", "docs": "/api/docs"}
 
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(
-        "Unhandled exception",
-        exc_info=exc,
-        extra={"path": request.url.path, "method": request.method},
-    )
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal server error",
-            "detail": str(exc) if settings.DEBUG else "An unexpected error occurred",
-        },
-    )

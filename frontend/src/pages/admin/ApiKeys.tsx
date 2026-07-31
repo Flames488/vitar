@@ -1,13 +1,14 @@
 /**
- * Vitar — API Key Management Page (Admin)
+ * Vitar — API Key Management Page (Superadmin)
  *
- * Allows clinic admins to:
+ * ApiKey is a single platform-wide credential (no clinic_id — see
+ * app/middleware/api_key_auth.py), so this is superadmin-only, not a
+ * clinic settings page. Allows superadmins to:
  *   - View all API keys (label, created, last used — never the raw key)
  *   - Generate a new key (shown ONCE, then only the hash is stored)
  *   - Revoke a key (sets is_active = false)
  *
- * Place this page at the /settings/api-keys route and add a link in the
- * existing Settings navigation sidebar.
+ * Mounted at /admin/api-keys under the superadmin layout.
  */
 
 import { useState } from 'react';
@@ -44,17 +45,17 @@ interface GeneratedKey {
 }
 
 async function fetchApiKeys(): Promise<ApiKeyRecord[]> {
-  const { data } = await api.get('/api/v1/admin/api-keys');
+  const { data } = await api.get('/admin/api-keys');
   return data;
 }
 
 async function generateApiKey(label: string): Promise<GeneratedKey> {
-  const { data } = await api.post('/api/v1/admin/api-keys', { label });
+  const { data } = await api.post('/admin/api-keys', { label });
   return data;
 }
 
 async function revokeApiKey(id: string): Promise<void> {
-  await api.delete(`/api/v1/admin/api-keys/${id}`);
+  await api.delete(`/admin/api-keys/${id}`);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────

@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # occupies that slot (and, with enough abandoned test/real attempts,
     # can make a doctor look booked solid on every date).
     AWAITING_PAYMENT_TIMEOUT_MINUTES: int = 30
+    # Fraction of each patient payment Vitar retains as a payment-processing fee
+    # before transferring the remainder to the clinic's bank account. Covers
+    # Paystack's own charge fee (~1.5%+₦100) and transfer fee (₦10-50) with a
+    # small margin. Set to 0 to pass 100% through to clinics.
+    PLATFORM_PAYOUT_FEE_PCT: float = 0.02
     FLUTTERWAVE_SECRET_KEY: str = ""
     FLUTTERWAVE_PUBLIC_KEY: str = ""
     FLUTTERWAVE_WEBHOOK_SECRET: str = ""
@@ -109,6 +114,7 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str = ""
     WHATSAPP_ACCESS_TOKEN: str = ""
     SENDGRID_API_KEY: str = ""
+    RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "no-reply@livevault.cloud"
     EMAIL_FROM_NAME: str = "Vitar Health"
 
@@ -130,6 +136,11 @@ class Settings(BaseSettings):
 
     # ─── Storage ──────────────────────────────────────────────────────────
     STORAGE_BACKEND: str = "local"
+    # Explicit opt-in for single-node local-disk storage in production.
+    # startup_validation.py checks this via getattr(settings, ...) — it must
+    # be declared here or Pydantic silently ignores the env var and the
+    # check always sees False regardless of what's set in .env.
+    ALLOW_LOCAL_UPLOADS_IN_PRODUCTION: bool = False
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_S3_BUCKET: str = "vitar-uploads"

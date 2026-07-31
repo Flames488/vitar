@@ -147,6 +147,13 @@ class Clinic(Base):
     booking_page_enabled = Column(Boolean, default=True)
     online_booking_enabled = Column(Boolean, default=True)
 
+    # Hospital Contact Settings — controls whether patients can contact
+    # doctors directly (see doctors.py / booking.py). Both default on
+    # ("Enable Both"); a hospital can restrict to one channel or disable
+    # direct contact entirely from Hospital Settings.
+    contact_whatsapp_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+    contact_call_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+
     # Payment accounts
     paystack_subaccount_code = Column(String(100))
     paystack_bank_name = Column(String(100))
@@ -282,6 +289,15 @@ class Doctor(Base):
     bio = Column(Text)
     consultation_fee = Column(Numeric(12, 2), default=0)
     is_active = Column(Boolean, default=True)
+
+    # Doctor Details — core feature, not gated by subscription/plan. When
+    # True, this doctor's contact info is exposed on the public booking
+    # page, subject to the hospital's Clinic.contact_whatsapp_enabled /
+    # Clinic.contact_call_enabled settings (see booking.py). Hospital admins
+    # can still turn this off for an individual doctor who shouldn't be
+    # contacted directly.
+    doctor_details_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

@@ -8,13 +8,13 @@ could each pass the SELECT before either committed, leaving two active rows;
 payout sending then picks one non-deterministically (ORDER BY created_at DESC
 LIMIT 1), risking a transfer to a stale/wrong account.
 
-Revision ID: 018_hospital_bank_account_unique_active
+Revision ID: 018_bank_account_unique
 Revises: 017_hospital_contact_settings
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "018_hospital_bank_account_unique_active"
+revision = "018_bank_account_unique"
 down_revision = "017_hospital_contact_settings"
 branch_labels = None
 depends_on = None

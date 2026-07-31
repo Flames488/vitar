@@ -240,6 +240,9 @@ def clinic_stats_key(clinic_id: str) -> str:
 def doctor_list_key(clinic_id: str) -> str:
     return f"cache:clinic:doctors:{clinic_id}"
 
+def booking_page_key(slug: str) -> str:
+    return f"cache:booking_page:{slug}"
+
 def patient_list_key(clinic_id: str, page: int = 1) -> str:
     return f"cache:clinic:patients:{clinic_id}:p{page}"
 

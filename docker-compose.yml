@@ -13,7 +13,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          # Capped at 1.0 (not 2.0) — Docker rejects any limit above the
+          # host's actual CPU count, and this VPS has a single core.
+          cpus: '1.0'
           memory: 512M
         reservations:
           cpus: '0.1'
@@ -81,7 +83,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          # Capped at 1.0 (not 2.0) — Docker rejects any limit above the
+          # host's actual CPU count, and this VPS has a single core.
+          cpus: '1.0'
           memory: 1G
         reservations:
           cpus: '0.5'
@@ -425,7 +429,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          # Capped at 1.0 (not 2.0) — same single-core VPS constraint as
+          # the primary postgres service above.
+          cpus: '1.0'
           memory: 512M
         reservations:
           cpus: '0.1'

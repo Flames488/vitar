@@ -12,7 +12,7 @@ from app.core.utils import utcnow
 from app.core.database import get_db
 from app.core.database_async import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from app.core.security import get_current_clinic
 from app.models.models import Doctor, DoctorAvailability, DoctorBlockedTime
 from app.services.trial_guard import check_doctor_limit, get_doctor_limit_info
@@ -206,6 +206,7 @@ def get_available_slots(
     """Returns available time slots for a doctor on a given date."""
     from datetime import datetime, timedelta
     from app.models.models import Appointment, AppointmentStatus
+    from app.core.config import settings
 
     d = _get_or_404(doctor_id, clinic.id, db)
     target = datetime.strptime(date, "%Y-%m-%d")
@@ -228,24 +229,40 @@ def get_available_slots(
     current = target.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
     end_dt = target.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
 
-    # Existing appointments for this day
+    # FIX: this used to compare exact scheduled_at timestamps against a set,
+    # which only caught a conflict when a slot's start matched an existing
+    # appointment's start exactly — a 60-min appointment at 9:00 left the 9:30
+    # slot showing available, which then 409'd at actual booking time. Now
+    # mirrors _check_double_booking's true interval-overlap logic, including
+    # the same stale-AWAITING_PAYMENT exclusion so an abandoned checkout
+    # doesn't block a slot forever.
     day_start = target
     day_end = target + timedelta(days=1)
-    booked = db.query(Appointment.scheduled_at).filter(
+    payment_cutoff = utcnow() - timedelta(minutes=settings.AWAITING_PAYMENT_TIMEOUT_MINUTES)
+    booked = db.query(Appointment.scheduled_at, Appointment.duration_mins).filter(
         Appointment.doctor_id == doctor_id,
         Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
-        Appointment.scheduled_at >= day_start,
-        Appointment.scheduled_at < day_end,
+        or_(
+            Appointment.status != AppointmentStatus.AWAITING_PAYMENT,
+            Appointment.created_at >= payment_cutoff,
+        ),
+        Appointment.scheduled_at >= day_start - timedelta(hours=8),
+        Appointment.scheduled_at < day_end + timedelta(hours=8),
     ).all()
-    booked_times = {b.scheduled_at.replace(second=0, microsecond=0) for b in booked}
+    booked_intervals = [
+        (b.scheduled_at, b.scheduled_at + timedelta(minutes=b.duration_mins or 30))
+        for b in booked
+    ]
 
     slots = []
     now = utcnow()
     while current < end_dt:
+        slot_end = current + timedelta(minutes=slot_duration)
+        overlaps = any(current < b_end and slot_end > b_start for b_start, b_end in booked_intervals)
         slots.append({
             "time": current.strftime("%H:%M"),
             "datetime": current.isoformat(),
-            "available": current not in booked_times and current > now,
+            "available": not overlaps and current > now,
         })
         current += timedelta(minutes=slot_duration)
 
@@ -354,6 +371,7 @@ async def wabizz_get_slots(
     """
     from datetime import datetime, timedelta, timezone as _tz
     from app.models.models import Appointment, AppointmentStatus
+    from app.core.config import settings
 
     result = await db.execute(
         select(Doctor).where(and_(Doctor.id == doctor_id, Doctor.is_active == True))  # noqa: E712
@@ -386,19 +404,30 @@ async def wabizz_get_slots(
     current = target.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
     end_dt = target.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
 
+    # FIX: exact-timestamp matching missed overlaps from longer appointments
+    # and never excluded stale AWAITING_PAYMENT holds — see get_available_slots
+    # above for the same fix applied to the browser-facing endpoint.
     day_start = target
     day_end = target + timedelta(days=1)
+    payment_cutoff = utcnow() - timedelta(minutes=settings.AWAITING_PAYMENT_TIMEOUT_MINUTES)
     booked_result = await db.execute(
-        select(Appointment.scheduled_at).where(
+        select(Appointment.scheduled_at, Appointment.duration_mins).where(
             and_(
                 Appointment.doctor_id == doctor_id,
                 Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
-                Appointment.scheduled_at >= day_start,
-                Appointment.scheduled_at < day_end,
+                or_(
+                    Appointment.status != AppointmentStatus.AWAITING_PAYMENT,
+                    Appointment.created_at >= payment_cutoff,
+                ),
+                Appointment.scheduled_at >= day_start - timedelta(hours=8),
+                Appointment.scheduled_at < day_end + timedelta(hours=8),
             )
         )
     )
-    booked_times = {b.scheduled_at.replace(second=0, microsecond=0) for b in booked_result}
+    booked_intervals = [
+        (b.scheduled_at, b.scheduled_at + timedelta(minutes=b.duration_mins or 30))
+        for b in booked_result
+    ]
 
     # WAT = UTC+1 (Africa/Lagos, no DST)
     WAT = _tz(timedelta(hours=1))
@@ -406,9 +435,11 @@ async def wabizz_get_slots(
     slots = []
 
     while current < end_dt:
-        is_available = current not in booked_times and current > now_utc
+        slot_end = current + timedelta(minutes=slot_duration)
+        overlaps = any(current < b_end and slot_end > b_start for b_start, b_end in booked_intervals)
+        is_available = not overlaps and current > now_utc
         slot_wat = current.replace(tzinfo=WAT)
-        end_wat = (current + timedelta(minutes=slot_duration)).replace(tzinfo=WAT)
+        end_wat = slot_end.replace(tzinfo=WAT)
         slots.append({
             "start_at": slot_wat.isoformat(),
             "end_at": end_wat.isoformat(),

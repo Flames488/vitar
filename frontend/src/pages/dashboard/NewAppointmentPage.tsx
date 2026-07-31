@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { doctorsApi, patientsApi, appointmentsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
@@ -25,6 +25,7 @@ const schema = z.object({
 
 export default function NewAppointmentPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { data: doctorsData } = useQuery({ queryKey: ['doctors'], queryFn: doctorsApi.list });
   const { data: patientsData } = useQuery({ queryKey: ['patients'], queryFn: () => patientsApi.list({ limit: 100 }) });
 
@@ -41,6 +42,7 @@ export default function NewAppointmentPage() {
       scheduled_at: new Date(data.scheduled_at).toISOString(),
     }),
     onSuccess: (apt) => {
+      qc.invalidateQueries({ queryKey: ['appointments'] });
       toast.success('Appointment created');
       navigate(`/appointments/${apt.id}`);
     },
@@ -119,9 +121,9 @@ export default function NewAppointmentPage() {
             className="flex-1 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium py-2.5 rounded-lg text-sm transition-colors">
             Cancel
           </button>
-          <button type="submit" disabled={isSubmitting}
+          <button type="submit" disabled={isSubmitting || createMutation.isPending}
             className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
-            {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+            {(isSubmitting || createMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
             Create Appointment
           </button>
         </div>

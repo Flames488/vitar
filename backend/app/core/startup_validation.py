@@ -52,8 +52,14 @@ def validate_production_config() -> None:
     _check_secret(errors, "JWT_SECRET_KEY", settings.JWT_SECRET_KEY)
 
     # Database
-    if settings.DATABASE_URL == "postgresql://vitar:vitar@localhost:5432/vitar":
-        errors.append("DATABASE_URL uses the default dev password. Set a strong POSTGRES_PASSWORD in .env")
+    # FIX: this used to compare the whole URL against the dev default
+    # ("...@localhost:5432/vitar"), which never matches production — the
+    # compose stack always connects via "@pgbouncer:5432/vitar", so a
+    # deployment that left POSTGRES_PASSWORD unset/default (the .env.example
+    # value is literally "vitar") booted with zero warning. Check the
+    # credentials themselves instead of the host.
+    if "://vitar:vitar@" in settings.DATABASE_URL:
+        errors.append("DATABASE_URL uses the default 'vitar' password. Set a strong POSTGRES_PASSWORD in .env")
 
     # CORS
     prod_origins = [o for o in settings.ALLOWED_ORIGINS if "localhost" not in o and "127.0.0.1" not in o]

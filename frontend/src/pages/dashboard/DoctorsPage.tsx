@@ -16,6 +16,7 @@ export function DoctorsPage() {
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => doctorsApi.delete(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['doctors'] }); toast.success('Doctor deactivated'); },
+    onError: () => toast.error('Failed to deactivate doctor. Please try again.'),
   });
 
   const doctors = data?.doctors ?? [];

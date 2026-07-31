@@ -33,13 +33,18 @@ export default function AppointmentDetailPage() {
 
   const updateMutation = useMutation({
     mutationFn: (status: string) => appointmentsApi.update(id!, { status }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['appointment', id] }); toast.success('Updated'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appointment', id] });
+      qc.invalidateQueries({ queryKey: ['appointments'] });
+      toast.success('Updated');
+    },
     onError: (err) => toast.error(getApiError(err)),
   });
 
   const predictMutation = useMutation({
     mutationFn: () => aiApi.predict(id!),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['appointment', id] }); toast.success('Risk score updated'); },
+    onError: (err) => toast.error(getApiError(err)),
   });
 
   if (isLoading) return <div className="p-6 text-slate-400">Loading...</div>;

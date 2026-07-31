@@ -185,7 +185,7 @@ def get_payment_status(
     db: Session = Depends(get_db),
 ):
     """Polled by the Billing page every 10s while a payment is pending."""
-    return billing_service.get_payment_status(reference, db)
+    return billing_service.get_payment_status(reference, db, clinic_id=clinic.id)
 
 
 # ─── Manual Plan Activation (superadmin only) ─────────────────────────────────

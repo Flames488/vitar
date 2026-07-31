@@ -230,23 +230,37 @@ def get_public_available_slots(slug: str, doctor_id: str, date: str, db: Session
     current = target.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
     end_dt = target.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
 
+    # FIX: exact-timestamp matching missed overlaps from longer appointments
+    # (a 60-min appointment at 9:00 left the 9:30 slot showing available, which
+    # then 409'd at actual booking time) and never excluded stale
+    # AWAITING_PAYMENT holds, mirroring _check_double_booking's real logic.
     day_start = target
     day_end = target + timedelta(days=1)
-    booked = db.query(Appointment.scheduled_at).filter(
+    payment_cutoff = utcnow() - timedelta(minutes=settings.AWAITING_PAYMENT_TIMEOUT_MINUTES)
+    booked = db.query(Appointment.scheduled_at, Appointment.duration_mins).filter(
         Appointment.doctor_id == doctor_id,
         Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
-        Appointment.scheduled_at >= day_start,
-        Appointment.scheduled_at < day_end,
+        or_(
+            Appointment.status != AppointmentStatus.AWAITING_PAYMENT,
+            Appointment.created_at >= payment_cutoff,
+        ),
+        Appointment.scheduled_at >= day_start - timedelta(hours=8),
+        Appointment.scheduled_at < day_end + timedelta(hours=8),
     ).all()
-    booked_times = {b.scheduled_at.replace(second=0, microsecond=0) for b in booked}
+    booked_intervals = [
+        (b.scheduled_at, b.scheduled_at + timedelta(minutes=b.duration_mins or 30))
+        for b in booked
+    ]
 
     slots = []
     now = utcnow()
     while current < end_dt:
+        slot_end = current + timedelta(minutes=slot_duration)
+        overlaps = any(current < b_end and slot_end > b_start for b_start, b_end in booked_intervals)
         slots.append({
             "time": current.strftime("%H:%M"),
             "datetime": current.isoformat(),
-            "available": current not in booked_times and current > now,
+            "available": not overlaps and current > now,
         })
         current += timedelta(minutes=slot_duration)
 

@@ -12,6 +12,7 @@ export function BookingPageSettings() {
   const updateMutation = useMutation({
     mutationFn: (data: any) => clinicsApi.update(data),
     onSuccess: () => { refreshClinic(); toast.success('Saved'); },
+    onError: () => toast.error('Failed to save. Please try again.'),
   });
 
   return (

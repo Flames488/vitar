@@ -4,9 +4,9 @@ Full relational schema with indexes, constraints, and locking support
 """
 
 from sqlalchemy import (
-    Column, String, Integer, Float, Boolean, DateTime, 
-    ForeignKey, Text, Enum, Index, UniqueConstraint, 
-    CheckConstraint, JSON, Numeric
+    Column, String, Integer, Float, Boolean, DateTime,
+    ForeignKey, Text, Enum, Index, UniqueConstraint,
+    CheckConstraint, JSON, Numeric, text
 )
 from sqlalchemy import JSON as JSONB  # JSONB used on postgres, JSON on sqlite (tests)
 from sqlalchemy.orm import relationship
@@ -121,7 +121,7 @@ class Clinic(Base):
     __tablename__ = "clinics"
 
     id = Column(String(36), primary_key=True, default=gen_uuid)
-    owner_id = Column(String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    owner_id = Column(String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     slug = Column(String(100), unique=True, nullable=False, index=True)
     email = Column(String(255), nullable=False)
@@ -445,6 +445,20 @@ class Appointment(Base):
         Index("ix_appointment_status_time", "status", "scheduled_at"),
         CheckConstraint("duration_mins > 0 AND duration_mins <= 480", name="chk_duration"),
         CheckConstraint("no_show_risk_score >= 0.0 AND no_show_risk_score <= 1.0", name="chk_risk_score"),
+        # Real backstop against concurrent double-booking: the application-level
+        # SELECT ... FOR UPDATE check only locks rows that already exist, so two
+        # concurrent requests booking the same still-empty slot both pass it and
+        # both INSERT. This constraint makes the second INSERT fail with an
+        # IntegrityError instead, which booking.py/appointments.py already catch
+        # and turn into a clean 409. Excludes CANCELLED/NO_SHOW since a doctor can
+        # have any number of those at the same slot over time.
+        Index(
+            "uq_doctor_slot",
+            "doctor_id", "scheduled_at",
+            unique=True,
+            postgresql_where=text("status NOT IN ('CANCELLED', 'NO_SHOW')"),
+            sqlite_where=text("status NOT IN ('CANCELLED', 'NO_SHOW')"),
+        ),
     )
 
 

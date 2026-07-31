@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { doctorsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
@@ -24,12 +24,17 @@ const schema = z.object({
 
 export default function NewDoctorPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema) });
   const [doctorDetailsEnabled, setDoctorDetailsEnabled] = useState(true);
 
   const createMutation = useMutation({
     mutationFn: doctorsApi.create,
-    onSuccess: (d) => { toast.success('Doctor added'); navigate(`/doctors/${d.id}`); },
+    onSuccess: (d) => {
+      qc.invalidateQueries({ queryKey: ['doctors'] });
+      toast.success('Doctor added');
+      navigate(`/doctors/${d.id}`);
+    },
     onError: (err) => toast.error(getApiError(err)),
   });
 
@@ -75,9 +80,9 @@ export default function NewDoctorPage() {
           </button>
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || createMutation.isPending}
             className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
-            {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+            {(isSubmitting || createMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
             Add Doctor
           </button>
         </div>

@@ -59,7 +59,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not r:
             return await call_next(request)
 
-        ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        # X-Real-IP is set by nginx as $remote_addr on every proxied request —
+        # nginx always overwrites this header itself, so a client-supplied value
+        # never survives. X-Forwarded-For is NOT safe to use here: nginx appends
+        # to whatever the client sent ($proxy_add_x_forwarded_for), so a client
+        # can prepend an arbitrary fake IP and rate limits/logs bucket on that
+        # instead, making the limit trivially bypassable by varying the header
+        # per request.
+        ip = (request.headers.get("X-Real-IP", "").strip()
               or (request.client.host if request.client else "unknown"))
 
         path = request.url.path
@@ -116,7 +123,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
 
-        ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        # X-Real-IP is set by nginx as $remote_addr on every proxied request —
+        # nginx always overwrites this header itself, so a client-supplied value
+        # never survives. X-Forwarded-For is NOT safe to use here: nginx appends
+        # to whatever the client sent ($proxy_add_x_forwarded_for), so a client
+        # can prepend an arbitrary fake IP and rate limits/logs bucket on that
+        # instead, making the limit trivially bypassable by varying the header
+        # per request.
+        ip = (request.headers.get("X-Real-IP", "").strip()
               or (request.client.host if request.client else "unknown"))
 
         if request.url.path not in ("/health", "/"):

@@ -351,8 +351,29 @@ def update_appointment(
         raise HTTPException(status_code=404, detail="Appointment not found")
 
     if body.status:
+        # FIX: body.status was assigned straight into the Enum column with no
+        # validation — an unrecognized string raised an uncaught LookupError at
+        # commit (raw 500 instead of a clean 422), and there was no guard against
+        # reopening a terminal appointment (e.g. un-cancelling one after its
+        # waiting-list notification already fired, or un-completing one already
+        # counted in no-show/attendance analytics).
+        try:
+            new_status = AppointmentStatus(body.status)
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid status '{body.status}'. Must be one of: {[s.value for s in AppointmentStatus]}",
+            )
+
+        _TERMINAL = (AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW)
+        if apt.status in _TERMINAL and new_status != apt.status:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Appointment is already {apt.status.value} and cannot be moved to {new_status.value}.",
+            )
+
         old_status = str(apt.status)
-        apt.status = body.status
+        apt.status = new_status
         if body.status in ("no_show", AppointmentStatus.NO_SHOW.value):
             background_tasks.add_task(_dispatch_no_show, apt.patient_id, apt.clinic_id)
         elif body.status in ("completed", AppointmentStatus.COMPLETED.value):
@@ -518,6 +539,17 @@ async def wabizz_book_appointment(
     patient = pt_result.scalar_one_or_none()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
+
+    # Doctor and patient must belong to the same clinic — otherwise the
+    # resulting appointment gets filed under doctor.clinic_id while the
+    # patient record belongs to a different clinic, mixing tenants and
+    # silently hiding the appointment from the patient's own clinic-scoped
+    # history queries elsewhere in the app.
+    if patient.clinic_id and patient.clinic_id != doctor.clinic_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Patient and doctor belong to different clinics",
+        )
 
     await _async_check_double_booking(db, body.doctor_id, body.scheduled_at, body.duration_mins)
 

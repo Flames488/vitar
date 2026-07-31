@@ -445,7 +445,7 @@ class BillingService:
         pending.provider_response = charge.get("raw", {})
         db.commit()
 
-        cache.set(f"payment_status:{reference}", {"status": "pending"}, ttl=35 * 60)
+        cache.set(f"payment_status:{reference}", {"status": "pending", "clinic_id": clinic_id}, ttl=35 * 60)
 
         log_payment_event("automated_payment_initiated", "paystack", reference, clinic_id, amount, "pending",
                           extra={"plan": plan})
@@ -477,28 +477,33 @@ class BillingService:
             ),
         }
 
-    def get_payment_status(self, reference: str, db) -> Dict:
+    def get_payment_status(self, reference: str, db, clinic_id: str) -> Dict:
         """
         Polled by the Billing page every 10s. Redis-first, DB fallback.
         Lazily flips PENDING → EXPIRED once the session's time is up.
+
+        clinic_id is required and the DB lookup is scoped to it — without this,
+        any logged-in clinic owner could poll another clinic's payment
+        reference and learn its status.
         """
         from app.models.models import PendingSubscriptionPayment, PendingPaymentStatus
         from app.core.cache import cache
 
         cached = cache.get(f"payment_status:{reference}")
-        if cached and cached.get("status") != "pending":
+        if cached and cached.get("status") != "pending" and cached.get("clinic_id") == clinic_id:
             return cached
 
         pending = db.query(PendingSubscriptionPayment).filter(
-            PendingSubscriptionPayment.paystack_reference == reference
+            PendingSubscriptionPayment.paystack_reference == reference,
+            PendingSubscriptionPayment.clinic_id == clinic_id,
         ).first()
         if not pending:
-            return cached or {"status": "not_found"}
+            return {"status": "not_found"}
 
         if pending.status == PendingPaymentStatus.PENDING and utcnow() > pending.expires_at:
             pending.status = PendingPaymentStatus.EXPIRED
             db.commit()
-            cache.set(f"payment_status:{reference}", {"status": "expired"}, ttl=60 * 60)
+            cache.set(f"payment_status:{reference}", {"status": "expired", "clinic_id": clinic_id}, ttl=60 * 60)
 
         return {"status": pending.status.value}
 
@@ -532,7 +537,7 @@ class BillingService:
         if utcnow() > pending.expires_at:
             pending.status = PendingPaymentStatus.EXPIRED
             db.commit()
-            cache.set(f"payment_status:{reference}", {"status": "expired"}, ttl=3600)
+            cache.set(f"payment_status:{reference}", {"status": "expired", "clinic_id": str(pending.clinic_id)}, ttl=3600)
             log_payment_event("automated_payment_expired", "paystack", reference, str(pending.clinic_id))
             return False
 
@@ -543,7 +548,7 @@ class BillingService:
         if abs(paid_amount - expected_amount) > tolerance:
             pending.status = PendingPaymentStatus.AMOUNT_MISMATCH
             db.commit()
-            cache.set(f"payment_status:{reference}", {"status": "amount_mismatch"}, ttl=3600)
+            cache.set(f"payment_status:{reference}", {"status": "amount_mismatch", "clinic_id": str(pending.clinic_id)}, ttl=3600)
             log_payment_event("automated_payment_amount_mismatch", "paystack", reference,
                               str(pending.clinic_id), paid_amount, "amount_mismatch",
                               extra={"expected_amount": expected_amount})
@@ -591,7 +596,7 @@ class BillingService:
         pending.provider_response = {**(pending.provider_response or {}), "webhook_payload_keys": list(payload.keys())}
         db.commit()
 
-        cache.set(f"payment_status:{reference}", {"status": "paid"}, ttl=3600)
+        cache.set(f"payment_status:{reference}", {"status": "paid", "clinic_id": str(pending.clinic_id)}, ttl=3600)
         log_payment_event("subscription_activated", "paystack", reference, str(pending.clinic_id),
                           paid_amount, "success", extra={"plan": pending.subscription_plan, "automated": True})
         return True

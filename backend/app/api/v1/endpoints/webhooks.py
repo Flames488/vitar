@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 import logging
 import json
 
@@ -98,7 +99,19 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
         )
         db.add(payout)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # The webhook and a patient's manual "verify payment" poll can both
+        # see "no payment row yet" and both try to INSERT — the loser hits
+        # PatientPayment.provider_reference's unique constraint. The payment
+        # was still recorded successfully by whichever request won, so treat
+        # this as success rather than surfacing a 500.
+        db.rollback()
+        logger.info(f"Payment finalize race for appointment {appointment.id} — already recorded by a concurrent request.")
+        db.refresh(appointment)
+        payout = db.query(Payout).filter(Payout.appointment_id == appointment.id).first()
+        return payout
     cache.set(
         "admin:payouts:latest",
         {"payout_id": payout.id, "appointment_id": appointment.id, "hospital_id": appointment.clinic_id},

@@ -307,10 +307,18 @@ def fire_pending_reminders(self):
             Notification.retry_count < Notification.max_retries,
         ).with_for_update(skip_locked=True).limit(200).all()
 
+        # FIX: was one SELECT per notification (up to 200 extra round trips per
+        # run, every 5 minutes) — batch-fetch every referenced appointment's
+        # status in a single query instead.
+        apt_ids = {notif.appointment_id for notif in due if notif.appointment_id}
+        apt_statuses = dict(
+            db.query(Appointment.id, Appointment.status).filter(Appointment.id.in_(apt_ids)).all()
+        ) if apt_ids else {}
+
         dispatched = 0
         for notif in due:
-            apt = db.query(Appointment).filter(Appointment.id == notif.appointment_id).first()
-            if apt and apt.status in (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW):
+            apt_status = apt_statuses.get(notif.appointment_id)
+            if apt_status in (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW):
                 notif.status = NotificationStatus.FAILED
                 notif.failure_reason = "Appointment cancelled/no-show"
                 continue

@@ -188,15 +188,24 @@ def _serialize(p: Patient) -> dict:
 )
 async def get_patient_by_phone(
     phone: str,
+    clinic_id: str = Query(..., description="Clinic to scope the lookup to — phone numbers are not unique platform-wide."),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Wabizz calls this endpoint to find a patient using only their WhatsApp
     phone number (E.164 format).  Uses async SQLAlchemy for non-blocking I/O.
+
+    clinic_id is required: phone is only unique per-clinic (see wabizz_create_patient's
+    dedup comment below), so an unscoped lookup would leak another clinic's patient
+    record (name, notes, history) to whichever clinic's Wabizz flow queries first.
     """
     result = await db.execute(
         select(Patient).where(
-            and_(Patient.phone == phone, Patient.is_active == True)  # noqa: E712
+            and_(
+                Patient.phone == phone,
+                Patient.clinic_id == clinic_id,
+                Patient.is_active == True,  # noqa: E712
+            )
         )
     )
     patient = result.scalar_one_or_none()
@@ -270,6 +279,7 @@ async def wabizz_create_patient(
 )
 async def wabizz_get_patient_appointments(
     patient_id: str,
+    clinic_id: str = Query(..., description="Clinic to scope the lookup to."),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Returns all appointments for a patient. Called by vitar-client.getPatientAppointments(). Uses async SQLAlchemy."""
@@ -282,7 +292,12 @@ async def wabizz_get_patient_appointments(
     result = await db.execute(
         select(Appointment)
         .options(_joinedload(Appointment.doctor))
-        .where(Appointment.patient_id == patient_id)
+        .where(
+            and_(
+                Appointment.patient_id == patient_id,
+                Appointment.clinic_id == clinic_id,
+            )
+        )
         .order_by(Appointment.scheduled_at.desc())
         .limit(20)
     )

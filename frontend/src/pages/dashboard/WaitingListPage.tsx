@@ -12,6 +12,7 @@ export default function WaitingListPage() {
   const removeMutation = useMutation({
     mutationFn: waitingListApi.remove,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['waiting-list'] }); toast.success('Removed from waiting list'); },
+    onError: () => toast.error('Failed to remove entry. Please try again.'),
   });
 
   const entries = data?.items ?? [];

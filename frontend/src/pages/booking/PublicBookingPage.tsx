@@ -8,8 +8,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, addDays } from 'date-fns';
-import { Calendar, Clock, CheckCircle, Loader2, User, Banknote } from 'lucide-react';
-import { bookingApi, doctorsApi } from '@/lib/api/services';
+import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Mail, Phone, MessageCircle } from 'lucide-react';
+import { bookingApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
 
@@ -37,9 +37,9 @@ export default function PublicBookingPage() {
   });
 
   const { data: slotsData, isLoading: slotsLoading, isError: slotsError } = useQuery({
-    queryKey: ['available-slots', selectedDoctor, selectedDate],
-    queryFn: () => doctorsApi.getAvailableSlots(selectedDoctor!, selectedDate),
-    enabled: !!selectedDoctor && !!selectedDate,
+    queryKey: ['available-slots', slug, selectedDoctor, selectedDate],
+    queryFn: () => bookingApi.getAvailableSlots(slug!, selectedDoctor!, selectedDate),
+    enabled: !!slug && !!selectedDoctor && !!selectedDate,
     retry: 1,
   });
 
@@ -52,6 +52,7 @@ export default function PublicBookingPage() {
   const bookMutation = useMutation({
     mutationFn: (formData: any) => bookingApi.book(slug!, {
       ...formData,
+      email: formData.email || undefined,
       doctor_id: selectedDoctor,
       scheduled_at: `${selectedDate}T${selectedSlot}:00`,
     }),
@@ -116,7 +117,7 @@ export default function PublicBookingPage() {
           <h2 className="text-xl font-bold text-slate-900">Appointment Confirmed!</h2>
           <p className="text-slate-500 text-sm">
             You're booked with <strong>{clinic?.name}</strong> on{' '}
-            <strong>{format(new Date(`${selectedDate}T${selectedSlot}`), 'EEEE, MMMM d at h:mm a')}</strong>
+            <strong>{format(new Date(`${selectedDate}T${selectedSlot}`), "EEEE, MMMM d 'at' h:mm a")}</strong>
           </p>
           <p className="text-slate-400 text-xs">A confirmation will be sent to your phone/email.</p>
         </div>
@@ -151,6 +152,44 @@ export default function PublicBookingPage() {
                   <p className="text-teal-600 text-sm font-medium mt-1">
                     ₦{d.consultation_fee.toLocaleString()}
                   </p>
+                )}
+                {d.doctor_details && (
+                  <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                    {d.doctor_details.email && (
+                      <p className="text-slate-500 text-xs flex items-center gap-1.5">
+                        <Mail className="w-3 h-3" /> {d.doctor_details.email}
+                      </p>
+                    )}
+                    {d.doctor_details.phone && (
+                      <p className="text-slate-500 text-xs flex items-center gap-1.5">
+                        <Phone className="w-3 h-3" /> {d.doctor_details.phone}
+                      </p>
+                    )}
+                    {(d.doctor_details.talk_with_doctor_url || d.doctor_details.call_url) && (
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {d.doctor_details.talk_with_doctor_url && (
+                          <a
+                            href={d.doctor_details.talk_with_doctor_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 px-2.5 py-1.5 rounded-lg transition-colors"
+                          >
+                            <MessageCircle className="w-3 h-3" /> Chat on WhatsApp
+                          </a>
+                        )}
+                        {d.doctor_details.call_url && (
+                          <a
+                            href={d.doctor_details.call_url}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 px-2.5 py-1.5 rounded-lg transition-colors"
+                          >
+                            <Phone className="w-3 h-3" /> Call Doctor
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </button>
             ))}
@@ -205,7 +244,7 @@ export default function PublicBookingPage() {
         {selectedSlot && (
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="font-semibold text-slate-900 mb-4">Your Details</h2>
-            <form onSubmit={handleSubmit(d => bookMutation.mutate(d))} className="space-y-3">
+            <form onSubmit={handleSubmit(d => { if (!bookMutation.isPending) bookMutation.mutate(d) })} className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Full name *</label>
                 <input {...register('full_name')} placeholder="Your full name"
@@ -231,7 +270,7 @@ export default function PublicBookingPage() {
 
               <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700">
                 <p className="font-medium">Booking Summary</p>
-                <p className="mt-1 text-slate-500">{format(new Date(`${selectedDate}T${selectedSlot}`), 'EEEE, MMMM d, yyyy at h:mm a')}</p>
+                <p className="mt-1 text-slate-500">{format(new Date(`${selectedDate}T${selectedSlot}`), "EEEE, MMMM d, yyyy 'at' h:mm a")}</p>
                 {clinic?.patient_payment_enabled && (
                   <p className="mt-1 text-teal-700 text-xs font-medium flex items-center gap-1">
                     <Banknote className="w-3.5 h-3.5" /> You'll be redirected to secure payment (Paystack) after booking
@@ -239,9 +278,9 @@ export default function PublicBookingPage() {
                 )}
               </div>
 
-              <button type="submit" disabled={isSubmitting || redirecting}
+              <button type="submit" disabled={isSubmitting || bookMutation.isPending || redirecting}
                 className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
-                {(isSubmitting || redirecting) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {(isSubmitting || bookMutation.isPending || redirecting) && <Loader2 className="w-4 h-4 animate-spin" />}
                 {redirecting ? 'Redirecting to payment…' : 'Confirm Appointment'}
               </button>
             </form>

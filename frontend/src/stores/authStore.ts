@@ -43,7 +43,11 @@ interface Clinic {
     bookings_limit: number;
     show_upgrade_nudge: boolean;
     is_expired: boolean;
+    paid_features_unlocked: boolean;
   };
+  // True while on an active trial, or on an active paid plan afterwards.
+  // Gates paid-but-trial-free features like Doctor Details.
+  paid_features_unlocked?: boolean;
 }
 
 interface AuthState {

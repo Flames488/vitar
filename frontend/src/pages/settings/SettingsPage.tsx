@@ -6,7 +6,7 @@ import { clinicsApi, hospitalBankAccountApi } from '@/lib/api/services';
 import { useAuthStore } from '@/stores/authStore';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
-import { Loader2, Copy, Check, Link2, Banknote, Info, Landmark, ShieldCheck } from 'lucide-react';
+import { Loader2, Copy, Check, Link2, Banknote, Info, Landmark, ShieldCheck, Phone } from 'lucide-react';
 
 // ── Clinic ID copy panel ──────────────────────────────────────────────────────
 
@@ -124,6 +124,88 @@ function PaymentTogglePanel() {
           Save Payment Settings
         </button>
       </form>
+    </div>
+  );
+}
+
+// ── Hospital Contact Settings ───────────────────────────────────────────────
+// Controls whether patients can contact doctors directly from the public
+// booking page — via WhatsApp, phone call, both, or neither. Doctor profile
+// pages automatically respect whichever option is selected here.
+
+type ContactMode = 'both' | 'whatsapp' | 'call' | 'none';
+
+function modeFromClinic(whatsapp: boolean, call: boolean): ContactMode {
+  if (whatsapp && call) return 'both';
+  if (whatsapp) return 'whatsapp';
+  if (call) return 'call';
+  return 'none';
+}
+
+const CONTACT_MODE_OPTIONS: { value: ContactMode; label: string; description: string }[] = [
+  { value: 'both', label: 'Enable Both', description: 'Patients can chat on WhatsApp or call the doctor directly.' },
+  { value: 'whatsapp', label: 'WhatsApp Only', description: 'Patients can message doctors on WhatsApp; calling is hidden.' },
+  { value: 'call', label: 'Phone Calls Only', description: 'Patients can call doctors; WhatsApp is hidden.' },
+  { value: 'none', label: 'Disable All Direct Contact', description: 'No contact buttons shown — patients only book appointments.' },
+];
+
+function HospitalContactSettingsPanel() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['clinic-me'],
+    queryFn: clinicsApi.getMe,
+  });
+
+  const mutation = useMutation({
+    mutationFn: (mode: ContactMode) =>
+      clinicsApi.update({
+        contact_whatsapp_enabled: mode === 'both' || mode === 'whatsapp',
+        contact_call_enabled: mode === 'both' || mode === 'call',
+      }),
+    onSuccess: () => toast.success('Contact settings saved'),
+    onError: () => toast.error('Failed to save contact settings'),
+  });
+
+  if (isLoading) return null;
+
+  const currentMode = modeFromClinic(
+    data?.contact_whatsapp_enabled ?? true,
+    data?.contact_call_enabled ?? true,
+  );
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Phone className="w-4 h-4 text-teal-600" />
+        <h2 className="text-sm font-semibold text-slate-900">Hospital Contact Settings</h2>
+      </div>
+
+      <p className="text-xs text-slate-500 leading-relaxed">
+        Choose how patients can reach your doctors directly from the booking page. This applies
+        across all doctors — no per-doctor setup needed.
+      </p>
+
+      <div className="space-y-2">
+        {CONTACT_MODE_OPTIONS.map((opt) => (
+          <label
+            key={opt.value}
+            className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+              currentMode === opt.value ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:bg-slate-50'
+            } ${mutation.isPending ? 'opacity-60 pointer-events-none' : ''}`}
+          >
+            <input
+              type="radio"
+              name="contact_mode"
+              className="mt-0.5 w-4 h-4 text-teal-600 focus:ring-teal-500 border-slate-300"
+              checked={currentMode === opt.value}
+              onChange={() => mutation.mutate(opt.value)}
+            />
+            <div>
+              <p className="text-sm font-medium text-slate-900">{opt.label}</p>
+              <p className="text-xs text-slate-500">{opt.description}</p>
+            </div>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -326,6 +408,9 @@ export function SettingsPage() {
 
       {/* Where Vitar sends the clinic's share after Paystack collects payment */}
       {clinic?.id && <PayoutAccountPanel clinicId={clinic.id} />}
+
+      {/* Whether/how patients can contact doctors directly (WhatsApp/call) */}
+      {clinic?.id && <HospitalContactSettingsPanel />}
 
       <form onSubmit={handleSubmit(d => updateMutation.mutate(d))} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
         <h2 className="text-sm font-semibold text-slate-900">General Information</h2>

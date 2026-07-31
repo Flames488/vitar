@@ -55,6 +55,9 @@ export default function OnboardingPage() {
       address: z.string().optional(),
     })),
   });
+  // Optional — Hospital Contact Settings (item 7 also lets this be set/changed
+  // anytime from Settings, so it's fine to default and skip here).
+  const [contactMode, setContactMode] = useState<'both' | 'whatsapp' | 'call' | 'none'>('both');
 
   // Step 2: Doctor
   const doctorForm = useForm({
@@ -73,7 +76,11 @@ export default function OnboardingPage() {
 
   const handleProfileSubmit = async (data: any) => {
     try {
-      await clinicsApi.update(data);
+      await clinicsApi.update({
+        ...data,
+        contact_whatsapp_enabled: contactMode === 'both' || contactMode === 'whatsapp',
+        contact_call_enabled: contactMode === 'both' || contactMode === 'call',
+      });
       await advance(2);
     } catch (err) { toast.error(getApiError(err)); }
   };
@@ -199,6 +206,21 @@ export default function OnboardingPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Address (optional)</label>
                 <input {...profileForm.register('address')} placeholder="12 Victoria Island, Lagos"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  How can patients contact your doctors? <span className="text-slate-400 font-normal">(optional — change anytime in Settings)</span>
+                </label>
+                <select
+                  value={contactMode}
+                  onChange={(e) => setContactMode(e.target.value as typeof contactMode)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                >
+                  <option value="both">WhatsApp and phone call</option>
+                  <option value="whatsapp">WhatsApp only</option>
+                  <option value="call">Phone call only</option>
+                  <option value="none">Disable direct contact</option>
+                </select>
               </div>
               <button type="submit" disabled={profileForm.formState.isSubmitting}
                 className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors">

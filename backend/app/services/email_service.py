@@ -1,6 +1,8 @@
 """
 Vitar v5 - Email Service
-Transactional email templates via SendGrid.
+Transactional email templates. Sends via Resend if RESEND_API_KEY is set
+(preferred — simple domain verification, no unified-login headaches),
+falling back to SendGrid if only SENDGRID_API_KEY is set.
 """
 
 import httpx
@@ -12,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 async def _send(to_email: str, subject: str, html: str):
-    if not settings.SENDGRID_API_KEY:
-        logger.warning(f"SendGrid not configured. Would have sent: {subject} → {to_email}")
+    if not settings.RESEND_API_KEY and not settings.SENDGRID_API_KEY:
+        logger.warning(f"No email provider configured. Would have sent: {subject} → {to_email}")
         return
     try:
         email_circuit.execute(_noop)  # check circuit state before attempting
@@ -25,18 +27,33 @@ async def _send(to_email: str, subject: str, html: str):
         return
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://api.sendgrid.com/v3/mail/send",
-                headers={"Authorization": f"Bearer {settings.SENDGRID_API_KEY}"},
-                json={
-                    "personalizations": [{"to": [{"email": to_email}]}],
-                    "from": {"email": settings.EMAIL_FROM, "name": settings.EMAIL_FROM_NAME},
-                    "subject": subject,
-                    "content": [{"type": "text/html", "value": html}],
-                },
-            )
-            if resp.status_code >= 500:
-                raise Exception(f"SendGrid {resp.status_code}: {resp.text[:200]}")
+            if settings.RESEND_API_KEY:
+                resp = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+                    json={
+                        "from": f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>",
+                        "to": [to_email],
+                        "subject": subject,
+                        "html": html,
+                    },
+                )
+                provider = "resend"
+            else:
+                resp = await client.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={"Authorization": f"Bearer {settings.SENDGRID_API_KEY}"},
+                    json={
+                        "personalizations": [{"to": [{"email": to_email}]}],
+                        "from": {"email": settings.EMAIL_FROM, "name": settings.EMAIL_FROM_NAME},
+                        "subject": subject,
+                        "content": [{"type": "text/html", "value": html}],
+                    },
+                )
+                provider = "sendgrid"
+
+            if resp.status_code >= 400:
+                raise Exception(f"{provider} {resp.status_code}: {resp.text[:200]}")
             email_circuit._on_success()
     except Exception as e:
         email_circuit._on_failure()

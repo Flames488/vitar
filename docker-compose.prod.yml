@@ -3,6 +3,10 @@ services:
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
+      # Explicit here (not just inherited default) so production never silently
+      # runs on 1 worker. Match this to your VPS's vCPU count — 4 for the
+      # recommended 4-slice InterServer plan.
+      UVICORN_WORKERS: "${UVICORN_WORKERS:-4}"
       FRONTEND_URL: https://livevault.cloud
       VITE_API_URL: https://livevault.cloud/api/v1
       ALLOWED_ORIGINS: '["https://livevault.cloud","https://www.livevault.cloud"]'
@@ -36,6 +40,7 @@ services:
       - "443:443"
     volumes:
       - ./infra/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/cloudflare-ips.conf:/etc/nginx/cloudflare-ips.conf:ro
       - ./infra/nginx/certbot/conf:/etc/letsencrypt:ro
       - ./infra/nginx/certbot/www:/var/www/certbot:ro
 

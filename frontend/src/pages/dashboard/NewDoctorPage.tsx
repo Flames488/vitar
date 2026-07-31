@@ -10,6 +10,8 @@ import { Loader2 } from 'lucide-react';
 import { doctorsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
+import { useState } from 'react';
+import DoctorDetailsSection from '@/components/shared/DoctorDetailsSection';
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -23,6 +25,7 @@ const schema = z.object({
 export default function NewDoctorPage() {
   const navigate = useNavigate();
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema) });
+  const [doctorDetailsEnabled, setDoctorDetailsEnabled] = useState(true);
 
   const createMutation = useMutation({
     mutationFn: doctorsApi.create,
@@ -33,7 +36,7 @@ export default function NewDoctorPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Add New Doctor</h1>
-      <form onSubmit={handleSubmit(d => createMutation.mutate(d))} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <form onSubmit={handleSubmit(d => createMutation.mutate({ ...d, doctor_details_enabled: doctorDetailsEnabled }))} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Full name *</label>
           <input {...register('full_name')} placeholder="Dr. Amaka Obi"
@@ -52,29 +55,27 @@ export default function NewDoctorPage() {
               className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-            <input {...register('email')} type="email" placeholder="doctor@clinic.com"
-              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-            <input {...register('phone')} placeholder="+2348012345678"
-              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-          </div>
-        </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Bio</label>
           <textarea {...register('bio')} rows={3} placeholder="Brief professional bio..."
             className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none" />
         </div>
+
+        <DoctorDetailsSection
+          value={{ email: '', phone: '', doctor_details_enabled: doctorDetailsEnabled }}
+          onChange={(next) => setDoctorDetailsEnabled(next.doctor_details_enabled)}
+          registerEmail={register('email')}
+          registerPhone={register('phone')}
+        />
+
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={() => navigate(-1)}
             className="flex-1 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium py-2.5 rounded-lg text-sm transition-colors">
             Cancel
           </button>
-          <button type="submit" disabled={isSubmitting}
+          <button
+            type="submit"
+            disabled={isSubmitting}
             className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
             {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
             Add Doctor

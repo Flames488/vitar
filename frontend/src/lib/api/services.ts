@@ -109,6 +109,7 @@ export const billingApi = {
   cancel: () => api.post('/billing/cancel').then(r => r.data),
   getPaymentStatus: (reference: string) =>
     api.get(`/billing/payment-status/${reference}`).then(r => r.data),
+  getPaymentHistory: () => api.get('/billing/payment-history').then(r => r.data),
   getBanks: () => api.get('/billing/banks').then(r => r.data),
   setupSubaccount: (bank_code: string, account_number: string) =>
     api.post('/billing/setup-subaccount', { bank_code, account_number }).then(r => r.data),
@@ -130,6 +131,17 @@ export const hospitalBankAccountApi = {
     api.post(`/hospitals/${hospitalId}/bank-account`, { account_number, bank_code }).then(r => r.data),
   replace: (hospitalId: string, account_number: string, bank_code: string) =>
     api.put(`/hospitals/${hospitalId}/bank-account`, { account_number, bank_code }).then(r => r.data),
+};
+
+// ── Clinic Payouts (money automatically sent to the clinic's own bank account) ──
+// Read-only from the clinic's side: transfers are triggered automatically by the
+// backend (webhook on payment + a Celery beat sweep), the clinic just watches
+// the status here. There is no "withdraw" action to wire up — nothing to click.
+
+export const clinicPayoutsApi = {
+  getSummary: () => api.get('/clinics/me/payouts/summary').then(r => r.data),
+  getHistory: (params?: { status?: string; page?: number; limit?: number }) =>
+    api.get('/clinics/me/payouts/', { params }).then(r => r.data),
 };
 
 // ── Geo ───────────────────────────────────────────────────────────────────────
@@ -166,6 +178,8 @@ export const waitingListApi = {
 
 export const bookingApi = {
   getClinic: (slug: string) => api.get(`/booking/clinic/${slug}`).then(r => r.data),
+  getAvailableSlots: (slug: string, doctorId: string, date: string) =>
+    api.get(`/booking/clinic/${slug}/doctors/${doctorId}/available-slots`, { params: { date } }).then(r => r.data),
   book: (slug: string, data: Record<string, unknown>) =>
     api.post(`/booking/clinic/${slug}/book`, data).then(r => r.data),
   confirm: (token: string) => api.get(`/booking/confirm/${token}`).then(r => r.data),
@@ -224,6 +238,8 @@ export const adminApi = {
       plan?: string; duration_days?: number; expiration_date?: string;
       notes?: string; reason?: string;
     }) => api.post(`/admin/subscriptions/${clinicId}/override`, data).then(r => r.data),
+    resetActiveTrials: (dryRun = false) =>
+      api.post('/admin/subscriptions/reset-trials', null, { params: { dry_run: dryRun } }).then(r => r.data),
   },
 
   analytics: {

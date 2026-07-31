@@ -49,10 +49,18 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
         PayoutStatus,
     )
 
+    from app.core.config import settings
+
     reference = data.get("reference") or appointment.payment_provider_ref
     amount_kobo = int(data.get("amount") or round(float(appointment.payment_amount or 0) * 100))
     amount = amount_kobo / 100
     now = utcnow()
+
+    fee_pct = max(0.0, min(1.0, settings.PLATFORM_PAYOUT_FEE_PCT))
+    platform_share_kobo = round(amount_kobo * fee_pct)
+    clinic_share_kobo = amount_kobo - platform_share_kobo
+    platform_share = platform_share_kobo / 100
+    clinic_share = clinic_share_kobo / 100
 
     appointment.payment_status = PaymentStatus.PAID
     appointment.status = AppointmentStatus.APPROVED
@@ -68,8 +76,8 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
             provider=PaymentProvider.PAYSTACK,
             provider_reference=reference,
             total_amount=amount,
-            clinic_share=amount,
-            platform_share=0,
+            clinic_share=clinic_share,
+            platform_share=platform_share,
             currency=data.get("currency", appointment.payment_currency or "NGN"),
             status=PaymentStatus.PAID,
             paid_at=now,
@@ -85,7 +93,7 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
         payout = Payout(
             appointment_id=appointment.id,
             hospital_id=appointment.clinic_id,
-            amount=amount_kobo,
+            amount=clinic_share_kobo,
             status=PayoutStatus.PENDING_PAYOUT.value,
         )
         db.add(payout)

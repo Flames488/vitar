@@ -46,7 +46,7 @@ def send_push_reminders(self, appointment_id: str):
 
     vapid_private = getattr(settings, "VAPID_PRIVATE_KEY", "")
     vapid_public = getattr(settings, "VAPID_PUBLIC_KEY", "")
-    vapid_email = getattr(settings, "VAPID_CLAIMS_EMAIL", "noreply@vitar.health")
+    vapid_email = getattr(settings, "VAPID_CLAIMS_EMAIL", "vitarhealthcare@gmail.com")
 
     if not vapid_private or not vapid_public:
         logger.warning("send_push_reminders: VAPID keys not configured — skipping")
@@ -253,7 +253,7 @@ def cleanup_expired_push_subscriptions(self):
 
         vapid_private = getattr(settings, "VAPID_PRIVATE_KEY", "")
         vapid_public = getattr(settings, "VAPID_PUBLIC_KEY", "")
-        vapid_email = getattr(settings, "VAPID_CLAIMS_EMAIL", "noreply@vitar.health")
+        vapid_email = getattr(settings, "VAPID_CLAIMS_EMAIL", "vitarhealthcare@gmail.com")
 
         if not vapid_private:
             return

@@ -101,7 +101,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      UVICORN_WORKERS: "${UVICORN_WORKERS:-1}"
+      # Defaults to 4 (matches a 4-slice InterServer VPS ~ 4 vCPU). For async
+      # FastAPI/uvicorn workers, a good starting point is 1 worker per vCPU —
+      # unlike sync WSGI apps, you don't need the (2 x cores)+1 rule here.
+      # Override via UVICORN_WORKERS in .env if your VPS core count differs.
+      UVICORN_WORKERS: "${UVICORN_WORKERS:-4}"
       LOG_LEVEL: "info"
       SKIP_MIGRATIONS: "false"
     depends_on:

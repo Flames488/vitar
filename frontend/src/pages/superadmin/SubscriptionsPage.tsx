@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Settings2 } from 'lucide-react';
+import { Settings2, RotateCcw } from 'lucide-react';
 import { adminApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import {
@@ -41,9 +41,45 @@ export default function AdminSubscriptionsPage() {
   const [action, setAction] = useState<OverrideAction>('grant_temporary');
   const [plan, setPlan] = useState('');
   const [durationDays, setDurationDays] = useState('30');
+  const [durationUnit, setDurationUnit] = useState<'days' | 'months'>('days');
   const [expirationDate, setExpirationDate] = useState('');
   const [notes, setNotes] = useState('');
   const [reason, setReason] = useState('');
+
+  const resetTrialsMutation = useMutation({
+    mutationFn: () => adminApi.subscriptions.resetActiveTrials(false),
+    onSuccess: (data) => {
+      toast.success(
+        data.affected_count > 0
+          ? `Reset ${data.affected_count} clinic${data.affected_count === 1 ? '' : 's'} to a full 30-day trial`
+          : 'All active trials were already at 30 days — nothing to change',
+      );
+      queryClient.invalidateQueries({ queryKey: ['admin', 'subscriptions'] });
+    },
+    onError: (err) => toast.error(getApiError(err)),
+  });
+
+  const handleResetTrials = async () => {
+    try {
+      const preview = await adminApi.subscriptions.resetActiveTrials(true);
+      if (preview.affected_count === 0) {
+        toast.info('All active trials are already at 30 days');
+        return;
+      }
+      const ok = window.confirm(
+        `This will reset ${preview.affected_count} clinic(s) currently on an active trial back to a full 30-day trial (measured from their original signup date). Continue?`,
+      );
+      if (ok) resetTrialsMutation.mutate();
+    } catch (err) {
+      toast.error(getApiError(err));
+    }
+  };
+
+  // durationDays always holds the value actually sent to the API (in days);
+  // the unit toggle just changes how the admin enters the number.
+  const durationDaysValue = durationUnit === 'months'
+    ? String(Math.round(Number(durationDays || 0) * 30))
+    : durationDays;
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'subscriptions', { search, planFilter, statusFilter, page }],
@@ -56,7 +92,7 @@ export default function AdminSubscriptionsPage() {
     mutationFn: () => adminApi.subscriptions.override(target!.clinicId, {
       action,
       plan: plan || undefined,
-      duration_days: ['grant_temporary', 'extend'].includes(action) ? Number(durationDays) : undefined,
+      duration_days: ['grant_temporary', 'extend'].includes(action) ? Number(durationDaysValue) : undefined,
       expiration_date: action === 'set_expiration' ? expirationDate : undefined,
       notes: notes || undefined,
       reason: reason || undefined,
@@ -70,7 +106,7 @@ export default function AdminSubscriptionsPage() {
   });
 
   const closeModal = () => {
-    setTarget(null); setNotes(''); setReason(''); setPlan('pro'); setExpirationDate(''); setDurationDays('30');
+    setTarget(null); setNotes(''); setReason(''); setPlan('pro'); setExpirationDate(''); setDurationDays('30'); setDurationUnit('days');
   };
 
   const openOverride = (clinicId: string, clinicName: string) => {
@@ -83,9 +119,20 @@ export default function AdminSubscriptionsPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
-      <div>
-        <h1 className={`text-2xl font-bold ${c.text}`}>Subscriptions</h1>
-        <p className={`text-sm mt-1 ${c.textMuted}`}>{data?.total ?? 0} clinic subscriptions</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className={`text-2xl font-bold ${c.text}`}>Subscriptions</h1>
+          <p className={`text-sm mt-1 ${c.textMuted}`}>{data?.total ?? 0} clinic subscriptions</p>
+        </div>
+        <button
+          onClick={handleResetTrials}
+          disabled={resetTrialsMutation.isPending}
+          title="Recompute trial_ends_at = signup date + 30 days for every clinic currently on an active trial"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-teal-600 text-teal-700 hover:bg-teal-50 disabled:opacity-50 whitespace-nowrap"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          {resetTrialsMutation.isPending ? 'Resetting…' : 'Reset Active Trials to 30 Days'}
+        </button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -197,8 +244,23 @@ export default function AdminSubscriptionsPage() {
         )}
 
         {['grant_temporary', 'extend'].includes(action) && (
-          <FormField label="Duration (days)">
-            <TextInput type="number" min={1} value={durationDays} onChange={(e) => setDurationDays(e.target.value)} />
+          <FormField label={`Duration (${durationUnit})`}>
+            <div className="flex gap-2">
+              <TextInput
+                type="number"
+                min={1}
+                value={durationDays}
+                onChange={(e) => setDurationDays(e.target.value)}
+                className="flex-1"
+              />
+              <Select value={durationUnit} onChange={(e) => setDurationUnit(e.target.value as 'days' | 'months')} className="w-28">
+                <option value="days">Days</option>
+                <option value="months">Months</option>
+              </Select>
+            </div>
+            {durationUnit === 'months' && (
+              <p className="text-xs mt-1 text-gray-500">≈ {durationDaysValue} days</p>
+            )}
           </FormField>
         )}
 

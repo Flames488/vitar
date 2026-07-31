@@ -227,6 +227,35 @@
       transition: all 0.2s;
     }
 .lv-marketing.lv-home .btn-secondary:hover { border-color: var(--teal); color: var(--teal); }
+.lv-marketing.lv-home .hero-login-link {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 0.95rem; font-weight: 600; color: var(--slate);
+      padding: 14px 6px;
+      text-decoration: none;
+      transition: color 0.2s;
+      position: relative;
+    }
+.lv-marketing.lv-home .hero-login-link::after {
+      content: "→";
+      display: inline-block;
+      opacity: 0;
+      transform: translateX(-4px);
+      transition: opacity 0.2s, transform 0.2s;
+    }
+.lv-marketing.lv-home .hero-login-link::before {
+      content: "";
+      position: absolute;
+      left: 6px; right: 6px; bottom: 10px;
+      height: 1px;
+      background: currentColor;
+      opacity: 0;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+.lv-marketing.lv-home .hero-login-link:hover { color: var(--teal); }
+.lv-marketing.lv-home .hero-login-link:hover::after { opacity: 1; transform: translateX(0); }
+.lv-marketing.lv-home .hero-login-link:hover::before { opacity: 0.35; transform: scaleX(1); }
 .lv-marketing.lv-home .hero-microlink { margin: -22px 0 34px; }
 .lv-marketing.lv-home .hero-microlink a {
       font-size: 0.85rem; font-weight: 600; color: var(--slate);
@@ -782,8 +811,26 @@
 .lv-marketing.lv-home nav { padding: 0 4vw; height: 58px; }
 .lv-marketing.lv-home .nav-logo span { font-size: 1.05rem; }
 .lv-marketing.lv-home .nav-cta { padding: 8px 16px; font-size: 0.78rem; }
-.lv-marketing.lv-home .hero-actions { flex-direction: column; width: 100%; }
+.lv-marketing.lv-home .hero-actions { flex-direction: column; width: 100%; align-items: center; }
 .lv-marketing.lv-home .btn-primary, .lv-marketing.lv-home .btn-secondary { width: 100%; justify-content: center; }
+.lv-marketing.lv-home .hero-login-link {
+      margin-top: 8px;
+      padding-top: 20px;
+      width: 100%;
+      justify-content: center;
+      position: relative;
+    }
+.lv-marketing.lv-home .hero-login-link::before {
+      display: block;
+      content: "";
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%) scaleX(1);
+      width: 48px; height: 1px;
+      background: rgba(10,22,40,0.12);
+      opacity: 1;
+    }
+.lv-marketing.lv-home .hero-login-link::after { opacity: 1; transform: none; }
 .lv-marketing.lv-home .stat { padding: 16px 10px; }
 .lv-marketing.lv-home .stat-num { font-size: clamp(1rem, 5vw, 1.5rem); }
 .lv-marketing.lv-home .section { padding: 52px 6vw; }

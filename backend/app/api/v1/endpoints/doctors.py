@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.core.security import get_current_clinic
 from app.models.models import Doctor, DoctorAvailability, DoctorBlockedTime
-from app.services.trial_guard import check_doctor_limit
-from app.core.cache import cache, doctor_list_key, TTL_MEDIUM
+from app.services.trial_guard import check_doctor_limit, get_doctor_limit_info
+from app.core.cache import cache, doctor_list_key, booking_page_key, TTL_MEDIUM
 from app.core.metrics import record_cache_hit, record_cache_miss
 from app.middleware.api_key_auth import verify_api_key
 
@@ -30,6 +30,9 @@ class DoctorCreate(BaseModel):
     phone: Optional[str] = None
     bio: Optional[str] = None
     consultation_fee: Optional[float] = None
+    # Doctor Details — paid feature (free during trial, requires a paid plan
+    # after trial expiry). Defaults to off; must be explicitly enabled.
+    doctor_details_enabled: Optional[bool] = None
 
 class DoctorUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -39,6 +42,7 @@ class DoctorUpdate(BaseModel):
     bio: Optional[str] = None
     consultation_fee: Optional[float] = None
     is_active: Optional[bool] = None
+    doctor_details_enabled: Optional[bool] = None
 
 class AvailabilitySlot(BaseModel):
     day_of_week: int  # 0=Mon
@@ -58,11 +62,13 @@ def list_doctors(
     clinic=Depends(get_current_clinic),
     db: Session = Depends(get_db),
 ):
+    limit_info = get_doctor_limit_info(clinic, db)
+
     ck = doctor_list_key(str(clinic.id))
     cached = cache.get(ck)
     if cached:
         record_cache_hit()
-        return cached
+        return {**cached, "limit": limit_info}
     record_cache_miss()
     doctors = db.query(Doctor).filter(
         Doctor.clinic_id == clinic.id,
@@ -70,7 +76,7 @@ def list_doctors(
     ).order_by(Doctor.full_name).all()
     result = {"doctors": [_serialize(d) for d in doctors]}
     cache.set(ck, result, ttl=TTL_MEDIUM)
-    return result
+    return {**result, "limit": limit_info}
 
 
 @router.post("/", status_code=201)
@@ -89,12 +95,17 @@ def create_doctor(
         phone=body.phone,
         bio=body.bio,
         consultation_fee=body.consultation_fee or 0,
+        # Defaults to on — no longer a paid feature. Explicit False (e.g. a
+        # doctor who shouldn't be contacted directly) is still respected.
+        doctor_details_enabled=(True if body.doctor_details_enabled is None else bool(body.doctor_details_enabled)),
         is_active=True,
     )
     db.add(doctor)
     db.commit()
     db.refresh(doctor)
     cache.delete(doctor_list_key(str(clinic.id)))
+    if clinic.slug:
+        cache.delete(booking_page_key(clinic.slug))  # public booking page embeds the doctor list
     return _serialize(doctor)
 
 
@@ -128,11 +139,21 @@ def update_doctor(
     db: Session = Depends(get_db),
 ):
     d = _get_or_404(doctor_id, clinic.id, db)
+
+    # Reactivating a previously-deactivated doctor is functionally the same
+    # as adding one — must respect the same plan/trial limit as create_doctor,
+    # otherwise a hospital could exceed its cap by deactivating one doctor
+    # and reactivating others.
+    if body.is_active is True and not d.is_active:
+        check_doctor_limit(clinic, db)
+
     for field, val in body.model_dump(exclude_none=True).items():
         setattr(d, field, val)
     db.commit()
     db.refresh(d)
     cache.delete(doctor_list_key(str(clinic.id)))
+    if clinic.slug:
+        cache.delete(booking_page_key(clinic.slug))  # public booking page embeds the doctor list
     return _serialize(d)
 
 
@@ -146,6 +167,8 @@ def delete_doctor(
     d.is_active = False
     db.commit()
     cache.delete(doctor_list_key(str(clinic.id)))
+    if clinic.slug:
+        cache.delete(booking_page_key(clinic.slug))  # public booking page embeds the doctor list
     return {"message": "Doctor deactivated", "id": doctor_id}
 
 
@@ -265,6 +288,7 @@ def _serialize(d: Doctor) -> dict:
         "bio": d.bio,
         "consultation_fee": float(d.consultation_fee) if d.consultation_fee else 0,
         "is_active": d.is_active,
+        "doctor_details_enabled": bool(d.doctor_details_enabled),
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
 

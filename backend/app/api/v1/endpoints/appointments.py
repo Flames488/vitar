@@ -5,7 +5,7 @@ Fixes: double-booking overlap calc, background_tasks dispatch, structured loggin
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 import secrets
@@ -30,6 +30,20 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
+def _to_naive_utc(v: datetime) -> datetime:
+    """
+    Normalize any incoming datetime to naive UTC, matching utcnow() and the
+    DB storage convention app-wide. The frontend may send timezone-aware
+    ISO strings (e.g. JS's toISOString() has a 'Z' suffix); comparing those
+    directly against utcnow()'s naive datetime raises
+    `TypeError: can't compare offset-naive and offset-aware datetimes`.
+    Reused across every schema that accepts a scheduled_at-style field.
+    """
+    if v.tzinfo is not None:
+        return v.astimezone(timezone.utc).replace(tzinfo=None)
+    return v
+
+
 class AppointmentCreate(BaseModel):
     doctor_id: str
     patient_id: str
@@ -41,6 +55,11 @@ class AppointmentCreate(BaseModel):
     payment_required: bool = False
     payment_amount: Optional[float] = None
 
+    @field_validator("scheduled_at")
+    @classmethod
+    def _normalize_scheduled_at(cls, v: datetime) -> datetime:
+        return _to_naive_utc(v)
+
 
 class AppointmentUpdate(BaseModel):
     status: Optional[str] = None
@@ -48,10 +67,20 @@ class AppointmentUpdate(BaseModel):
     reason: Optional[str] = None
     scheduled_at: Optional[datetime] = None
 
+    @field_validator("scheduled_at")
+    @classmethod
+    def _normalize_scheduled_at(cls, v: Optional[datetime]) -> Optional[datetime]:
+        return _to_naive_utc(v) if v is not None else v
+
 
 class AppointmentReschedule(BaseModel):
     new_scheduled_at: datetime
     reason: Optional[str] = None
+
+    @field_validator("new_scheduled_at")
+    @classmethod
+    def _normalize_new_scheduled_at(cls, v: datetime) -> datetime:
+        return _to_naive_utc(v)
 
 
 # ── FIX: Correct overlap detection using actual duration_mins ─────────────────
@@ -453,6 +482,11 @@ class WabizzAppointmentCreate(BaseModel):
     booked_via: str = "wabizz_whatsapp"
     payment_required: bool = False
     payment_amount: Optional[float] = None
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def _normalize_scheduled_at(cls, v: datetime) -> datetime:
+        return _to_naive_utc(v)
 
 
 @router.post(

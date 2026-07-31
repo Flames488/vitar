@@ -14,9 +14,16 @@ import {
   Tooltip, ResponsiveContainer, BarChart, Bar,
 } from 'recharts';
 import { adminApi } from '@/lib/api/services';
-import { useGeoStore } from '@/stores/geoStore';
 import { useAdminTheme, EmptyState } from '@/components/admin/AdminUI';
 import { format } from 'date-fns';
+
+// Platform revenue is always collected in NGN via Paystack, regardless of
+// the viewing admin's own detected geo/currency — so this is hardcoded,
+// not pulled from useGeoStore's formatMoney (which reflects the visitor's
+// own locale, not what clinics were actually billed in).
+function formatNaira(amount: number): string {
+  return `₦${Math.round(amount).toLocaleString('en-NG')}`;
+}
 
 function timeAgo(iso: string | null): string {
   if (!iso) return '';
@@ -45,7 +52,6 @@ function StatPill({ up, value, suffix = '' }: { up: boolean; value: number; suff
 
 export default function AdminOverviewPage() {
   const { c, dark } = useAdminTheme();
-  const { formatMoney } = useGeoStore();
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['admin', 'overview'],
@@ -123,7 +129,7 @@ export default function AdminOverviewPage() {
             },
             {
               label: 'Monthly Revenue',
-              value: isLoading ? null : formatMoney(kpis?.monthly_revenue ?? 0),
+              value: isLoading ? null : formatNaira(kpis?.monthly_revenue ?? 0),
               sub: 'This month',
               icon: null,
               tint: { bg: dark ? 'bg-amber-500/10' : 'bg-amber-50', text: dark ? 'text-amber-400' : 'text-amber-600', ring: dark ? 'ring-amber-500/20' : 'ring-amber-100' },

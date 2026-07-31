@@ -72,6 +72,8 @@ async def _read_and_validate(file: UploadFile) -> tuple[bytes, str]:
             detail="Uploaded file content does not match its declared image type.",
         )
 
+    data = _optimize_image(data, content_type)
+
     return data, content_type
 
 
@@ -86,6 +88,58 @@ def _detect_image_content_type(data: bytes) -> str | None:
     if data.startswith((b"GIF87a", b"GIF89a")):
         return "image/gif"
     return None
+
+
+# ── Image optimization ────────────────────────────────────────────────────────
+# Avatars/logos don't need to be stored at whatever resolution the user's phone
+# camera produced. Cap the longest edge and re-compress before it ever reaches
+# S3 — this keeps storage costs and page-load payloads down as upload volume
+# grows with user count, instead of every image staying at its original size.
+
+_MAX_DIMENSION = 800  # px, longest edge — plenty for avatars/logos
+_JPEG_QUALITY = 85
+_PNG_COMPRESS_LEVEL = 8
+
+
+def _optimize_image(data: bytes, content_type: str) -> bytes:
+    """
+    Resize (if oversized) and re-compress an already-validated image.
+    GIFs are passed through untouched — resizing can break animation frames
+    and GIF logos/avatars are rare enough not to be worth the complexity.
+    Falls back to the original bytes if Pillow can't process the file for any
+    reason, so a bad image never turns into a hard upload failure here.
+    """
+    if content_type == "image/gif":
+        return data
+
+    try:
+        from io import BytesIO
+        from PIL import Image
+
+        img = Image.open(BytesIO(data))
+        img.load()
+
+        if max(img.size) > _MAX_DIMENSION:
+            img.thumbnail((_MAX_DIMENSION, _MAX_DIMENSION), Image.LANCZOS)
+
+        out = BytesIO()
+        if content_type == "image/png":
+            img.save(out, format="PNG", optimize=True, compress_level=_PNG_COMPRESS_LEVEL)
+        elif content_type == "image/webp":
+            img.save(out, format="WEBP", quality=_JPEG_QUALITY, method=6)
+        else:  # JPEG — flatten any alpha channel onto white first
+            if img.mode in ("RGBA", "P"):
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                bg.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
+                img = bg
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+            img.save(out, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
+
+        return out.getvalue()
+    except Exception as e:
+        logger.warning(f"Image optimization skipped, storing original: {e}")
+        return data
 
 
 # ── Doctor avatar ─────────────────────────────────────────────────────────────

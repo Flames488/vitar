@@ -367,7 +367,7 @@ class Patient(Base):
     total_no_shows = Column(Integer, default=0)
     total_cancellations = Column(Integer, default=0)
     last_no_show_at = Column(DateTime)
-    preferred_channel = Column(Enum(NotificationChannel), default=NotificationChannel.SMS)
+    preferred_channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e]), default=NotificationChannel.SMS)
 
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -407,7 +407,7 @@ class Appointment(Base):
     # Reminders
     reminder_sent_at = Column(DateTime)
     reminder_count = Column(Integer, default=0)
-    last_reminder_channel = Column(Enum(NotificationChannel))
+    last_reminder_channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e]))
 
     # Payment
     payment_required = Column(Boolean, default=False)
@@ -523,7 +523,7 @@ class Notification(Base):
     clinic_id = Column(String(36), ForeignKey("clinics.id"), nullable=False, index=True)
     patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False)
 
-    channel = Column(Enum(NotificationChannel), nullable=False)
+    channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e]), nullable=False)
     notification_type = Column(String(50), nullable=False)  # reminder | confirmation | cancellation | follow_up
     status = Column(Enum(NotificationStatus), default=NotificationStatus.PENDING)
 
@@ -578,6 +578,28 @@ class NotificationSettings(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     clinic = relationship("Clinic", back_populates="notification_settings")
+
+
+class PushSubscription(Base):
+    """
+    A single browser/PWA Web Push subscription for a clinic staff member.
+    Table created by migration 011_push_subscriptions — this model class
+    was the missing piece: the table existed in the DB, but nothing mapped
+    to it, so every push subscribe/unsubscribe call and reminder task raised
+    ImportError on `from app.models.models import PushSubscription`.
+    """
+    __tablename__ = "push_subscriptions"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    endpoint = Column(Text, nullable=False, unique=True)
+    p256dh = Column(Text, nullable=False)
+    auth = Column(String(64), nullable=False)
+    user_agent = Column(String(512), nullable=True)
+
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
 # ─── Waiting List ─────────────────────────────────────────────────────────────

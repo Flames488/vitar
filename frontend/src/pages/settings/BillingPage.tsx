@@ -5,16 +5,18 @@
  * No Paystack account required on the clinic side.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   CheckCircle, Zap, Building, AlertCircle, ExternalLink,
-  Banknote, Copy, Check, Clock, X,
+  Banknote, Copy, Check, Clock, X, Loader2,
 } from 'lucide-react';
-import { billingApi } from '@/lib/api/services';
+import { billingApi, doctorsApi } from '@/lib/api/services';
+import { getApiError } from '@/lib/api/client';
 import { formatNaira } from '@/lib/currency';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
+import { buildEnterpriseWhatsAppUrl } from '@/lib/whatsapp';
 
 const PLAN_ICONS = { basic: Zap, pro: CheckCircle, enterprise: Building };
 const currency = 'NGN';
@@ -46,6 +48,7 @@ function BankTransferModal({
     reference: string;
     instructions: string;
     expires_at?: string;
+    server_time?: string;
     bank_details: { bank_name: string; account_number: string; account_name: string } | null;
   };
   onClose: () => void;
@@ -57,16 +60,40 @@ function BankTransferModal({
   const [copiedAcc, setCopiedAcc] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
+  // Clock-drift correction: expires_at was computed by the server as
+  // "server now + 35 minutes". If the server's own clock is off from the
+  // browser's (e.g. an unsynced VPS clock), comparing expires_at directly
+  // against the browser's Date.now() can make a brand-new session look
+  // already expired. server_time tells us what the server's clock read at
+  // creation, so we compute the offset once and apply it to every
+  // countdown tick below, instead of trusting the two clocks to agree.
+  const clockOffsetMs = data.server_time ? new Date(data.server_time).getTime() - Date.now() : 0;
+
   const expiresAtMs = data.expires_at ? new Date(data.expires_at).getTime() : null;
   const isAutomated = !!data.expires_at;
 
-  const { data: statusData } = useQuery({
+  const { data: statusData, refetch: refetchStatus } = useQuery({
     queryKey: ['billing', 'payment-status', data.reference],
     queryFn: () => billingApi.getPaymentStatus(data.reference),
     enabled: isAutomated,
     refetchInterval: 10_000,
   });
   const status = statusData?.status ?? 'pending';
+
+  // The moment the client-side countdown reaches zero, force an immediate
+  // status refetch instead of waiting up to 10s for the next scheduled poll.
+  // This is what actually flips the backend record from pending -> expired,
+  // keeping the UI's local timer and the server's status in sync.
+  const hasRequestedExpiryRefetch = useRef(false);
+  useEffect(() => {
+    hasRequestedExpiryRefetch.current = false;
+  }, [data.reference]);
+  useEffect(() => {
+    if (status === 'pending' && expiresAtMs !== null && now + clockOffsetMs >= expiresAtMs && !hasRequestedExpiryRefetch.current) {
+      hasRequestedExpiryRefetch.current = true;
+      refetchStatus();
+    }
+  }, [now, status, expiresAtMs, refetchStatus]);
 
   // Local 1s ticker for the countdown display.
   useEffect(() => {
@@ -91,7 +118,7 @@ function BankTransferModal({
 
   const planLabel = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);
   const cycleLabel = data.billing_cycle === 'monthly' ? '/month' : '/year';
-  const remainingMs = expiresAtMs ? expiresAtMs - now : null;
+  const remainingMs = expiresAtMs ? expiresAtMs - (now + clockOffsetMs) : null;
   const isExpired = status === 'expired' || (remainingMs !== null && remainingMs <= 0);
 
   return (
@@ -129,7 +156,7 @@ function BankTransferModal({
             <p className="font-semibold text-red-800">Wrong payment amount detected.</p>
             <p className="text-sm text-red-700">
               Contact support at{' '}
-              <a href="mailto:support@vitar.health" className="underline font-medium">support@vitar.health</a>.
+              <a href="mailto:vitarhealthcare@gmail.com" className="underline font-medium">vitarhealthcare@gmail.com</a>.
             </p>
           </div>
         )}
@@ -193,8 +220,8 @@ function BankTransferModal({
             ) : (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                 Bank details not configured yet. Please contact{' '}
-                <a href="mailto:support@vitar.health" className="font-medium underline">
-                  support@vitar.health
+                <a href="mailto:vitarhealthcare@gmail.com" className="font-medium underline">
+                  vitarhealthcare@gmail.com
                 </a>{' '}
                 to complete your subscription.
               </div>
@@ -238,7 +265,7 @@ function BankTransferModal({
           </>
         )}
 
-        {status === 'pending' && (
+        {status === 'pending' && !isExpired && (
           <button
             onClick={onClose}
             className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
@@ -246,6 +273,52 @@ function BankTransferModal({
             Done — I've made the transfer
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  paid: 'bg-green-100 text-green-700',
+  pending: 'bg-amber-100 text-amber-700',
+  failed: 'bg-red-100 text-red-700',
+  refunded: 'bg-slate-100 text-slate-600',
+  unpaid: 'bg-slate-100 text-slate-600',
+};
+
+function PaymentHistorySection({ payments, isLoading }: { payments: any[]; isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h2 className="text-sm font-semibold text-slate-900 mb-3">Payment History</h2>
+        <div className="flex items-center gap-2 text-slate-400 text-sm py-4 justify-center">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading payment history...
+        </div>
+      </div>
+    );
+  }
+
+  if (!payments.length) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <h2 className="text-sm font-semibold text-slate-900 mb-3">Payment History</h2>
+      <div className="divide-y divide-slate-100">
+        {payments.map((p) => (
+          <div key={p.id} className="flex items-center justify-between py-2.5 text-sm">
+            <div>
+              <p className="text-slate-700 font-medium">{formatMoney(p.amount)}</p>
+              <p className="text-slate-400 text-xs mt-0.5">
+                {new Date(p.paid_at ?? p.created_at).toLocaleDateString(undefined, {
+                  year: 'numeric', month: 'short', day: 'numeric',
+                })}
+              </p>
+            </div>
+            <span className={`text-xs font-medium px-2 py-1 rounded-full capitalize ${PAYMENT_STATUS_STYLES[p.status] ?? 'bg-slate-100 text-slate-600'}`}>
+              {p.status}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -260,6 +333,13 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [transferData, setTransferData] = useState<any>(null);
 
+  // Doctor count for the Enterprise WhatsApp pre-fill below. This list is
+  // already fetched elsewhere in the app (Doctors page), so this is a cheap
+  // cache hit in the common case rather than an extra network round trip.
+  const { data: doctorsData } = useQuery({ queryKey: ['doctors'], queryFn: doctorsApi.list });
+  const doctorCount: number = doctorsData?.doctors?.length ?? 0;
+  const enterpriseWhatsAppUrl = buildEnterpriseWhatsAppUrl(clinic?.name, doctorCount);
+
   const { data: plansData, isLoading: plansLoading } = useQuery({
     queryKey: ['billing', 'plans', currency],
     queryFn: () => billingApi.getPlans(currency),
@@ -268,6 +348,11 @@ export default function BillingPage() {
   const { data: subData, refetch: refetchSub } = useQuery({
     queryKey: ['billing', 'subscription'],
     queryFn: billingApi.getSubscription,
+  });
+
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['billing', 'payment-history'],
+    queryFn: billingApi.getPaymentHistory,
   });
 
   const subscribeMutation = useMutation({
@@ -286,7 +371,7 @@ export default function BillingPage() {
         refreshClinic();
       }
     },
-    onError: () => toast.error('Failed to initiate subscription. Please try again.'),
+    onError: (err) => toast.error(getApiError(err) || 'Failed to initiate subscription. Please try again.'),
   });
 
   const cancelMutation = useMutation({
@@ -295,7 +380,7 @@ export default function BillingPage() {
       toast.success('Subscription will cancel at end of billing period');
       refetchSub();
     },
-    onError: () => toast.error('Failed to cancel subscription'),
+    onError: (err) => toast.error(getApiError(err) || 'Failed to cancel subscription'),
   });
 
   const plans = plansData?.plans ?? [];
@@ -374,6 +459,9 @@ export default function BillingPage() {
         </div>
       )}
 
+      {/* Payment history */}
+      <PaymentHistorySection payments={historyData?.payments ?? []} isLoading={historyLoading} />
+
       {/* Billing cycle toggle */}
       <div className="flex items-center justify-center gap-3">
         <button
@@ -399,7 +487,9 @@ export default function BillingPage() {
 
       {/* Plan cards */}
       {plansLoading ? (
-        <div className="text-center py-12 text-slate-400">Loading plans...</div>
+        <div className="flex items-center justify-center gap-2 py-12 text-slate-400 text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading plans...
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {plans.map((plan: any) => {
@@ -465,7 +555,9 @@ export default function BillingPage() {
 
                 {plan.plan === 'enterprise' ? (
                   <a
-                    href="mailto:sales@vitar.health"
+                    href={enterpriseWhatsAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex items-center justify-center gap-2 border-2 border-slate-300 hover:border-teal-500 text-slate-700 hover:text-teal-700 font-semibold py-2.5 rounded-xl transition-colors"
                   >
                     Contact Sales <ExternalLink className="w-4 h-4" />
@@ -490,8 +582,15 @@ export default function BillingPage() {
                         : 'border-2 border-teal-600 text-teal-700 hover:bg-teal-50 disabled:opacity-60'
                     }`}
                   >
-                    <Banknote className="w-4 h-4" />
-                    {isPending ? 'Loading...' : `Upgrade to ${plan.name}`}
+                    {isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Starting payment...
+                      </>
+                    ) : (
+                      <>
+                        <Banknote className="w-4 h-4" /> Upgrade to {plan.name}
+                      </>
+                    )}
                   </button>
                 )}
               </div>

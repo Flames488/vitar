@@ -51,7 +51,7 @@ VITE_API_URL=https://livevault.cloud/api/v1
 API_DOCS_ENABLED=true
 
 # Trial limits
-TRIAL_DAYS=14
+TRIAL_DAYS=30
 TRIAL_MAX_BOOKINGS=50
 TRIAL_MAX_DOCTORS=2
 

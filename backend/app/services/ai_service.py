@@ -65,6 +65,36 @@ def get_reminder_schedule(score: float, appointment_dt: datetime) -> list[dict]:
         if t_30m > now:
             reminders.append({"offset_hours": 0.5, "channels": ["whatsapp"], "send_at": t_30m.isoformat()})
 
+    # Short-notice fallback: if the appointment is booked less than 24h out,
+    # the standard 24h reminder above never gets scheduled (t_24h is already
+    # in the past), and depending on risk category the patient could end up
+    # with zero reminders — or in low-risk cases, not even a confirmation.
+    # Give every short-notice booking an immediate confirmation plus the
+    # largest still-future reminder from {2h, 1h, 30min} before the
+    # appointment, without duplicating anything a risk category already added.
+    if t_24h <= now:
+        used_offsets = {r["offset_hours"] for r in reminders}
+
+        if 0 not in used_offsets:
+            t_confirm = now + timedelta(minutes=2)
+            reminders.append({
+                "offset_hours": 0,
+                "channels": ["sms", "email"],
+                "send_at": t_confirm.isoformat(),
+            })
+
+        for hours in (2, 1, 0.5):
+            if hours in used_offsets:
+                continue
+            t_candidate = appointment_dt - timedelta(hours=hours)
+            if t_candidate > now:
+                reminders.append({
+                    "offset_hours": hours,
+                    "channels": ["sms", "whatsapp"],
+                    "send_at": t_candidate.isoformat(),
+                })
+                break
+
     # Sort by send_at ascending
     reminders.sort(key=lambda x: x["send_at"])
     return reminders

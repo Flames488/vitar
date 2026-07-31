@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta, timezone
+import math
 import secrets
 import hashlib
 
@@ -167,11 +168,13 @@ def _determine_region(country: str) -> Region:
 
 
 def _clinic_dict(clinic: Clinic) -> dict:
+    from app.services.trial_guard import has_paid_feature_access
+
     now = utcnow()
     trial_ends_at = clinic.trial_ends_at
     is_on_trial = trial_ends_at is not None
     is_expired = is_on_trial and now > trial_ends_at
-    days_left = max(0, (trial_ends_at - now).days) if is_on_trial and not is_expired else 0
+    days_left = max(0, math.ceil((trial_ends_at - now).total_seconds() / 86400)) if is_on_trial and not is_expired else 0
     bookings_used = clinic.trial_bookings_used or 0
     bookings_limit = settings.TRIAL_MAX_BOOKINGS
 
@@ -191,7 +194,11 @@ def _clinic_dict(clinic: Clinic) -> dict:
             "bookings_used": bookings_used,
             "bookings_limit": bookings_limit,
             "show_upgrade_nudge": is_on_trial and (is_expired or days_left <= 7),
+            "paid_features_unlocked": has_paid_feature_access(clinic),
         } if is_on_trial else None,
+        # Also expose top-level for clinics with no trial record (e.g. legacy
+        # data) so the frontend never has to guess when `trial` is null.
+        "paid_features_unlocked": has_paid_feature_access(clinic),
     }
 
 

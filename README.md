@@ -1,160 +1,95 @@
-# Vitar v8
+# Vitar changes — trial bug fix + Doctor Details ("Talk with a Doctor") feature
 
-> **Healthcare Appointment Platform — AI No-Show Reduction**
+Every file here replaces the file at the same relative path in your repo
+(`backend/app/...`, `frontend/src/...`). Nothing else in your codebase needs
+to change.
 
-## What's New in v8 (Production Hardening)
+## 1. Trial expiry desync fix
 
-- 🔄 **Full auto-recovery**: `restart: always` + Gunicorn in production
-- 🛡️ **Circuit breakers** on all external services (Stripe, Paystack, SendGrid, SMS, WhatsApp, AI)
-- 🗄️ **DB readiness gate**: exponential backoff startup, never crash-on-boot
-- 🔁 **100% Celery retry coverage**: all 14 tasks have `autoretry_for`
-- 📊 **Observability**: Slack alerts, worker heartbeats, queue depths, SLA p95 tracking
-- ⚡ **Load tested**: k6 harness proves 100 concurrent users (p95 < 800ms)
-- 🧰 **Safe service layer**: structured error handling, circuit-aware wrappers
+**File:** `backend/app/api/v1/endpoints/admin_subscriptions.py`
 
-See [CHANGES_v8.md](CHANGES_v8.md) for full details.
+Your superadmin override actions (`grant_free`, `grant_temporary`,
+`grant_lifetime`, `extend`, `set_expiration`, `revoke`) only ever updated
+`Subscription.current_period_end`. But the code that actually enforces trial
+limits and computes "days left" (`app/services/trial_guard.py`) reads
+`Clinic.trial_ends_at` — a **separate column** that those overrides never
+touched. The two could silently drift apart. This fix keeps them in sync on
+every override action.
 
----
-
-# Vitar v5 — Production-Ready Healthcare SaaS
-
-## Boot in One Command
-
-```bash
-bash generate_env.sh   # generates all secrets
-docker-compose up -d   # boots everything
-```
-
-No other steps. The system is fully autonomous.
-
----
-
-## What Happens on Boot
-
-```
-generate_env.sh          → creates .env with strong random secrets
-docker-compose up -d
-  postgres               → starts, health-checked
-  redis                  → starts, health-checked
-  api                    → waits for postgres+redis → runs alembic migrations → starts 4 uvicorn workers
-  worker                 → starts celery worker (4 concurrent, auto-restarts)
-  worker_dead_letter     → starts dead-letter worker
-  beat                   → starts celery beat scheduler (persistent schedule volume)
-  flower                 → starts task monitor at :5555
-  frontend               → builds React SPA
-  nginx                  → starts reverse proxy at :80
-```
-
----
-
-## Architecture
-
-```
-Internet ──→ Nginx :80/:443
-                ↓             ↓
-         API :8000         Frontend :3000
-      (4× uvicorn)         (React SPA)
-            ↓
-    ┌───────┴────────┐
-    │                │
- Postgres         Redis
- (pooled)    (cache + broker)
-                    │
-              Celery Workers
-              Celery Beat
-```
-
----
-
-## Services & Ports
-
-| Service             | Port  | Description                          |
-|---------------------|-------|--------------------------------------|
-| nginx               | 80    | Reverse proxy, rate limiting         |
-| api                 | 8000  | FastAPI, 4 uvicorn workers           |
-| frontend            | 3000  | React SPA                            |
-| flower              | 5555  | Celery monitor (admin / see .env)    |
-| postgres            | 5432  | PostgreSQL 16                        |
-| redis               | 6379  | Cache + task broker                  |
-
----
-
-## Health Check
+**This alone doesn't prove what happened to your client** — I can't see your
+live database from here. To actually confirm/fix that specific account, SSH
+in and run:
 
 ```bash
-curl http://localhost:8000/health
-# {"status":"healthy","components":{"database":{"status":"ok"},"redis":{"status":"ok"},...}}
+ssh root@162.35.183.95
+cd /path/to/vitar   # wherever docker-compose.yml lives on the VPS
+docker exec -it $(docker compose ps -q api) printenv | grep TRIAL_DAYS
+```
+If that prints nothing, `TRIAL_DAYS` is using the code default (30) — good.
+If it prints something other than 30, that's your bug; fix it in the VPS's
+`.env` and restart the api container.
 
-docker-compose ps
-# All services should show "healthy"
+Then check the actual stored dates for the affected clinic:
+```bash
+docker exec -it $(docker compose ps -q postgres) psql -U <db_user> -d vitar -c \
+  "SELECT c.name, c.trial_started_at, c.trial_ends_at, s.current_period_start, s.current_period_end, s.status
+   FROM clinics c JOIN subscriptions s ON s.clinic_id = c.id
+   WHERE c.name ILIKE '%aproko%';"
+```
+(swap `<db_user>` for whatever's in your `.env` — likely `vitar` or `postgres`)
+
+If `trial_ends_at` isn't exactly `trial_started_at + 30 days`, that confirms
+a bad write happened (manual override, old buggy deploy, etc.) — you can
+correct it directly:
+```sql
+UPDATE clinics SET trial_ends_at = trial_started_at + interval '30 days' WHERE id = '<clinic_id>';
+UPDATE subscriptions SET current_period_end = (SELECT trial_ends_at FROM clinics WHERE id = '<clinic_id>') WHERE clinic_id = '<clinic_id>';
 ```
 
----
+## 2. Doctor Details / "Talk with a Doctor" (new paid feature)
 
-## Run Tests
+**New column:** `doctors.consultation_contact_enabled` (bool, default false)
+— migration `backend/alembic/versions/015_doctor_consultation_contact.py`.
+
+**Gating rule** (in `app/services/trial_guard.py`, `has_doctor_contact_access`):
+- Every clinic gets it free while `status == "trialing"`.
+- After the trial ends, only clinics on an active **basic/pro/enterprise**
+  plan can use it — no further per-tier distinction.
+
+**Backend files changed:**
+- `app/services/trial_guard.py` — new `has_doctor_contact_access(clinic)` helper.
+- `app/api/v1/endpoints/doctors.py` — `PATCH /doctors/{id}` now accepts
+  `consultation_contact_enabled`; turning it **on** is rejected with a 402
+  (`DOCTOR_CONTACT_NOT_AVAILABLE`) if the clinic isn't entitled. Doctor
+  responses now include `consultation_contact_enabled` (the doctor's own
+  toggle) and `doctor_contact_feature_available` (whether the clinic is
+  currently entitled at all).
+- `app/api/v1/endpoints/booking.py` — the **public** booking page endpoint
+  now includes a doctor's `email`/`phone` only when both the doctor opted in
+  AND the clinic is entitled. Cached response (5-min TTL) picks this up
+  automatically.
+
+**Frontend files changed:**
+- `frontend/src/pages/dashboard/DoctorDetailPage.tsx` — doctors/clinic staff
+  can now edit a doctor's email/phone after creation (previously only
+  settable at creation time), and toggle "Talk with a Doctor" visibility,
+  with a lock icon + upgrade prompt when the clinic isn't entitled.
+- `frontend/src/pages/booking/PublicBookingPage.tsx` — shows a "Talk with
+  Dr. X directly" contact card (tel:/mailto: links) once a doctor is
+  selected, only when the backend actually included contact info.
+
+## 3. Deploying
 
 ```bash
-cd backend
-pip install -r requirements.txt
-pytest tests/test_main.py -v
-# 33 passed
+ssh root@162.35.183.95
+cd /path/to/vitar
+# copy the changed files in from wherever you extract this bundle, then:
+docker compose exec api alembic upgrade head
+docker compose build api          # if you rebuild images rather than bind-mount source
+docker compose up -d api
+# for the frontend, rebuild/redeploy however you normally ship frontend/ (e.g. npm run build then your usual static deploy step)
 ```
 
----
-
-## Load Test (100 concurrent users)
-
-Self-contained — registers test user automatically.
-
-```bash
-pip install httpx anyio
-python backend/tests/load_test.py --url http://localhost:8000 --users 100
-```
-
----
-
-## Configuration
-
-`generate_env.sh` handles all secrets. Edit `.env` to add external services:
-
-| Variable            | Purpose                        |
-|---------------------|--------------------------------|
-| `GROQ_API_KEY`      | AI chatbot (free at groq.com)  |
-| `SENDGRID_API_KEY`  | Email notifications            |
-| `TERMII_API_KEY`    | SMS (Nigeria)                  |
-| `TWILIO_*`          | SMS (global)                   |
-| `PAYSTACK_*`        | Payments (Nigeria)             |
-| `STRIPE_*`          | Payments (global)              |
-| `SENTRY_DSN`        | Error tracking                 |
-
-All external services are **optional** — the system runs without them (notifications are logged instead of sent).
-
----
-
-## Production (HTTPS)
-
-```bash
-# Update .env
-ENVIRONMENT=production
-FRONTEND_URL=https://yourdomain.com
-ALLOWED_HOSTS=["yourdomain.com","api.yourdomain.com"]
-
-# Get SSL certs
-certbot certonly --standalone -d yourdomain.com -d api.yourdomain.com
-
-# Update infra/nginx/nginx.conf to enable HTTPS server blocks
-docker-compose up -d
-```
-
----
-
-## Key Bug Fixes (see CHANGES.md for full list)
-
-1. **`metadata` column** crashed SQLAlchemy at startup → renamed `extra_data`
-2. **passlib + bcrypt 4.x** crashed every login → replaced with direct `bcrypt`
-3. **bcrypt 72-byte truncation** silently matched different passwords → sha256 pre-hash
-4. **JSONB in SQLite** broke all tests → `JSON as JSONB` cross-dialect fallback
-5. **Engine blocks imports** → lazy proxy, connects only when first used
-6. **Test state pollution** → session fixture drops/recreates tables + unique emails
-7. **Missing email-validator** → added to requirements.txt
-8. **Alembic schema mismatch** → renamed `metadata` → `extra_data` in migrations
+If your prod setup is Docker with bind-mounted source (no rebuild needed for
+Python), you may only need `docker compose restart api` after the alembic
+migration. Check `docker-compose.prod.yml` to confirm which mode you're in.

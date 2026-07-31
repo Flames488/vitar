@@ -156,6 +156,9 @@ export default function LandingPage() {
             <Link to="/register" className="btn-secondary">
               Start Free Trial
             </Link>
+            <Link to="/login" className="hero-login-link">
+              Log in
+            </Link>
           </div>
           <p className="hero-microlink">Explore the real dashboard, no signup needed · <a href="#how-it-works">see how it works ↓</a></p>
         </div>

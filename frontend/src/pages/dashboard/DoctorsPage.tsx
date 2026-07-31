@@ -3,7 +3,7 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Plus, Stethoscope, Pencil, ToggleLeft } from 'lucide-react';
+import { Plus, Stethoscope, Pencil, ToggleLeft, Lock } from 'lucide-react';
 import { doctorsApi } from '@/lib/api/services';
 import { toast } from 'sonner';
 import { useGeoStore } from '@/stores/geoStore';
@@ -19,17 +19,48 @@ export function DoctorsPage() {
   });
 
   const doctors = data?.doctors ?? [];
+  const limit = data?.limit as { current: number; limit: number; plan: string; at_limit: boolean } | undefined;
+  const atLimit = !!limit?.at_limit;
 
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-5xl mx-auto">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Doctors</h1>
-        <Link to="/doctors/new" className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex-shrink-0">
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Add Doctor</span>
-          <span className="sm:hidden">Add</span>
-        </Link>
+        {atLimit ? (
+          <Link
+            to="/settings/billing"
+            title="You've reached your plan's doctor limit — upgrade to add more"
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex-shrink-0"
+          >
+            <Lock className="w-4 h-4" />
+            <span className="hidden sm:inline">Upgrade to Add More</span>
+            <span className="sm:hidden">Upgrade</span>
+          </Link>
+        ) : (
+          <Link to="/doctors/new" className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex-shrink-0">
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Add Doctor</span>
+            <span className="sm:hidden">Add</span>
+          </Link>
+        )}
       </div>
+
+      {atLimit && limit && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-800">
+              You've reached your {limit.plan.charAt(0).toUpperCase() + limit.plan.slice(1)} plan's doctor limit
+              ({limit.current}/{limit.limit}).
+            </p>
+            <p className="text-amber-700 mt-0.5">
+              Upgrade your subscription to add more doctors.{' '}
+              <Link to="/settings/billing" className="font-medium underline">View plans</Link>
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading && <p className="text-slate-400 text-sm col-span-3">Loading...</p>}
         {doctors.map((d: any) => (

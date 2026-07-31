@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "no-reply@livevault.cloud"
     EMAIL_FROM_NAME: str = "Vitar Health"
 
+    # ─── Web Push (VAPID) ─────────────────────────────────────────────────
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_CLAIMS_EMAIL: str = "vitarhealthcare@gmail.com"
+
     # ─── AI / ML ──────────────────────────────────────────────────────────
     GROQ_API_KEY: str = ""
     ML_MODEL_PATH: str = "/app/ml_models"

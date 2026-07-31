@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel, field_validator
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_superadmin
 from app.core.utils import utcnow
@@ -141,6 +142,64 @@ def get_subscription(
     return _serialize(clinic, sub, owner)
 
 
+@router.post("/reset-trials")
+def reset_active_trials(
+    request: Request,
+    dry_run: bool = Query(False, description="Preview affected clinics without writing changes"),
+    admin: User = Depends(get_current_superadmin),
+    db: Session = Depends(get_db),
+):
+    """
+    Backfill: recompute trial_ends_at = trial_started_at + TRIAL_DAYS (30) for
+    every clinic still on an active trial right now. Only touches clinics with
+    subscription.status == 'trialing' — expired trials and clinics already on
+    a paid/overridden plan are left untouched.
+
+    Safe to re-run: clinics already at the correct 30-day mark are skipped.
+    """
+    trialing = (
+        db.query(Clinic, Subscription)
+        .join(Subscription, Subscription.clinic_id == Clinic.id)
+        .filter(Subscription.status == SubscriptionStatus.TRIALING)
+        .all()
+    )
+
+    changed = []
+    for clinic, sub in trialing:
+        if not clinic.trial_started_at:
+            continue  # no registration timestamp to recompute from — skip, don't guess
+        correct_end = clinic.trial_started_at + timedelta(days=settings.TRIAL_DAYS)
+        if clinic.trial_ends_at == correct_end:
+            continue  # already correct
+        changed.append({
+            "clinic_id": clinic.id,
+            "clinic_name": clinic.name,
+            "old_trial_ends_at": clinic.trial_ends_at.isoformat() if clinic.trial_ends_at else None,
+            "new_trial_ends_at": correct_end.isoformat(),
+        })
+        if not dry_run:
+            old_snapshot = _sub_snapshot(sub)
+            clinic.trial_ends_at = correct_end
+            sub.current_period_end = correct_end
+            write_audit_log(
+                db,
+                admin_id=admin.id,
+                action="subscription.reset_trial_30_days",
+                entity_type="subscription",
+                entity_id=sub.id,
+                clinic_id=clinic.id,
+                old_data=old_snapshot,
+                new_data=_sub_snapshot(sub),
+                reason="Bulk trial backfill — restore correct 30-day trial",
+                request=request,
+            )
+
+    if not dry_run and changed:
+        db.commit()
+
+    return {"dry_run": dry_run, "affected_count": len(changed), "clinics": changed}
+
+
 @router.post("/{clinic_id}/override")
 def apply_override(
     clinic_id: str,
@@ -198,6 +257,20 @@ def apply_override(
         sub.status = SubscriptionStatus.CANCELLED
         sub.cancelled_at = now
         sub.current_period_end = now
+
+    # Keep Clinic.trial_ends_at in sync with Subscription.current_period_end.
+    # trial_guard.py reads clinic.trial_ends_at (not sub.current_period_end)
+    # to compute days-left/is_expired for anyone still in "trialing" status —
+    # without this, an override that adjusts current_period_end while leaving
+    # someone trialing (e.g. set_expiration) would silently desync the two,
+    # same class of bug as the original 13-day trial report.
+    if sub.status == SubscriptionStatus.TRIALING:
+        clinic.trial_ends_at = sub.current_period_end
+    elif body.action in (OverrideAction.GRANT_FREE, OverrideAction.GRANT_TEMPORARY,
+                          OverrideAction.GRANT_LIFETIME, OverrideAction.REVOKE):
+        # These move the clinic off the trial entirely — clear the trial
+        # clock so trial_guard / the dashboard trial banner stop referencing it.
+        clinic.trial_ends_at = None
 
     # Mirror the latest override context onto the subscription itself so the
     # admin UI can show "why" without a separate audit-log lookup.

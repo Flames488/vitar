@@ -12,11 +12,12 @@ import {
 import { useGeoStore } from '@/stores/geoStore';
 import { useAuthStore } from '@/stores/authStore';
 import { billingApi } from '@/lib/api/services';
+import { buildEnterpriseWhatsAppUrl } from '@/lib/whatsapp';
 import { toast } from 'sonner';
 
 const TRIAL_FEATURES = [
   '30 days full access — no card required',
-  'Up to 2 doctors',
+  'Unlimited doctors during your trial',
   '50 bookings during trial',
   'Appointment scheduling',
   'Patient management',
@@ -26,7 +27,7 @@ const TRIAL_FEATURES = [
 
 const PLAN_FEATURES = {
   basic: [
-    'Up to 2 doctors',
+    'Includes up to 2 doctors',
     '200 bookings/month',
     'SMS & Email reminders',
     'Basic no-show analytics',
@@ -35,7 +36,7 @@ const PLAN_FEATURES = {
     'Email support',
   ],
   pro: [
-    'Up to 10 doctors',
+    'Includes up to 10 doctors',
     '2,000 bookings/month',
     'SMS, WhatsApp & Email',
     'AI no-show prediction',
@@ -69,10 +70,11 @@ const FAQ = [
 
 export default function PricingPage() {
   const { currency, currency_format, plans, detect, detected } = useGeoStore();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, clinic } = useAuthStore();
   const navigate = useNavigate();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const enterpriseWhatsAppUrl = buildEnterpriseWhatsAppUrl(clinic?.name);
 
   useEffect(() => { if (!detected) detect(); }, []);
 
@@ -321,7 +323,9 @@ export default function PricingPage() {
                 <div className="p-5 pt-0">
                   {isEnterprise ? (
                     <a
-                      href="mailto:sales@vitar.health"
+                      href={enterpriseWhatsAppUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 w-full border-2 border-slate-200 hover:border-teal-500 text-slate-600 hover:text-teal-700 font-semibold py-3 rounded-xl transition-all text-sm"
                     >
                       Contact Sales

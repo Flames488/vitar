@@ -10,12 +10,14 @@ Vitar v5.2 - Public Booking Endpoints (HARDENED)
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text, or_
-from pydantic import BaseModel, EmailStr
+from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 import secrets
+import uuid
 
-from app.core.cache import cache, TTL_MEDIUM
+from app.core.cache import cache, TTL_MEDIUM, booking_page_key
 
 from app.core.utils import utcnow
 from app.core.database import get_db
@@ -38,6 +40,25 @@ class PublicBookingRequest(BaseModel):
     phone: str
     email: Optional[EmailStr] = None
     reason: Optional[str] = None
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def _normalize_scheduled_at(cls, v: datetime) -> datetime:
+        # Frontend may send a timezone-aware ISO string (e.g. JS's
+        # toISOString() has a 'Z' suffix). Normalize to naive UTC to match
+        # utcnow() and DB storage — avoids "can't compare offset-naive and
+        # offset-aware datetimes" when checked against utcnow() downstream.
+        if v.tzinfo is not None:
+            return v.astimezone(timezone.utc).replace(tzinfo=None)
+        return v
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def blank_email_to_none(cls, v):
+        # Frontend sends "" when the optional email field is left blank.
+        # EmailStr rejects "" as an invalid address, so normalize it to None
+        # before validation runs.
+        return v or None
 
 
 class WaitingListRequest(BaseModel):
@@ -78,9 +99,31 @@ def _dispatch_new_booking_notify(appointment_id: str):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+def _whatsapp_link(phone: Optional[str]) -> Optional[str]:
+    """Builds a wa.me click-to-chat link from a phone number, or None if the
+    number doesn't have enough digits to be usable."""
+    if not phone:
+        return None
+    digits = "".join(c for c in phone if c.isdigit())
+    if len(digits) < 8:
+        return None
+    return f"https://wa.me/{digits}"
+
+
+def _call_link(phone: Optional[str]) -> Optional[str]:
+    """Builds a tel: link for the 'Call Doctor' button, or None if the
+    number doesn't have enough digits to be usable."""
+    if not phone:
+        return None
+    digits = "".join(c for c in phone if c.isdigit())
+    if len(digits) < 8:
+        return None
+    return f"tel:{phone.strip()}"
+
+
 @router.get("/clinic/{slug}")
 def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
-    cache_key = f"cache:booking_page:{slug}"
+    cache_key = booking_page_key(slug)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -97,6 +140,14 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
         Doctor.clinic_id == clinic.id,
         Doctor.is_active == True,
     ).all()
+
+    # Doctor contact info is a core feature (not gated by subscription).
+    # Which buttons actually show is controlled per-hospital via Hospital
+    # Contact Settings, and per-doctor via doctor_details_enabled.
+    whatsapp_on = bool(clinic.contact_whatsapp_enabled)
+    call_on = bool(clinic.contact_call_enabled)
+    any_contact_enabled = whatsapp_on or call_on
+
     result = {
         "clinic": {
             "id": str(clinic.id),
@@ -120,12 +171,86 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
                 "avatar_url": d.avatar_url or "",
                 "consultation_fee": float(d.consultation_fee) if d.consultation_fee else 0.0,
                 "bio": d.bio or "",
+                "doctor_details": {
+                    "email": d.email or None,
+                    # Only surface the phone number itself if at least one
+                    # direct-contact channel is enabled for this hospital.
+                    "phone": d.phone if any_contact_enabled else None,
+                    "talk_with_doctor_url": _whatsapp_link(d.phone) if whatsapp_on else None,
+                    "call_url": _call_link(d.phone) if call_on else None,
+                } if d.doctor_details_enabled else None,
             }
             for d in doctors
         ],
     }
     cache.set(cache_key, result, ttl=TTL_MEDIUM)  # 5-min TTL — stale is fine for booking page
     return result
+
+
+@router.get("/clinic/{slug}/doctors/{doctor_id}/available-slots")
+def get_public_available_slots(slug: str, doctor_id: str, date: str, db: Session = Depends(get_db)):
+    """
+    Public equivalent of GET /doctors/{id}/available-slots — patients booking
+    from the public page have no clinic login token, so this route only
+    requires the clinic slug + doctor id to line up (no auth dependency).
+    Same slot-generation logic as the staff-facing endpoint in doctors.py.
+    """
+    from app.models.models import DoctorAvailability
+
+    clinic = db.query(Clinic).filter(Clinic.slug == slug, Clinic.is_active == True).first()
+    if not clinic:
+        raise HTTPException(status_code=404, detail="Booking page not found")
+
+    doctor = db.query(Doctor).filter(
+        Doctor.id == doctor_id,
+        Doctor.clinic_id == clinic.id,
+        Doctor.is_active == True,
+    ).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    try:
+        target = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date must be YYYY-MM-DD")
+    dow = target.weekday()
+
+    avail = db.query(DoctorAvailability).filter(
+        DoctorAvailability.doctor_id == doctor_id,
+        DoctorAvailability.day_of_week == dow,
+        DoctorAvailability.is_available == True,
+    ).first()
+    if not avail:
+        return {"slots": [], "date": date}
+
+    start_h, start_m = map(int, avail.start_time.split(":"))
+    end_h, end_m = map(int, avail.end_time.split(":"))
+    slot_duration = avail.slot_duration_mins or 30
+
+    current = target.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+    end_dt = target.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+
+    day_start = target
+    day_end = target + timedelta(days=1)
+    booked = db.query(Appointment.scheduled_at).filter(
+        Appointment.doctor_id == doctor_id,
+        Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
+        Appointment.scheduled_at >= day_start,
+        Appointment.scheduled_at < day_end,
+    ).all()
+    booked_times = {b.scheduled_at.replace(second=0, microsecond=0) for b in booked}
+
+    slots = []
+    now = utcnow()
+    while current < end_dt:
+        slots.append({
+            "time": current.strftime("%H:%M"),
+            "datetime": current.isoformat(),
+            "available": current not in booked_times and current > now,
+        })
+        current += timedelta(minutes=slot_duration)
+
+    return {"slots": slots, "date": date, "doctor_id": doctor_id}
 
 
 @router.post("/clinic/{slug}/book", status_code=201)
@@ -221,25 +346,46 @@ async def public_book_appointment(
         if slot_start < conflict_end and slot_end > conflict.scheduled_at:
             raise HTTPException(status_code=409, detail="This time slot is no longer available")
 
-    # ── Patient upsert ────────────────────────────────────────────────────
-    patient = db.query(Patient).filter(
-        Patient.clinic_id == clinic.id,
-        Patient.phone == body.phone,
+    # ── Patient upsert (atomic — single round trip) ───────────────────────
+    # Previously this was a SELECT, then a conditional INSERT + flush(),
+    # committed later together with the appointment insert. That left a
+    # window where a flushed-but-uncommitted patient row could be lost
+    # (e.g. a pooler-level reconnect under Supabase's transaction pooler)
+    # before the appointment insert that references it ran — causing
+    # "insert or update on table appointments violates foreign key
+    # constraint appointments_patient_id_fkey". Doing it as one INSERT ...
+    # ON CONFLICT ... RETURNING removes that window entirely: the patient
+    # row and its id are guaranteed to exist before we ever build the
+    # Appointment object.
+    patient_row = db.execute(
+        text("""
+            INSERT INTO patients (id, clinic_id, full_name, phone, email)
+            VALUES (:id, :clinic_id, :full_name, :phone, :email)
+            ON CONFLICT (clinic_id, phone) DO UPDATE
+                SET full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), patients.full_name),
+                    email = COALESCE(EXCLUDED.email, patients.email)
+            RETURNING id
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "clinic_id": clinic.id,
+            "full_name": body.full_name or "",
+            "phone": body.phone,
+            "email": body.email,
+        },
     ).first()
-    if not patient:
-        patient = Patient(
-            clinic_id=clinic.id,
-            full_name=body.full_name or "",
-            phone=body.phone,
-            email=body.email,
-        )
-        db.add(patient)
-        db.flush()
-    else:
-        if body.full_name:
-            patient.full_name = body.full_name
-        if body.email:
-            patient.email = body.email
+    patient_id = patient_row.id
+
+    # Commit the patient row on its own, right now. Under PgBouncer/pooler
+    # instability, a still-open (uncommitted) transaction can occasionally
+    # end up split across two different backend connections between one
+    # statement and the next, making an uncommitted row invisible to a
+    # later statement in the "same" session — which is exactly how this
+    # appointment insert was hitting appointments_patient_id_fkey even
+    # though the row had just been inserted moments earlier. Committing
+    # here guarantees the patient row is durable and visible to literally
+    # any connection before we ever build the Appointment that references it.
+    db.commit()
 
     payment_amount = doctor.consultation_fee or getattr(clinic, "consultation_fee", None) or 0
     payment_required = bool(clinic.patient_payment_enabled and payment_amount and payment_amount > 0)
@@ -249,7 +395,7 @@ async def public_book_appointment(
     appointment = Appointment(
         clinic_id=clinic.id,
         doctor_id=body.doctor_id,
-        patient_id=patient.id,
+        patient_id=patient_id,
         scheduled_at=body.scheduled_at,
         duration_mins=slot_duration,
         reason=body.reason or "",
@@ -298,10 +444,18 @@ async def public_book_appointment(
         db.refresh(appointment)
     except HTTPException:
         raise
+    except IntegrityError as e:
+        # Real conflict — e.g. the uq_doctor_slot unique constraint fired
+        # because someone else booked this exact slot in the meantime.
+        db.rollback()
+        logger.warning(f"Booking conflict on commit: {e}")
+        raise HTTPException(status_code=409, detail="This slot was just booked by someone else. Please pick another time.")
     except Exception as e:
+        # Anything else (DB timeout, connection issue, etc.) — don't lie
+        # to the user about the cause.
         db.rollback()
         logger.error(f"Booking commit failed: {e}", exc_info=True)
-        raise HTTPException(status_code=409, detail="Booking failed — slot may already be taken")
+        raise HTTPException(status_code=500, detail="Something went wrong while booking. Please try again.")
 
     response = {
         "appointment_id": appointment.id,
@@ -338,7 +492,7 @@ async def public_book_appointment(
         response["payment_url"] = checkout.get("authorization_url")
         response["access_code"] = checkout.get("access_code")
 
-    log_booking_event("public_booked", appointment.id, clinic.id, body.doctor_id, patient.id)
+    log_booking_event("public_booked", appointment.id, clinic.id, body.doctor_id, patient_id)
     if not payment_required:
         background_tasks.add_task(_dispatch_risk_and_reminders, appointment.id)
         background_tasks.add_task(_dispatch_new_booking_notify, appointment.id)

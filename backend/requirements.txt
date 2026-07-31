@@ -50,6 +50,7 @@ aiosqlite>=0.20.0
 
 # ── QR / PDF ──────────────────────────────────────────────────────────────────
 qrcode[pil]
+Pillow>=10.0.0
 reportlab
 
 # ── Push Notifications (Web Push / VAPID) ────────────────────────────────────

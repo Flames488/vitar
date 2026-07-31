@@ -145,11 +145,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 512M
+          cpus: '0.5'
+          memory: 320M
         reservations:
-          cpus: '0.25'
-          memory: 128M
+          cpus: '0.15'
+          memory: 96M
     <<: *api-env
     environment:
       DATABASE_URL: postgresql://postgres:${SUPABASE_DB_PASSWORD}@pgbouncer:5432/postgres
@@ -165,7 +165,7 @@ services:
       celery -A app.workers.celery_app worker
       --loglevel=info
       --queues=notifications,reminders,ai,billing,celery,dead_letter
-      --concurrency=2
+      --concurrency=1
       --max-tasks-per-child=500
       --hostname=worker@%h
     depends_on:
@@ -210,8 +210,11 @@ services:
         condition: service_healthy
 
   # ── Flower — Celery monitoring UI ─────────────────────────────────────────
+  # Disabled by default on the 1-slice pilot tier to save ~128MB RAM.
+  # Re-enable once you've upgraded slices:  docker compose --profile monitoring up -d
   # Access at: https://yourdomain.com/flower (behind nginx basic auth)
   flower:
+    profiles: ["monitoring"]
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
@@ -257,6 +260,7 @@ services:
       - "443:443"
     volumes:
       - ./infra/nginx/nginx.prod-free.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/cloudflare-ips.conf:/etc/nginx/cloudflare-ips.conf:ro
       - ./frontend/dist:/usr/share/nginx/html:ro
       - uploads:/app/uploads:ro
       - ./infra/nginx/certbot/conf:/etc/letsencrypt:ro

@@ -96,6 +96,48 @@ def get_subscription(
     }
 
 
+# ─── Payment History ──────────────────────────────────────────────────────────
+
+@router.get("/payment-history")
+def get_payment_history(
+    clinic=Depends(get_current_clinic),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns this clinic's finalized subscription payments, most recent
+    first, for display on the Billing page. Pending/in-flight bank
+    transfers live in PendingSubscriptionPayment (see payment-status) and
+    aren't included here — this is confirmed history only.
+    """
+    from app.models.models import SubscriptionPayment
+
+    sub = clinic.subscription
+    if not sub:
+        return {"payments": []}
+
+    payments = (
+        db.query(SubscriptionPayment)
+        .filter(SubscriptionPayment.subscription_id == sub.id)
+        .order_by(SubscriptionPayment.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return {
+        "payments": [
+            {
+                "id": p.id,
+                "amount": float(p.amount),
+                "currency": p.currency,
+                "status": p.status,
+                "provider": p.provider,
+                "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in payments
+        ]
+    }
+
+
 # ─── Initiate Subscription ────────────────────────────────────────────────────
 
 @router.post("/subscribe")
@@ -111,7 +153,7 @@ async def subscribe(
     if body.plan == "enterprise":
         raise HTTPException(
             status_code=400,
-            detail="Enterprise plan requires contacting sales. Please email sales@vitar.health",
+            detail="Enterprise plan requires contacting sales. Please email vitarhealthcare@gmail.com",
         )
 
     # Smart payment system: generates a dedicated Paystack bank-transfer

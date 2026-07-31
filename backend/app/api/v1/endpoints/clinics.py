@@ -25,6 +25,10 @@ class ClinicUpdate(BaseModel):
     patient_payment_enabled: Optional[bool] = None
     bank_name: Optional[str] = None
     account_number: Optional[str] = None
+    # Hospital Contact Settings — whether patients can reach doctors
+    # directly via WhatsApp and/or phone call from the booking page.
+    contact_whatsapp_enabled: Optional[bool] = None
+    contact_call_enabled: Optional[bool] = None
 
 @router.get("/me")
 def get_clinic(clinic=Depends(get_current_clinic)):
@@ -50,6 +54,8 @@ def get_clinic(clinic=Depends(get_current_clinic)):
         # Bank transfer fields (stored as paystack_* columns, repurposed for direct transfer)
         "bank_name": clinic.paystack_bank_name,
         "account_number": clinic.paystack_account_number,
+        "contact_whatsapp_enabled": clinic.contact_whatsapp_enabled,
+        "contact_call_enabled": clinic.contact_call_enabled,
         "onboarding_completed": clinic.onboarding_completed,
         "onboarding_step": clinic.onboarding_step,
         "trial": trial,

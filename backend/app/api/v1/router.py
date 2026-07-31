@@ -27,6 +27,7 @@ from app.api.v1.endpoints import (
     admin_analytics,
     admin_audit,
     admin_payouts,
+    clinic_payouts,
     hospital_bank_accounts,
     qr,
     push_notifications,   # ← NEW
@@ -43,6 +44,7 @@ api_router.include_router(booking.router, prefix="/booking", tags=["Public Booki
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 api_router.include_router(hospital_bank_accounts.router, tags=["Hospital Bank Accounts"])
+api_router.include_router(clinic_payouts.router, tags=["Clinic — Payouts"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(ai.router, prefix="/ai", tags=["AI Features"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])

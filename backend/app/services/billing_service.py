@@ -29,7 +29,7 @@ PLANS = {
         "max_doctors": 2,
         "max_bookings_month": 200,
         "features": [
-            "Up to 2 doctors", "200 bookings/month",
+            "Includes up to 2 doctors", "200 bookings/month",
             "SMS & Email reminders", "Basic no-show analytics", "Public booking page",
         ],
     },
@@ -38,7 +38,7 @@ PLANS = {
         "max_doctors": 10,
         "max_bookings_month": 2000,
         "features": [
-            "Up to 10 doctors", "2,000 bookings/month",
+            "Includes up to 10 doctors", "2,000 bookings/month",
             "SMS, WhatsApp & Email", "AI no-show prediction",
             "Smart reminder engine", "Auto slot refill",
             "Advanced analytics", "Waiting list management", "Priority support",
@@ -129,15 +129,35 @@ class PaystackBilling:
         self, email: str, amount_kobo: int, reference: str, metadata: Dict, expires_at
     ) -> Dict:
         """
-        Smart payment system: Paystack's "Pay with Transfer" charge.
+        Smart payment system: Paystack's "Pay with Transfer" (PwT) charge.
         Generates a dedicated, single-use virtual account for this exact
-        charge. Paystack fires a `charge.success` webhook automatically
+        charge, valid across any Nigerian bank/fintech app (Opay, Kuda,
+        GTBank, Providus, etc. — all route over NIP to the same account
+        number). Paystack fires a `charge.success` webhook automatically
         once the transfer lands — no polling of Paystack required, no
         manual admin confirmation needed.
 
-        Docs: POST /charge with a `bank_transfer` channel hint. Paystack
-        requires `account_expires_at` to be set explicitly (must be null or
-        a future date) — leaving it out or passing {} is rejected.
+        Docs: POST /charge with a `bank_transfer` object containing
+        `account_expires_at` (ISO 8601). Paystack clamps this to a minimum
+        of 15 minutes and a maximum of 8 hours from now.
+
+        IMPORTANT — response shape: Paystack returns the account details
+        FLAT on `data`, not nested under a "bank_transfer" key:
+            {
+              "status": true,
+              "data": {
+                "reference": "...",
+                "status": "pending_bank_transfer",
+                "account_name": "...",
+                "account_number": "...",
+                "bank": {"slug": "...", "name": "...", "id": ...},
+                "account_expires_at": "..."
+              }
+            }
+        Reading `inner.get("bank_transfer")` (as this used to) always
+        returns None, which is why `account_number` came back empty and
+        the frontend fell back to its "Bank details not configured yet"
+        message.
         """
         expires_iso = expires_at.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         payload = {
@@ -158,13 +178,33 @@ class PaystackBilling:
                 raise Exception(f"Paystack bank-transfer charge failed: {data.get('message')}")
 
             inner = data["data"]
-            transfer = inner.get("bank_transfer") or {}
+            bank = inner.get("bank") or {}
+            account_number = inner.get("account_number")
+
+            if not account_number:
+                # Paystack accepted the request (status: true) but returned
+                # no account details. In practice this means Pay with
+                # Transfer isn't enabled on this Paystack account yet —
+                # it requires Paystack to switch it on for your business
+                # (email support@paystack.com or your relationship manager,
+                # confirming you're a registered NG business) — rather than
+                # a code problem. Raise so the caller can clean up the
+                # PendingSubscriptionPayment row and surface a clear error
+                # instead of silently showing a payment window with no
+                # account number in it.
+                raise Exception(
+                    "Paystack returned no bank transfer account details "
+                    f"(status={inner.get('status')!r}, message={data.get('message')!r}). "
+                    "Pay with Transfer is likely not yet enabled on this Paystack account — "
+                    "contact Paystack support to enable it."
+                )
+
             return {
                 "reference": inner.get("reference", reference),
-                "bank_name": transfer.get("bank_name") or transfer.get("name"),
-                "account_number": transfer.get("account_number"),
-                "account_name": transfer.get("account_name", "Vitar Health"),
-                "account_expires_at": transfer.get("account_expires_at", expires_iso),
+                "bank_name": bank.get("name") or bank.get("slug"),
+                "account_number": account_number,
+                "account_name": inner.get("account_name", "Vitar Health"),
+                "account_expires_at": inner.get("account_expires_at", expires_iso),
                 "raw": inner,
             }
 
@@ -351,6 +391,17 @@ class BillingService:
             raise Exception(f"Plan {plan} has no fixed price for automated checkout")
         currency_symbol = "₦" if currency == "NGN" else currency
 
+        # Supersede any still-pending attempts for this clinic. Without this,
+        # clicking Upgrade / Generate New Payment more than once (e.g. after
+        # closing the modal and coming back) would leave multiple live
+        # PendingSubscriptionPayment rows — and multiple live Paystack
+        # dedicated virtual accounts — open for the same clinic at once.
+        db.query(PendingSubscriptionPayment).filter(
+            PendingSubscriptionPayment.clinic_id == clinic_id,
+            PendingSubscriptionPayment.status == PendingPaymentStatus.PENDING,
+        ).update({"status": PendingPaymentStatus.EXPIRED}, synchronize_session=False)
+        db.commit()
+
         reference = f"VITAR-{clinic_id[:8].upper()}-{plan.upper()}-{int(utcnow().timestamp())}"
         now = utcnow()
         expires_at = now + timedelta(minutes=35)
@@ -413,6 +464,11 @@ class BillingService:
             },
             "reference": reference,
             "expires_at": expires_at.isoformat(),
+            # The server's own "now" at the moment this session was created.
+            # The frontend uses this to correct for any clock drift between
+            # this VPS and the user's device, so a skewed server clock can
+            # never make a freshly-created session appear instantly expired.
+            "server_time": now.isoformat(),
             "status": "pending",
             "instructions": (
                 f"Transfer exactly {currency_symbol}{amount:,} to the account below. "

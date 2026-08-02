@@ -36,11 +36,9 @@ export default function InstallAppButton({ className = '', compact = false, dark
     )
   }
 
-  if (!canInstall) return null
-
   const handleClick = () => {
     onClick?.()
-    install()
+    if (canInstall) install() // no-op if the browser hasn't offered a real install prompt yet
   }
 
   return (

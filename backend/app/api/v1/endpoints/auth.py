@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 import math
 import secrets
 import hashlib
@@ -47,6 +48,7 @@ class RegisterRequest(BaseModel):
     clinic_name: str
     city: str
     country: str = "NG"
+    referral_code: Optional[str] = None
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -258,6 +260,10 @@ async def register(
     db.add(clinic)
     db.commit()        # commit clinic so FK is visible for subscription + notification_settings
     db.refresh(clinic)
+
+    if body.referral_code:
+        from app.services.referral_service import attach_referral_on_signup
+        attach_referral_on_signup(clinic, body.referral_code, db)
 
     db.add(Subscription(
         clinic_id=clinic.id,

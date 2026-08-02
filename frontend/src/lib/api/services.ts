@@ -11,6 +11,7 @@ export const authApi = {
   register: (data: {
     full_name: string; email: string; password: string;
     phone: string; clinic_name: string; city: string; country: string;
+    referral_code?: string;
   }) => api.post('/auth/register', data).then(r => r.data),
 
   login: (email: string, password: string) =>
@@ -113,6 +114,13 @@ export const billingApi = {
   getBanks: () => api.get('/billing/banks').then(r => r.data),
   setupSubaccount: (bank_code: string, account_number: string) =>
     api.post('/billing/setup-subaccount', { bank_code, account_number }).then(r => r.data),
+};
+
+// ── Referrals (Refer & Earn) ────────────────────────────────────────────────────
+
+export const referralsApi = {
+  getMyLink: () => api.get('/referrals/me').then(r => r.data),
+  getStats: () => api.get('/referrals/stats').then(r => r.data),
 };
 
 // ── Hospital Bank Account (Paystack payout destination) ─────────────────────────

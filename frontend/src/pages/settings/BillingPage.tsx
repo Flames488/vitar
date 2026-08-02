@@ -17,6 +17,7 @@ import { formatNaira } from '@/lib/currency';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
 import { buildEnterpriseWhatsAppUrl } from '@/lib/whatsapp';
+import ReferralCard from '@/components/shared/ReferralCard';
 
 const PLAN_ICONS = { basic: Zap, pro: CheckCircle, enterprise: Building };
 const currency = 'NGN';
@@ -472,6 +473,9 @@ export default function BillingPage() {
           </div>
         </div>
       )}
+
+      {/* Refer & Earn */}
+      <ReferralCard />
 
       {/* Payment history */}
       <PaymentHistorySection payments={historyData?.payments ?? []} isLoading={historyLoading} />

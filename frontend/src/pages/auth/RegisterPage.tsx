@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { getApiError } from '@/lib/api/client';
@@ -48,6 +48,8 @@ export default function RegisterPage() {
   const { register: signup } = useAuthStore();
   const navigate = useNavigate();
   const [showPw, setShowPw] = useState(false);
+  const [searchParams] = useSearchParams();
+  const referralCode = searchParams.get('ref') || undefined;
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -56,7 +58,7 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: FormData) => {
     try {
-      await signup(data);
+      await signup({ ...data, referral_code: referralCode });
       navigate('/onboarding');
     } catch (err) {
       toast.error(getApiError(err));

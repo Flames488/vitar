@@ -89,6 +89,16 @@ class Region(str, enum.Enum):
     EU = "EU"
     OTHER = "OTHER"
 
+class ReferralStatus(str, enum.Enum):
+    """Lifecycle: signed_up -> paid (referred clinic's first payment
+    confirmed) -> credited (10% discount applied to referrer's next
+    invoice), or -> expired (self-referral / abuse detected)."""
+    PENDING = "pending"
+    SIGNED_UP = "signed_up"
+    PAID = "paid"
+    CREDITED = "credited"
+    EXPIRED = "expired"
+
 
 # ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -164,6 +174,10 @@ class Clinic(Base):
     onboarding_completed = Column(Boolean, default=False)
     onboarding_step = Column(Integer, default=0)
     qr_code_path = Column(Text, nullable=True)
+
+    # Refer & Earn — this clinic's own persistent, shareable code (generated
+    # lazily on first request, see referral_service.get_or_create_referral_code).
+    referral_code = Column(String(20), unique=True, index=True, nullable=True)
 
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -271,6 +285,34 @@ class PendingSubscriptionPayment(Base):
 
     __table_args__ = (
         Index("ix_pendingpay_status_expires", "status", "expires_at"),
+    )
+
+
+# ─── Referrals (Refer & Earn) ──────────────────────────────────────────────────
+
+class Referral(Base):
+    """
+    One row per referred clinic signup. `referral_code` is denormalized
+    from the referrer's Clinic.referral_code at signup time for audit
+    purposes — the source of truth for "whose code is this" is
+    Clinic.referral_code (unique, indexed, used for the fast signup-time
+    lookup). See app.services.referral_service for the full lifecycle.
+    """
+    __tablename__ = "referrals"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    referrer_clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    # unique: a clinic can only ever be attributed to one referrer
+    referred_clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    referral_code = Column(String(20), nullable=False)
+    status = Column(Enum(ReferralStatus), default=ReferralStatus.SIGNED_UP, nullable=False)
+
+    created_at = Column(DateTime, default=func.now())
+    paid_at = Column(DateTime, nullable=True)
+    credited_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_referrals_referrer_status", "referrer_clinic_id", "status"),
     )
 
 

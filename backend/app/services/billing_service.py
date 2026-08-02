@@ -389,6 +389,14 @@ class BillingService:
         amount = pricing["monthly"] if billing_cycle == "monthly" else pricing["annual"]
         if not amount:
             raise Exception(f"Plan {plan} has no fixed price for automated checkout")
+
+        # Refer & Earn: apply this clinic's earned (unredeemed) 10% referral
+        # discount, if any. No-op and safe to call unconditionally — see
+        # referral_service.apply_referral_discount for the failure-safety
+        # guarantee (never raises, never blocks checkout).
+        from app.services.referral_service import apply_referral_discount
+        amount = apply_referral_discount(amount, clinic_id, db)
+
         currency_symbol = "₦" if currency == "NGN" else currency
 
         # Supersede any still-pending attempts for this clinic. Without this,
@@ -584,6 +592,13 @@ class BillingService:
             db.add(sub)
         db.flush()
 
+        # Refer & Earn: was this clinic's Subscription previously ever paid?
+        # Must be captured before adding this payment's own row below.
+        is_first_payment = db.query(SubscriptionPayment).filter(
+            SubscriptionPayment.subscription_id == sub.id,
+            SubscriptionPayment.status == PaymentStatus.PAID,
+        ).count() == 0
+
         db.add(SubscriptionPayment(
             subscription_id=sub.id, provider=PaymentProvider.PAYSTACK,
             provider_reference=reference, amount=paid_amount, currency=pending.currency,
@@ -599,6 +614,11 @@ class BillingService:
         cache.set(f"payment_status:{reference}", {"status": "paid", "clinic_id": str(pending.clinic_id)}, ttl=3600)
         log_payment_event("subscription_activated", "paystack", reference, str(pending.clinic_id),
                           paid_amount, "success", extra={"plan": pending.subscription_plan, "automated": True})
+
+        if is_first_payment:
+            from app.services.referral_service import record_referral_payment
+            record_referral_payment(pending.clinic_id, db)
+
         return True
 
     async def handle_payment_success(self, provider: str, payload: Dict, db) -> bool:

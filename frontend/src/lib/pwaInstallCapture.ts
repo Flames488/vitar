@@ -26,8 +26,24 @@ let installed =
   typeof window !== 'undefined' &&
   (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true)
 
+// useSyncExternalStore requires getSnapshot to return a referentially
+// stable value when nothing has changed — a fresh object literal on every
+// call makes React think the store is changing on every render, which it
+// detects as an infinite loop and throws. Only replace this reference
+// when canInstall/isInstalled actually change (see setSnapshot below).
+let snapshot = { canInstall: false, isInstalled: installed }
+function setSnapshot() {
+  const canInstall = !!deferredEvent
+  if (snapshot.canInstall !== canInstall || snapshot.isInstalled !== installed) {
+    snapshot = { canInstall, isInstalled: installed }
+  }
+}
+
 const listeners = new Set<Listener>()
-const notify = () => listeners.forEach((l) => l())
+const notify = () => {
+  setSnapshot()
+  listeners.forEach((l) => l())
+}
 
 if (typeof window !== 'undefined' && !installed) {
   window.addEventListener('beforeinstallprompt', (e: Event) => {
@@ -46,7 +62,7 @@ if (typeof window !== 'undefined' && !installed) {
 }
 
 export function getSnapshot() {
-  return { canInstall: !!deferredEvent, isInstalled: installed }
+  return snapshot
 }
 
 export function subscribe(listener: Listener) {

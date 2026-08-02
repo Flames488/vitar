@@ -16,6 +16,8 @@ import { useGeoStore } from '@/stores/geoStore';
 import AIChatbot from '@/components/ai/AIChatbot';
 import TrialBanner from '@/components/shared/TrialBanner';
 import VitarLogo from '@/components/shared/VitarLogo';
+import InstallAppButton from '@/components/shared/InstallAppButton';
+import FirstLoginInstallPrompt from '@/components/shared/FirstLoginInstallPrompt';
 
 const NAV_GROUPS = [
   {
@@ -77,7 +79,7 @@ export default function DashboardLayout() {
           >
             <VitarLogo size={20} />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <span className="text-white font-bold text-base tracking-tight">Vitar</span>
             {clinic && (
               <p className="text-xs truncate max-w-[140px]" style={{ color: 'rgba(148,163,184,0.7)' }}>
@@ -85,6 +87,7 @@ export default function DashboardLayout() {
               </p>
             )}
           </div>
+          <InstallAppButton compact dark />
         </div>
       </div>
 
@@ -288,7 +291,7 @@ export default function DashboardLayout() {
             </div>
             <span className="font-bold text-slate-800 text-sm">Vitar</span>
           </div>
-          <div className="w-9" />
+          <InstallAppButton compact />
         </header>
 
         {/* Trial banner */}
@@ -301,6 +304,8 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      <FirstLoginInstallPrompt />
 
       {/* AI Chatbot bubble */}
       <div className="fixed bottom-6 right-6 z-40">

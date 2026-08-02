@@ -4,6 +4,7 @@
 
 import { Outlet, Link, NavLink } from 'react-router-dom';
 import VitarLogo from '@/components/shared/VitarLogo';
+import InstallAppButton from '@/components/shared/InstallAppButton';
 
 export default function MarketingLayout() {
   return (
@@ -25,6 +26,8 @@ export default function MarketingLayout() {
           </nav>
 
           <div className="flex items-center gap-3">
+            <InstallAppButton className="hidden sm:inline-flex" />
+            <InstallAppButton compact className="sm:hidden" />
             <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
               Sign in
             </Link>

@@ -83,6 +83,7 @@ export const useAuthStore = create<AuthState>()(
           const data = await authApi.login(email, password);
           // Server sets httpOnly cookies; we only handle the CSRF token
           csrfManager.set(data.csrf_token);
+          sessionStorage.setItem('vitar_just_logged_in', '1');
           set({
             user: data.user,
             clinic: data.clinic,
@@ -101,6 +102,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const data = await authApi.register(formData);
           csrfManager.set(data.csrf_token);
+          sessionStorage.setItem('vitar_just_logged_in', '1');
           set({
             user: data.user,
             clinic: data.clinic,

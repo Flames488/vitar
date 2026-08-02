@@ -77,6 +77,21 @@
       transition: background 0.2s, transform 0.15s;
     }
 .lv-marketing.lv-home .nav-cta:hover { background: var(--teal-dark); transform: translateY(-1px); }
+.lv-marketing.lv-home .nav-install {
+      font-size: 0.88rem !important; font-weight: 600 !important; color: var(--ink) !important;
+      background: transparent !important; border: none !important; padding: 0 !important;
+      cursor: pointer;
+    }
+.lv-marketing.lv-home .nav-install:hover { color: var(--teal) !important; }
+.lv-marketing.lv-home .mobile-menu .mm-install {
+      display: flex !important; align-items: center; gap: 8px; width: 100%;
+      padding: 14px 0 !important; margin: 0;
+      font-size: 1rem !important; font-weight: 700 !important; color: var(--ink) !important;
+      background: transparent !important; border: none !important;
+      border-bottom: 1px solid rgba(10,22,40,0.06); border-radius: 0 !important;
+      text-align: left; cursor: pointer;
+    }
+.lv-marketing.lv-home .mobile-menu .mm-install:hover { color: var(--teal) !important; }
 @media (max-width: 900px) {
 .lv-marketing.lv-home .nav-links { display: none; }
 }

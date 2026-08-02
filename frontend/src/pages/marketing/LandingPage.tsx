@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Reveal from '@/components/marketing/Reveal';
+import InstallAppButton from '@/components/shared/InstallAppButton';
 import '@/styles/landing.css';
 
 const ACTION_TABS = [
@@ -105,6 +106,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="nav-right">
+          <InstallAppButton className="nav-install" />
           <Link to="/login" className="nav-login">Log in</Link>
           <Link to="/register" className="nav-cta">Start Free Trial →</Link>
         </div>
@@ -131,6 +133,7 @@ export default function LandingPage() {
         <Link to="/pricing" onClick={closeMenu}>Pricing</Link>
         <Link to="/contact" onClick={closeMenu}>Contact</Link>
         <Link to="/feedback" onClick={closeMenu}>Feedback</Link>
+        <InstallAppButton className="mm-install" onClick={closeMenu} />
         <Link to="/login" onClick={closeMenu}>Log in</Link>
         <Link to="/register" onClick={closeMenu} className="mm-cta">Sign up — Start Free Trial →</Link>
       </div>

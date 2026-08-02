@@ -16,9 +16,10 @@ interface InstallAppButtonProps {
   className?: string
   compact?: boolean // icon-only, for tight mobile spaces
   dark?: boolean // for use on dark backgrounds, e.g. the dashboard sidebar
+  onClick?: () => void // fires before the install logic, e.g. to close a mobile menu
 }
 
-export default function InstallAppButton({ className = '', compact = false, dark = false }: InstallAppButtonProps) {
+export default function InstallAppButton({ className = '', compact = false, dark = false, onClick }: InstallAppButtonProps) {
   const { canInstall, isInstalled, isIOSSafari, isIOSNonSafari, isUnsupported, install } = usePWAInstall()
   const [modalVariant, setModalVariant] = useState<InstallModalVariant | null>(null)
 
@@ -38,6 +39,7 @@ export default function InstallAppButton({ className = '', compact = false, dark
   }
 
   const handleClick = () => {
+    onClick?.()
     if (canInstall) {
       install()
       return

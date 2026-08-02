@@ -5,6 +5,11 @@ import App from './App.tsx'
 import { initAnalytics } from '@/lib/analytics'
 import { initSentry } from '@/lib/sentry'
 
+// 0. PWA install-prompt capture — must be the very first import so its
+// window-level `beforeinstallprompt` listener is attached before the
+// browser can fire the event (see pwaInstallCapture.ts for why).
+import '@/lib/pwaInstallCapture'
+
 // 1. Sentry first — catches crashes even during React setup
 initSentry()
 

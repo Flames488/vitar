@@ -1,8 +1,9 @@
 /**
  * FirstLoginInstallPrompt — shows a one-time "Install Vitar?" modal a few
  * seconds after a fresh login/registration (not on every page load or
- * session restore). Respects the 30-day "Not Now" snooze and skips
- * entirely once the app is already installed.
+ * session restore), only when a real native install prompt is available.
+ * Respects the 30-day "Not Now" snooze and skips entirely once the app
+ * is already installed.
  *
  * Mount once inside DashboardLayout.
  */
@@ -10,7 +11,6 @@
 import { useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
 import { usePWAInstall } from '@/lib/usePWAInstall'
-import InstallInstructionsModal, { type InstallModalVariant } from '@/components/shared/InstallInstructionsModal'
 import { analytics } from '@/lib/analytics'
 
 const SNOOZE_KEY = 'vitar_install_prompt_snoozed_until'
@@ -23,22 +23,19 @@ function isSnoozed(): boolean {
 }
 
 export default function FirstLoginInstallPrompt() {
-  const { canInstall, isInstalled, isIOSSafari, isIOSNonSafari, install } = usePWAInstall()
+  const { canInstall, isInstalled, install } = usePWAInstall()
   const [visible, setVisible] = useState(false)
-  const [fallbackModal, setFallbackModal] = useState<InstallModalVariant | null>(null)
 
   useEffect(() => {
     const justLoggedIn = sessionStorage.getItem('vitar_just_logged_in')
     if (!justLoggedIn) return
     sessionStorage.removeItem('vitar_just_logged_in')
 
-    if (isInstalled || isSnoozed()) return
-    // Only worth showing when there's actually some install path available.
-    if (!canInstall && !isIOSSafari && !isIOSNonSafari) return
+    if (isInstalled || isSnoozed() || !canInstall) return
 
     const timer = setTimeout(() => setVisible(true), SHOW_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [isInstalled, canInstall, isIOSSafari, isIOSNonSafari])
+  }, [isInstalled, canInstall])
 
   const snooze = () => {
     localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000))
@@ -48,17 +45,7 @@ export default function FirstLoginInstallPrompt() {
 
   const handleInstall = () => {
     setVisible(false)
-    if (canInstall) {
-      install()
-    } else if (isIOSSafari) {
-      setFallbackModal('ios-safari')
-    } else if (isIOSNonSafari) {
-      setFallbackModal('ios-non-safari')
-    }
-  }
-
-  if (fallbackModal) {
-    return <InstallInstructionsModal variant={fallbackModal} onClose={() => setFallbackModal(null)} />
+    install()
   }
 
   if (!visible) return null

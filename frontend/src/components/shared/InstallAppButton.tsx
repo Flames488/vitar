@@ -1,27 +1,25 @@
 /**
- * InstallAppButton — navbar "Install App" button. Handles the native
- * install flow on Chrome/Edge, and falls back to instruction modals on
- * iOS Safari, iOS non-Safari, and other unsupported browsers.
+ * InstallAppButton — navbar "Install App" button. Triggers the real
+ * native install prompt when the browser has one ready; does nothing
+ * otherwise (no instructions modal — see usePWAInstall for why a real
+ * prompt might not be available yet).
  *
  * Drop into any navbar; matches the existing button sizing conventions
  * used alongside Sign in / Start free trial links.
  */
 
-import { useState } from 'react'
 import { Download, Check } from 'lucide-react'
 import { usePWAInstall } from '@/lib/usePWAInstall'
-import InstallInstructionsModal, { type InstallModalVariant } from '@/components/shared/InstallInstructionsModal'
 
 interface InstallAppButtonProps {
   className?: string
   compact?: boolean // icon-only, for tight mobile spaces
   dark?: boolean // for use on dark backgrounds, e.g. the dashboard sidebar
-  onClick?: () => void // fires before the install logic, e.g. to close a mobile menu
+  onClick?: () => void // fires before the install attempt, e.g. to close a mobile menu
 }
 
 export default function InstallAppButton({ className = '', compact = false, dark = false, onClick }: InstallAppButtonProps) {
-  const { canInstall, isInstalled, isIOSSafari, isIOSNonSafari, isUnsupported, install } = usePWAInstall()
-  const [modalVariant, setModalVariant] = useState<InstallModalVariant | null>(null)
+  const { canInstall, isInstalled, install } = usePWAInstall()
 
   if (isInstalled) {
     if (compact) return null
@@ -38,42 +36,30 @@ export default function InstallAppButton({ className = '', compact = false, dark
     )
   }
 
+  if (!canInstall) return null
+
   const handleClick = () => {
     onClick?.()
-    if (canInstall) {
-      install()
-      return
-    }
-    if (isIOSSafari) {
-      setModalVariant('ios-safari')
-    } else if (isIOSNonSafari) {
-      setModalVariant('ios-non-safari')
-    } else if (isUnsupported) {
-      setModalVariant('unsupported')
-    }
+    install()
   }
 
   return (
-    <>
-      <button
-        onClick={handleClick}
-        className={
-          compact
-            ? `p-2 rounded-lg transition-colors ${
-                dark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-100'
-              } ${className}`
-            : `inline-flex items-center gap-1.5 text-sm font-medium transition-colors ${
-                dark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-              } ${className}`
-        }
-        aria-label="Install App"
-        title="Install App"
-      >
-        <Download className="w-4 h-4" />
-        {!compact && 'Install App'}
-      </button>
-
-      {modalVariant && <InstallInstructionsModal variant={modalVariant} onClose={() => setModalVariant(null)} />}
-    </>
+    <button
+      onClick={handleClick}
+      className={
+        compact
+          ? `p-2 rounded-lg transition-colors ${
+              dark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-100'
+            } ${className}`
+          : `inline-flex items-center gap-1.5 text-sm font-medium transition-colors ${
+              dark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+            } ${className}`
+      }
+      aria-label="Install App"
+      title="Install App"
+    >
+      <Download className="w-4 h-4" />
+      {!compact && 'Install App'}
+    </button>
   )
 }

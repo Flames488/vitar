@@ -1,15 +1,17 @@
 /**
  * InstallAppButton — navbar "Install App" button. Triggers the real
- * native install prompt when the browser has one ready; does nothing
- * otherwise (no instructions modal — see usePWAInstall for why a real
- * prompt might not be available yet).
+ * native install prompt when the browser has one ready; otherwise shows
+ * a fallback modal with manual instructions (iOS Safari, iOS non-Safari,
+ * or any other unsupported browser) so the click always does something.
  *
  * Drop into any navbar; matches the existing button sizing conventions
  * used alongside Sign in / Start free trial links.
  */
 
+import { useState } from 'react'
 import { Download, Check } from 'lucide-react'
 import { usePWAInstall } from '@/lib/usePWAInstall'
+import InstallInstructionsModal, { type InstallInstructionsVariant } from '@/components/shared/InstallInstructionsModal'
 
 interface InstallAppButtonProps {
   className?: string
@@ -19,7 +21,8 @@ interface InstallAppButtonProps {
 }
 
 export default function InstallAppButton({ className = '', compact = false, dark = false, onClick }: InstallAppButtonProps) {
-  const { canInstall, isInstalled, install } = usePWAInstall()
+  const { canInstall, isInstalled, isIOSSafari, isIOSNonSafari, install } = usePWAInstall()
+  const [modalVariant, setModalVariant] = useState<InstallInstructionsVariant | null>(null)
 
   if (isInstalled) {
     if (compact) return null
@@ -38,26 +41,39 @@ export default function InstallAppButton({ className = '', compact = false, dark
 
   const handleClick = () => {
     onClick?.()
-    if (canInstall) install() // no-op if the browser hasn't offered a real install prompt yet
+    if (canInstall) {
+      install()
+      return
+    }
+    // No native prompt available — fall back to manual instructions so the
+    // click is never a silent no-op.
+    if (isIOSSafari) setModalVariant('ios-safari')
+    else if (isIOSNonSafari) setModalVariant('ios-non-safari')
+    else setModalVariant('unsupported')
   }
 
   return (
-    <button
-      onClick={handleClick}
-      className={
-        compact
-          ? `p-2 rounded-lg transition-colors ${
-              dark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-100'
-            } ${className}`
-          : `inline-flex items-center gap-1.5 text-sm font-medium transition-colors ${
-              dark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-            } ${className}`
-      }
-      aria-label="Install App"
-      title="Install App"
-    >
-      <Download className="w-4 h-4" />
-      {!compact && 'Install App'}
-    </button>
+    <>
+      <button
+        onClick={handleClick}
+        className={
+          compact
+            ? `p-2 rounded-lg transition-colors ${
+                dark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-100'
+              } ${className}`
+            : `inline-flex items-center gap-1.5 text-sm font-medium transition-colors ${
+                dark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+              } ${className}`
+        }
+        aria-label="Install App"
+        title="Install App"
+      >
+        <Download className="w-4 h-4" />
+        {!compact && 'Install App'}
+      </button>
+      {modalVariant && (
+        <InstallInstructionsModal variant={modalVariant} onClose={() => setModalVariant(null)} />
+      )}
+    </>
   )
 }

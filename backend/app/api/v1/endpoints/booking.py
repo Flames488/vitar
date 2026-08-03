@@ -473,6 +473,7 @@ async def public_book_appointment(
 
     response = {
         "appointment_id": appointment.id,
+        "patient_id": appointment.patient_id,
         "confirmation_token": appointment.confirmation_token,
         "cancel_token": appointment.cancel_token,
         "scheduled_at": appointment.scheduled_at.isoformat(),

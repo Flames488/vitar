@@ -123,6 +123,24 @@ export const referralsApi = {
   getStats: () => api.get('/referrals/stats').then(r => r.data),
 };
 
+// ── eRegistration ────────────────────────────────────────────────────────────
+// Patient-facing, unauthenticated — see backend registrations.py. Draft calls
+// identify the patient by (patient_id, clinic_id) once (right after booking);
+// every other call uses the registration_token that draft returns.
+
+export const registrationsApi = {
+  saveDraft: (data: Record<string, unknown>) => api.post('/registrations/draft', data).then(r => r.data),
+  getDraft: (clinicId: string, token: string) =>
+    api.get('/registrations/draft', { params: { clinic_id: clinicId, token } }).then(r => r.data),
+  submit: (data: Record<string, unknown>) => api.post('/registrations/submit', data).then(r => r.data),
+  getStatus: (params: { clinic_id: string; patient_id?: string; token?: string }) =>
+    api.get('/registrations/status', { params }).then(r => r.data),
+  getEligibility: (clinicId: string) =>
+    api.get('/registrations/eligibility', { params: { clinic_id: clinicId } }).then(r => r.data),
+  update: (id: string, data: Record<string, unknown>) =>
+    api.patch(`/registrations/${id}`, data).then(r => r.data),
+};
+
 // ── Hospital Bank Account (Paystack payout destination) ─────────────────────────
 // Note: distinct from billingApi.getBanks/setupSubaccount above, which configure
 // the legacy split-payment subaccount. This is the payout flow: patient payments

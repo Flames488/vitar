@@ -73,6 +73,7 @@ import AdminAuditLogPage from '@/pages/superadmin/AuditLogPage';
 // Public Booking
 import PublicBookingPage from '@/pages/booking/PublicBookingPage';
 import BookingConfirmationPage from '@/pages/booking/BookingConfirmationPage';
+import RegistrationFormPage from '@/pages/booking/RegistrationFormPage';
 import CancelAppointmentPage from '@/pages/booking/CancelAppointmentPage';
 import Portal from '@/pages/Portal';
 
@@ -191,6 +192,7 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
 
             {/* ── Public Booking ────────────────────────────────────────── */}
             <Route path="/book/:slug" element={<PublicBookingPage />} />
+            <Route path="/book/:slug/register" element={<RegistrationFormPage />} />
             <Route path="/portal/:slug" element={<Portal />} />
             <Route path="/confirm/:token" element={<BookingConfirmationPage />} />
             <Route path="/cancel/:token" element={<CancelAppointmentPage />} />

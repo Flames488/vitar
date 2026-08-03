@@ -316,6 +316,70 @@ class Referral(Base):
     )
 
 
+# ─── Patient Registrations (eRegistration) ─────────────────────────────────────
+
+class RegistrationStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+
+
+class PatientRegistration(Base):
+    """
+    One row per (patient_id, clinic_id) — a draft is upserted in place and
+    becomes 'submitted' rather than a second row being created (see
+    __table_args__ unique constraint). registration_token is how an
+    unauthenticated patient proves this is their own registration — Vitar
+    has no patient login, so this follows the same shape as
+    Appointment.confirmation_token/cancel_token rather than assuming a
+    session that doesn't exist. See app.api.v1.endpoints.registrations.
+    """
+    __tablename__ = "patient_registrations"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    patient_id = Column(String(36), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(Enum(RegistrationStatus), default=RegistrationStatus.DRAFT, nullable=False)
+
+    registration_token = Column(String(100), unique=True, index=True, nullable=False)
+
+    # Personal info
+    full_name = Column(String(255))
+    phone_number = Column(String(20))
+    date_of_birth = Column(DateTime)
+    gender = Column(String(10))
+
+    # Address
+    state = Column(String(100))
+    city = Column(String(100))
+    residential_address = Column(Text)
+
+    # Emergency contact
+    emergency_contact_name = Column(String(255))
+    emergency_contact_relationship = Column(String(100))
+    emergency_contact_phone = Column(String(20))
+
+    # Optional health info — plain columns, no encryption-at-rest precedent
+    # elsewhere in this schema (see Phase 1 discussion).
+    blood_group = Column(String(20))
+    genotype = Column(String(20))
+    allergies = Column(Text)
+    existing_conditions = Column(Text)
+    current_medications = Column(Text)
+
+    # Consent — consent_given_at is always set server-side at submission,
+    # never trusted from the client.
+    consent_given = Column(Boolean, default=False, nullable=False)
+    consent_given_at = Column(DateTime(timezone=True), nullable=True)
+
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("patient_id", "clinic_id", name="uq_patient_registrations_patient_clinic"),
+    )
+
+
 # ─── Doctors ──────────────────────────────────────────────────────────────────
 
 class Doctor(Base):

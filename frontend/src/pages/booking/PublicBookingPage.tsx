@@ -2,14 +2,14 @@
  * Vitar v5 - Public Booking Page
  */
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, addDays } from 'date-fns';
 import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Mail, Phone, MessageCircle } from 'lucide-react';
-import { bookingApi } from '@/lib/api/services';
+import { bookingApi, registrationsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
 
@@ -121,6 +121,15 @@ export default function PublicBookingPage() {
           </p>
           <p className="text-slate-400 text-xs">A confirmation will be sent to your phone/email.</p>
         </div>
+
+        {slug && clinic?.id && booked.patient_id && (
+          <RegistrationPrompt
+            slug={slug}
+            clinicId={clinic.id}
+            patientId={booked.patient_id}
+            appointmentId={booked.appointment_id}
+          />
+        )}
       </div>
     </div>
   );
@@ -286,6 +295,56 @@ export default function PublicBookingPage() {
             </form>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Post-booking eRegistration prompt (Phase 3) ─────────────────────────────
+// Additive to the existing confirmation screen — the confirmation card above
+// always renders immediately; this fetches its own status/eligibility and
+// only appears once both resolve, so it never delays the confirmation itself.
+
+function RegistrationPrompt({
+  slug, clinicId, patientId, appointmentId,
+}: { slug: string; clinicId: string; patientId: string; appointmentId: string }) {
+  const navigate = useNavigate();
+  const dismissKey = `eregistration_dismissed_${appointmentId}`;
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(dismissKey) === 'true');
+
+  const { data: status } = useQuery({
+    queryKey: ['registration-status', clinicId, patientId],
+    queryFn: () => registrationsApi.getStatus({ clinic_id: clinicId, patient_id: patientId }),
+    enabled: !dismissed,
+  });
+  const { data: eligibility } = useQuery({
+    queryKey: ['registration-eligibility', clinicId],
+    queryFn: () => registrationsApi.getEligibility(clinicId),
+    enabled: !dismissed,
+  });
+
+  if (dismissed || !status || !eligibility) return null;
+  if (status.registered) return null; // already registered — no prompt, no change to normal flow
+  if (!eligibility.available) return null; // trial expired / no active subscription — behave as if this feature doesn't exist
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-3">
+      <p className="text-sm text-slate-700">
+        Completing your registration before your visit helps reduce waiting time at the clinic.
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => navigate(`/book/${slug}/register?clinic_id=${clinicId}&patient_id=${patientId}`)}
+          className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors"
+        >
+          Complete Registration
+        </button>
+        <button
+          onClick={() => { localStorage.setItem(dismissKey, 'true'); setDismissed(true); }}
+          className="flex-1 border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium text-sm py-2.5 rounded-xl transition-colors"
+        >
+          Do It Later
+        </button>
       </div>
     </div>
   );

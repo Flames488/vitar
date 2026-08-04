@@ -42,6 +42,7 @@ const PERKS = [
   'AI no-show prediction',
   'SMS, WhatsApp & Email reminders',
   'Public booking page',
+  'Online patient registration',
 ];
 
 export default function RegisterPage() {

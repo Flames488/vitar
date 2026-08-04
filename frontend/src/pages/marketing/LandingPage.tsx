@@ -13,10 +13,22 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Reveal from '@/components/marketing/Reveal';
 import InstallAppButton from '@/components/shared/InstallAppButton';
-import { publicClinicsApi } from '@/lib/api/services';
+import { publicClinicsApi, billingApi } from '@/lib/api/services';
 import '@/styles/landing.css';
+
+// Fallback so the pricing cards never show a blank/loading flash — this is
+// exactly today's live PLANS content. Once GET /billing/plans resolves, the
+// live features array (which includes any newly-added lines, e.g.
+// eRegistration) replaces this without a layout jump, since the fallback
+// already has the same shape and roughly the same length.
+const PLAN_FEATURES_FALLBACK: Record<string, string[]> = {
+  basic: ['Up to 2 doctors', '200 bookings/month', 'SMS & email reminders', 'Public booking page', 'QR code check-in', 'Email support'],
+  pro: ['Up to 10 doctors', '2,000 bookings/month', 'SMS, WhatsApp & email reminders', 'No-show risk scoring', 'Waiting list management', 'Advanced analytics', 'Priority support'],
+  enterprise: ['Unlimited doctors', 'Unlimited bookings', 'All Pro features', 'Dedicated account manager', 'Custom integrations', 'SLA guarantee'],
+};
 
 const ACTION_TABS = [
   { id: 'ap-dashboard', label: 'Dashboard' },
@@ -57,6 +69,17 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const tickingRef = useRef(false);
+
+  // Pricing preview — same source of truth as PricingPage.tsx/BillingPage.tsx
+  // (GET /billing/plans), so a new feature added to PLANS shows up here too
+  // instead of needing a fifth hand-maintained copy. NGN hardcoded, matching
+  // BillingPage.tsx's own approach (no geo-detection wired up there either).
+  const { data: plansData } = useQuery({
+    queryKey: ['billing', 'plans', 'NGN'],
+    queryFn: () => billingApi.getPlans('NGN'),
+  });
+  const planFeatures = (planKey: string): string[] =>
+    plansData?.plans?.find((p: any) => p.plan === planKey)?.features ?? PLAN_FEATURES_FALLBACK[planKey];
 
   // Smooth scrolling for on-page anchors (#product, #pricing, etc.) —
   // scoped to this page only, restored on unmount.
@@ -390,6 +413,20 @@ export default function LandingPage() {
             </div>
           </div>
         </Reveal>
+
+        <Reveal className="features-grid" style={{ marginTop: 40 }}>
+          <div className="feature-card">
+            <div className="feature-icon">📝</div>
+            <h3>Online Patient Registration</h3>
+            <p>Patients complete their registration from their phone before they arrive — no more paperwork at the front desk.</p>
+          </div>
+          <div className="feature-card">
+            <div className="feature-icon">🔍</div>
+            <h3>Get Found on Vitar</h3>
+            <p>Patients can search for your clinic by name on livevault.cloud and book directly, even without your QR code or link.</p>
+          </div>
+        </Reveal>
+
         <Reveal style={{ textAlign: 'center', marginTop: 28 }}>
           <Link to="/register" className="btn-primary">Start Free Trial →</Link>
         </Reveal>
@@ -420,12 +457,7 @@ export default function LandingPage() {
             <div className="plan-price">₦6,000 <span>/month</span></div>
             <div className="plan-desc">For small clinics just getting started</div>
             <ul className="plan-features">
-              <li>Up to 2 doctors</li>
-              <li>200 bookings/month</li>
-              <li>SMS &amp; email reminders</li>
-              <li>Public booking page</li>
-              <li>QR code check-in</li>
-              <li>Email support</li>
+              {planFeatures('basic').map((f) => <li key={f}>{f}</li>)}
             </ul>
             <Link to="/pricing" className="plan-btn ghost">Subscribe Now</Link>
           </div>
@@ -435,13 +467,7 @@ export default function LandingPage() {
             <div className="plan-price">₦15,000 <span>/month</span></div>
             <div className="plan-desc">For growing clinics that want full AI power</div>
             <ul className="plan-features">
-              <li>Up to 10 doctors</li>
-              <li>2,000 bookings/month</li>
-              <li>SMS, WhatsApp &amp; email reminders</li>
-              <li>No-show risk scoring</li>
-              <li>Waiting list management</li>
-              <li>Advanced analytics</li>
-              <li>Priority support</li>
+              {planFeatures('pro').map((f) => <li key={f}>{f}</li>)}
             </ul>
             <Link to="/pricing" className="plan-btn filled">Subscribe Now</Link>
           </div>
@@ -450,12 +476,7 @@ export default function LandingPage() {
             <div className="plan-price" style={{ fontSize: '1.9rem' }}>Custom</div>
             <div className="plan-desc">For hospital groups and multi-branch clinics</div>
             <ul className="plan-features">
-              <li>Unlimited doctors</li>
-              <li>Unlimited bookings</li>
-              <li>All Pro features</li>
-              <li>Dedicated account manager</li>
-              <li>Custom integrations</li>
-              <li>SLA guarantee</li>
+              {planFeatures('enterprise').map((f) => <li key={f}>{f}</li>)}
             </ul>
             <Link to="/contact" className="plan-btn ghost">Contact Sales</Link>
           </div>

@@ -31,6 +31,7 @@ PLANS = {
         "features": [
             "Includes up to 2 doctors", "200 bookings/month",
             "SMS & Email reminders", "Basic no-show analytics", "Public booking page",
+            "Online patient registration",
         ],
     },
     "pro": {
@@ -42,6 +43,7 @@ PLANS = {
             "SMS, WhatsApp & Email", "AI no-show prediction",
             "Smart reminder engine", "Auto slot refill",
             "Advanced analytics", "Waiting list management", "Priority support",
+            "Online patient registration",
         ],
     },
     "enterprise": {
@@ -51,6 +53,7 @@ PLANS = {
         "features": [
             "Unlimited doctors", "Unlimited bookings", "All Pro features",
             "Dedicated account manager", "Custom integrations", "SLA guarantee",
+            "Online patient registration",
         ],
     },
 }

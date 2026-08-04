@@ -33,6 +33,7 @@ const PLAN_FEATURES = {
     'Basic no-show analytics',
     'Public booking page',
     'QR code patient check-in',
+    'Online patient registration',
     'Email support',
   ],
   pro: [
@@ -45,6 +46,7 @@ const PLAN_FEATURES = {
     'Waiting list management',
     'Advanced analytics',
     'Revenue recovery dashboard',
+    'Online patient registration',
     'Priority support',
   ],
   enterprise: [
@@ -55,6 +57,7 @@ const PLAN_FEATURES = {
     'Custom integrations',
     'SLA guarantee',
     'Custom branding',
+    'Online patient registration',
     'On-site training',
   ],
 };

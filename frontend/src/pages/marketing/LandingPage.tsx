@@ -135,7 +135,7 @@ export default function LandingPage() {
         <Link to="/feedback" onClick={closeMenu}>Feedback</Link>
         <InstallAppButton className="mm-install" onClick={closeMenu} />
         <Link to="/login" onClick={closeMenu}>Log in</Link>
-        <Link to="/register" onClick={closeMenu} className="mm-cta">Sign up — Start Free Trial →</Link>
+        <Link to="/register" onClick={closeMenu} className="mm-cta">Sign up →</Link>
         <ClinicSearch onNavigate={closeMenu} />
       </div>
 

@@ -145,11 +145,20 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 320M
+          # Bumped alongside --concurrency=1→2 below: default Celery pool is
+          # prefork, so concurrency=2 forks a second full worker child
+          # process. 320M was sized for exactly one process; without more
+          # headroom here the container risks an OOM-kill under load instead
+          # of gaining the throughput this bump is meant to add. CPU raised
+          # to match — 0.5 was already the ceiling for one busy process, a
+          # second one needs its own share. Host is a 4 OCPU / 24GB Oracle
+          # free-tier VM; every service's *limit* here still sums well under
+          # that, so there's room.
+          cpus: '0.75'
+          memory: 480M
         reservations:
-          cpus: '0.15'
-          memory: 96M
+          cpus: '0.25'
+          memory: 144M
     <<: *api-env
     environment:
       DATABASE_URL: postgresql://postgres:${SUPABASE_DB_PASSWORD}@pgbouncer:5432/postgres
@@ -160,12 +169,17 @@ services:
       ENVIRONMENT: production
       CELERY_WORKER_HOSTNAME: "worker@%h"
       OPS_MONITORING_ENABLED: "false"
-    # All queues merged into one worker to save RAM on the free VM
+    # All queues merged into one worker to save RAM on the free VM.
+    # concurrency=2 (was 1): the single-process worker was the real ceiling
+    # on background-job throughput under concurrent load — every reminder
+    # send, push notification, no-show risk score, and billing retry funnels
+    # through this one process across all 6 queues. Two workers roughly
+    # doubles throughput without the RAM cost of going straight to 3+.
     command: >
       celery -A app.workers.celery_app worker
       --loglevel=info
       --queues=notifications,reminders,ai,billing,celery,dead_letter
-      --concurrency=1
+      --concurrency=2
       --max-tasks-per-child=500
       --hostname=worker@%h
     depends_on:

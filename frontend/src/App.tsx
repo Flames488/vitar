@@ -25,7 +25,6 @@ import LandingPage from '@/pages/marketing/LandingPage';
 import PricingPage from '@/pages/marketing/PricingPage';
 import ContactPage from '@/pages/marketing/ContactPage';
 import GrowthPage from '@/pages/marketing/GrowthPage';
-import ScreensPage from '@/pages/marketing/ScreensPage';
 import FeedbackPage from '@/pages/marketing/FeedbackPage';
 import PrivacyPage from '@/pages/marketing/PrivacyPage';
 import TermsPage from '@/pages/marketing/TermsPage';
@@ -175,7 +174,6 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
             <Route path="/" element={<LandingPage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/growth" element={<GrowthPage />} />
-            <Route path="/screens" element={<ScreensPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />

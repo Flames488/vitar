@@ -101,12 +101,12 @@ export default function LandingPage() {
           <div className="nav-links">
             <a href="#product">Features</a>
             <a href="#how-it-works">How it works</a>
-            <a href="/demo.html" className="nav-demo-link"><span className="live-dot" />Product Tour</a>
             <Link to="/pricing">Pricing</Link>
             <Link to="/contact">Contact</Link>
           </div>
         </div>
         <div className="nav-right">
+          <NavClinicSearch />
           <InstallAppButton className="nav-install" />
           <Link to="/login" className="nav-login">Log in</Link>
           <Link to="/register" className="nav-cta">Start Free Trial →</Link>
@@ -130,13 +130,13 @@ export default function LandingPage() {
           <button className="mobile-menu-close" aria-label="Close menu" onClick={closeMenu}>✕</button>
         </div>
         <a href="#product" onClick={closeMenu}>Features</a>
-        <a href="/demo.html" onClick={closeMenu} className="nav-demo-link"><span className="live-dot" />Product Tour</a>
         <Link to="/pricing" onClick={closeMenu}>Pricing</Link>
         <Link to="/contact" onClick={closeMenu}>Contact</Link>
         <Link to="/feedback" onClick={closeMenu}>Feedback</Link>
         <InstallAppButton className="mm-install" onClick={closeMenu} />
         <Link to="/login" onClick={closeMenu}>Log in</Link>
         <Link to="/register" onClick={closeMenu} className="mm-cta">Sign up — Start Free Trial →</Link>
+        <ClinicSearch onNavigate={closeMenu} />
       </div>
 
       {/* HERO */}
@@ -154,11 +154,8 @@ export default function LandingPage() {
             Vitar helps Nigerian clinics reduce no-shows, simplify bookings, and manage patients from one powerful dashboard.
           </p>
           <div className="hero-actions">
-            <a href="/demo.html" className="btn-primary btn-demo">
-              Take the Product Tour →
-            </a>
-            <Link to="/register" className="btn-secondary">
-              Start Free Trial
+            <Link to="/register" className="btn-primary">
+              Start Free Trial →
             </Link>
             <Link to="/login" className="hero-login-link">
               Log in
@@ -230,17 +227,6 @@ export default function LandingPage() {
           <div className="stat"><span className="stat-num">5 min</span><span className="stat-label">To get started</span></div>
         </div>
         <p className="stats-bar-note">*Based on industry benchmarks for automated appointment reminders, not a guaranteed result for every clinic.</p>
-      </div>
-
-      <div className="section" style={{ padding: '0 5vw 64px' }}>
-        <div className="mini-teaser">
-          <div className="mini-teaser-text">
-            <p className="section-label">See it before you try it</p>
-            <h3>Every screen your clinic will use</h3>
-            <p className="mt-sub">Bookings, appointments, today's schedule, and analytics — a closer look at the real interface.</p>
-          </div>
-          <Link to="/screens" className="mini-teaser-link">See all screens →</Link>
-        </div>
       </div>
 
       {/* HOW IT WORKS */}
@@ -405,7 +391,7 @@ export default function LandingPage() {
           </div>
         </Reveal>
         <Reveal style={{ textAlign: 'center', marginTop: 28 }}>
-          <a href="/demo.html" className="btn-primary">Explore Full Product Tour →</a>
+          <Link to="/register" className="btn-primary">Start Free Trial →</Link>
         </Reveal>
       </section>
 
@@ -552,7 +538,6 @@ export default function LandingPage() {
         <Reveal as="p" className="section-sub" style={{ textAlign: 'center', margin: '0 auto 10px', color: 'rgba(255,255,255,0.75)' }}>Vitar is brand new — try it free for 30 days, help shape what we build next, and lock in discounted lifetime pricing as one of our first 10 partner clinics.</Reveal>
         <Reveal className="final-cta-actions">
           <Link to="/register" className="btn-primary">Start Free Trial →</Link>
-          <a href="/demo.html" className="btn-secondary" style={{ borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}>Take the Product Tour →</a>
         </Reveal>
         <p style={{ textAlign: 'center', marginTop: 28 }}>
           <Link to="/feedback" className="feedback-inline-link">💬 Already running a clinic? Tell us what you're dealing with today →</Link>
@@ -574,8 +559,6 @@ export default function LandingPage() {
             <div className="col">
               <span className="col-title">Product</span>
               <a href="#product">Features</a>
-              <Link to="/screens">Every screen</Link>
-              <a href="/demo.html">Product Tour</a>
               <Link to="/pricing">Pricing</Link>
               <a href="#faq">FAQ</a>
               <a href="#how-it-works">How it works</a>
@@ -624,17 +607,16 @@ export default function LandingPage() {
 // ── Patient clinic search (Phase 3) ─────────────────────────────────────────
 // Debounced call into the public directory search endpoint; nothing else on
 // the homepage changes. Separate audience from the Start Free Trial CTAs
-// above (clinics, not patients) so it's placed as its own small block rather
-// than mixed into hero-actions.
+// above (clinics, not patients). Shared debounce/fetch logic between the
+// hero's inline search and the navbar's compact icon-triggered popover
+// (added on request, for visibility to anyone who doesn't scroll to hero).
 
 interface ClinicSearchResult { name: string; city: string | null; state: string | null; slug: string }
 
-function ClinicSearch() {
-  const navigate = useNavigate();
+function useClinicSearch() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ClinicSearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -653,6 +635,41 @@ function ClinicSearch() {
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
+
+  return { query, setQuery, results, loading };
+}
+
+function ClinicSearchResults({ results, loading, onSelect }: {
+  results: ClinicSearchResult[] | null; loading: boolean; onSelect: (slug: string) => void;
+}) {
+  if (loading) return <div className="patient-search-empty">Searching…</div>;
+  if (results && results.length > 0) {
+    return (
+      <>
+        {results.map((c) => (
+          <button key={c.slug} type="button" className="patient-search-result" onClick={() => onSelect(c.slug)}>
+            <span className="psr-name">{c.name}</span>
+            {(c.city || c.state) && (
+              <span className="psr-loc">{[c.city, c.state].filter(Boolean).join(', ')}</span>
+            )}
+          </button>
+        ))}
+      </>
+    );
+  }
+  return <div className="patient-search-empty">No clinics found — check the spelling or ask your clinic for their booking link.</div>;
+}
+
+function ClinicSearch({ onNavigate }: { onNavigate?: () => void } = {}) {
+  const navigate = useNavigate();
+  const { query, setQuery, results, loading } = useClinicSearch();
+  const [open, setOpen] = useState(false);
+
+  const go = (slug: string) => {
+    navigate(`/clinic/${slug}`);
+    setOpen(false);
+    onNavigate?.();
+  };
 
   return (
     <div className="patient-search" onBlur={(e) => {
@@ -675,24 +692,56 @@ function ClinicSearch() {
 
       {open && query.trim().length >= 2 && (
         <div className="patient-search-results">
-          {loading ? (
-            <div className="patient-search-empty">Searching…</div>
-          ) : results && results.length > 0 ? (
-            results.map((c) => (
-              <button
-                key={c.slug}
-                type="button"
-                className="patient-search-result"
-                onClick={() => navigate(`/clinic/${c.slug}`)}
-              >
-                <span className="psr-name">{c.name}</span>
-                {(c.city || c.state) && (
-                  <span className="psr-loc">{[c.city, c.state].filter(Boolean).join(', ')}</span>
-                )}
-              </button>
-            ))
-          ) : (
-            <div className="patient-search-empty">No clinics found — check the spelling or ask your clinic for their booking link.</div>
+          <ClinicSearchResults results={results} loading={loading} onSelect={go} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NavClinicSearch({ onNavigate }: { onNavigate?: () => void }) {
+  const navigate = useNavigate();
+  const { query, setQuery, results, loading } = useClinicSearch();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const go = (slug: string) => {
+    navigate(`/clinic/${slug}`);
+    setOpen(false);
+    onNavigate?.();
+  };
+
+  return (
+    <div className="nav-search" ref={wrapRef} onBlur={(e) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false);
+    }}>
+      <button
+        type="button"
+        className="nav-search-trigger"
+        aria-label="Find your clinic"
+        title="Find your clinic"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="nav-search-panel">
+          <p className="nav-search-panel-label">Already a patient? Find your clinic</p>
+          <input
+            type="text"
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by clinic name..."
+            className="patient-search-input"
+          />
+          {query.trim().length >= 2 && (
+            <div className="nav-search-results">
+              <ClinicSearchResults results={results} loading={loading} onSelect={go} />
+            </div>
           )}
         </div>
       )}

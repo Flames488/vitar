@@ -40,6 +40,7 @@ import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 import OnboardingPage from '@/pages/onboarding/OnboardingPage';
 
 // Dashboard
+import OverviewPage from '@/pages/dashboard/OverviewPage';
 import AppointmentsPage from '@/pages/dashboard/AppointmentsPage';
 import AppointmentDetailPage from '@/pages/dashboard/AppointmentDetailPage';
 import NewAppointmentPage from '@/pages/dashboard/NewAppointmentPage';
@@ -211,7 +212,7 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
                 </ProtectedRoute>
               }
             >
-              <Route path="/dashboard" element={<Navigate to="/appointments" replace />} />
+              <Route path="/dashboard" element={<OverviewPage />} />
               <Route path="/appointments" element={<AppointmentsPage />} />
               <Route path="/appointments/new" element={<NewAppointmentPage />} />
               <Route path="/appointments/:id" element={<AppointmentDetailPage />} />

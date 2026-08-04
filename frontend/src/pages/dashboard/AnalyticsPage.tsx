@@ -3,19 +3,17 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '@/lib/api/services';
-import { useGeoStore } from '@/stores/geoStore';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, TrendingDown, TrendingUp, Users, Bell } from 'lucide-react';
 
 export default function AnalyticsPage() {
   const { data, isLoading } = useQuery({ queryKey: ['analytics', 'dashboard'], queryFn: analyticsApi.dashboard });
-  const { formatMoney } = useGeoStore();
+  const { data: trendData } = useQuery({ queryKey: ['analytics', 'no-show-trends'], queryFn: () => analyticsApi.noShowTrends(30) });
 
   if (isLoading) return <div className="p-6 text-slate-400">Loading analytics...</div>;
 
-  const curr = data?.current_month ?? {};
-  const prev = data?.previous_month ?? {};
-  const reduction = data?.no_show_reduction_percent ?? 0;
+  const appts = data?.appointments ?? {};
+  const momChange = appts.mom_change_pct ?? 0;
+  const trend = trendData?.trend ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -24,20 +22,19 @@ export default function AnalyticsPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {[
-          { label: 'No-Show Rate (This Month)', value: `${curr.no_show_rate ?? 0}%`,
-            sub: `${prev.no_show_rate ?? 0}% last month`,
-            icon: TrendingDown, color: 'bg-red-50 text-red-600',
-            trend: reduction > 0 ? 'better' : 'worse' },
-          { label: 'No-Show Reduction', value: `${Math.abs(reduction)}%`,
-            sub: reduction > 0 ? '↑ Improvement' : '↓ Needs attention',
+          { label: 'No-Show Rate (This Month)', value: `${appts.no_show_rate_pct ?? 0}%`,
+            sub: `${appts.no_show ?? 0} of ${(appts.completed ?? 0) + (appts.no_show ?? 0)} tracked visits`,
+            icon: TrendingDown, color: 'bg-red-50 text-red-600' },
+          { label: 'Bookings vs Last Month', value: `${momChange > 0 ? '+' : ''}${momChange}%`,
+            sub: momChange >= 0 ? '↑ Growing' : '↓ Slower than last month',
             icon: TrendingUp, color: 'bg-green-50 text-green-600' },
-          { label: 'Revenue Recovered', value: formatMoney(data?.revenue?.recovered_from_reminders ?? 0),
-            sub: 'From reminder-influenced bookings',
-            icon: null, nairaIcon: true, color: 'bg-teal-50 text-teal-600' },
-          { label: 'Conversion Rate', value: `${data?.conversion_rate ?? 0}%`,
-            sub: `${curr.total ?? 0} total · ${curr.completed ?? 0} completed`,
+          { label: 'Total Patients', value: data?.patients?.total ?? 0,
+            sub: 'All-time, this clinic',
             icon: Users, color: 'bg-blue-50 text-blue-600' },
-        ].map(({ label, value, sub, icon: Icon, color, nairaIcon }) => (
+          { label: 'Reminder Delivery Rate', value: `${data?.notifications?.delivery_rate_pct ?? 0}%`,
+            sub: `${data?.notifications?.sent ?? 0} of ${data?.notifications?.total ?? 0} sent this month`,
+            icon: Bell, color: 'bg-teal-50 text-teal-600' },
+        ].map(({ label, value, sub, icon: Icon, color }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5">
             <div className="flex items-start justify-between">
               <div>
@@ -46,26 +43,30 @@ export default function AnalyticsPage() {
                 <p className="text-slate-400 text-xs mt-1">{sub}</p>
               </div>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-                {nairaIcon ? <span className="text-lg font-bold">₦</span> : Icon ? <Icon className="w-5 h-5" /> : null}
+                <Icon className="w-5 h-5" />
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Weekly no-show trend */}
-      {data?.weekly_trend?.length > 0 && (
+      {/* No-show trend, last 30 days */}
+      {trend.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="font-semibold text-slate-900 mb-4">Weekly No-Show Trend</h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={data.weekly_trend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="week" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} unit="%" />
-              <Tooltip formatter={(v: any) => [`${v}%`, 'No-Show Rate']} />
-              <Line type="monotone" dataKey="rate" stroke="#0d9488" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-teal-600" /> No-Show Rate — Last 30 Days
+          </h2>
+          <div className="flex items-end gap-1 h-40">
+            {trend.map((d: any) => (
+              <div key={d.date} className="flex-1 flex flex-col items-center justify-end gap-1" title={`${d.date}: ${d.rate_pct}% (${d.no_shows}/${d.total})`}>
+                <div
+                  className="w-full bg-teal-500 rounded-t"
+                  style={{ height: `${Math.max(d.rate_pct, d.total > 0 ? 2 : 0)}%` }}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-slate-400 text-xs mt-2 text-center">Hover a bar for the exact date and rate</p>
         </div>
       )}
 
@@ -74,10 +75,10 @@ export default function AnalyticsPage() {
         <h2 className="font-semibold text-slate-900 mb-4">This Month — Appointment Breakdown</h2>
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: 'Total', value: curr.total ?? 0, color: 'bg-slate-100 text-slate-700' },
-            { label: 'Completed', value: curr.completed ?? 0, color: 'bg-green-100 text-green-700' },
-            { label: 'No Shows', value: curr.no_shows ?? 0, color: 'bg-orange-100 text-orange-700' },
-            { label: 'Cancelled', value: curr.cancelled ?? 0, color: 'bg-red-100 text-red-700' },
+            { label: 'Total', value: appts.total_this_month ?? 0, color: 'bg-slate-100 text-slate-700' },
+            { label: 'Completed', value: appts.completed ?? 0, color: 'bg-green-100 text-green-700' },
+            { label: 'No Shows', value: appts.no_show ?? 0, color: 'bg-orange-100 text-orange-700' },
+            { label: 'Cancelled', value: appts.cancelled ?? 0, color: 'bg-red-100 text-red-700' },
           ].map(s => (
             <div key={s.label} className={`rounded-xl p-4 text-center ${s.color}`}>
               <p className="text-3xl font-bold">{s.value}</p>

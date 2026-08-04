@@ -86,6 +86,7 @@ export const appointmentsApi = {
 export const analyticsApi = {
   dashboard: () => api.get('/analytics/dashboard').then(r => r.data),
   summary: () => api.get('/analytics/quick-summary').then(r => r.data),
+  noShowTrends: (days = 30) => api.get('/analytics/no-show-trends', { params: { days } }).then(r => r.data),
 };
 
 // ── AI ────────────────────────────────────────────────────────────────────────

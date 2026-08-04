@@ -61,6 +61,25 @@ if (typeof window !== 'undefined' && !installed) {
   })
 }
 
+// vite-plugin-pwa's auto-injected registerSW.js (registerType: 'autoUpdate')
+// is the bare minimum: it registers the service worker and nothing else — no
+// handling for what happens once a new one takes over. autoUpdate makes a
+// freshly-deployed SW call skipWaiting()/clientsClaim() on its own, but an
+// already-open tab has no way to know that happened, so it just keeps
+// running the JS it already loaded until someone manually reloads. That's
+// what's been showing up as "I have to refresh to see the update" — this is
+// the standard fix: reload once, automatically, the moment a new SW actually
+// takes control, so nobody has to notice or do it themselves. Guarded so a
+// stray double-fire of controllerchange can't cause a reload loop.
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  let reloadedForNewSW = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedForNewSW) return
+    reloadedForNewSW = true
+    window.location.reload()
+  })
+}
+
 export function getSnapshot() {
   return snapshot
 }

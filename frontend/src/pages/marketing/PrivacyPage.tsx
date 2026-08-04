@@ -23,7 +23,7 @@ export default function PrivacyPage() {
 
         <div className="doc-wrap">
           <div className="doc-note">
-            <strong>Draft template.</strong> This page is a starting point written for a Nigerian clinic-software product and references the Nigeria Data Protection Act (NDPA) 2023. It hasn't been reviewed by a lawyer — have one confirm it fits your actual data flows (especially payment processing and any data stored or processed outside Nigeria) before treating it as final.
+            <strong>Draft template.</strong> This page is a starting point written for a Nigerian clinic-software product and references the Nigeria Data Protection Act (NDPA) 2023. It hasn't been reviewed by a lawyer. Have one confirm it fits your actual data flows (especially payment processing and any data stored or processed outside Nigeria) before treating it as final.
           </div>
 
           <h2>1. Who this policy covers</h2>
@@ -60,7 +60,7 @@ export default function PrivacyPage() {
           <p>Clinic and patient data is retained for as long as a clinic maintains an active account, plus a limited period afterward to allow account recovery, unless a clinic requests earlier deletion or longer retention is required by law (for example, medical record-keeping obligations).</p>
 
           <h2>8. Your rights</h2>
-          <p>Clinics can request access to, correction of, or deletion of the data their account holds, subject to any legal obligation to retain medical records. Patients should direct data requests to their clinic in the first instance, since the clinic — not LiveVault — controls what is entered into Vitar about them.</p>
+          <p>Clinics can request access to, correction of, or deletion of the data their account holds, subject to any legal obligation to retain medical records. Patients should direct data requests to their clinic in the first instance, since the clinic (not LiveVault) controls what is entered into Vitar about them.</p>
 
           <h2>9. Changes to this policy</h2>
           <p>We'll update this page if how we handle data changes, and note the date below.</p>

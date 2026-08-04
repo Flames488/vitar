@@ -23,7 +23,7 @@ export default function TermsPage() {
 
         <div className="doc-wrap">
           <div className="doc-note">
-            <strong>Draft template.</strong> This page is a starting point written for a Nigerian clinic-software product. It hasn't been reviewed by a lawyer — have one confirm the liability, refund, and termination terms before treating it as final or binding.
+            <strong>Draft template.</strong> This page is a starting point written for a Nigerian clinic-software product. It hasn't been reviewed by a lawyer. Have one confirm the liability, refund, and termination terms before treating it as final or binding.
           </div>
 
           <h2>1. Agreement</h2>

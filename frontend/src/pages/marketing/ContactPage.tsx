@@ -43,7 +43,7 @@ export default function ContactPage() {
                 <div className="channel-ic">💼</div>
                 <div>
                   <h3>Enterprise & sales</h3>
-                  <p>Multi-branch clinics and hospital groups — add "Enterprise" to your subject line.</p>
+                  <p>Multi-branch clinics and hospital groups: add "Enterprise" to your subject line.</p>
                   <a className="link" href="mailto:vitarhealthcare@gmail.com?subject=Enterprise%20enquiry">vitarhealthcare@gmail.com</a>
                 </div>
               </div>

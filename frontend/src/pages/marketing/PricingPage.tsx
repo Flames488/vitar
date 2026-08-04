@@ -16,7 +16,7 @@ import { buildEnterpriseWhatsAppUrl } from '@/lib/whatsapp';
 import { toast } from 'sonner';
 
 const TRIAL_FEATURES = [
-  '30 days full access — no card required',
+  '30 days full access, no card required',
   'Unlimited doctors during your trial',
   '50 bookings during trial',
   'Appointment scheduling',
@@ -63,11 +63,11 @@ const PLAN_FEATURES = {
 };
 
 const FAQ = [
-  { q: 'Do I need a credit card to start?', a: 'No. Your 30-day free trial starts immediately — no card required. You only need payment details when upgrading to a paid plan.' },
+  { q: 'Do I need a credit card to start?', a: 'No. Your 30-day free trial starts immediately, no card required. You only need payment details when upgrading to a paid plan.' },
   { q: 'Can I cancel anytime?', a: 'Yes. Cancel before your trial ends and you won\'t be charged. Paid plans can be cancelled at any time, effective at end of billing period.' },
   { q: 'What payment methods are supported?', a: 'Nigeria: Paystack (cards, bank transfer, USSD). Global: Stripe (Visa, Mastercard, AMEX).' },
   { q: 'How does the AI prediction work?', a: 'Vitar analyses patient history, appointment timing, lead time, and behavioural signals to score each appointment\'s no-show risk from 0–100%.' },
-  { q: 'Does Vitar guarantee 0 no-shows?', a: 'No — that would be unrealistic. We target a 40–70% reduction in no-show rates, verified by your analytics dashboard.' },
+  { q: 'Does Vitar guarantee 0 no-shows?', a: 'No, that would be unrealistic. We target a 40-70% reduction in no-show rates, verified by your analytics dashboard.' },
   { q: 'Can I upgrade mid-trial?', a: 'Yes. Upgrade any time during your trial and billing starts from that date. Unused trial days are not carried over.' },
 ];
 
@@ -180,12 +180,12 @@ export default function PricingPage() {
                   <Sparkles className="w-5 h-5 text-teal-400" />
                 </div>
                 <div>
-                  <p className="text-teal-400 text-[10px] font-extrabold uppercase tracking-widest">Free — No card needed</p>
+                  <p className="text-teal-400 text-[10px] font-extrabold uppercase tracking-widest">Free, no card needed</p>
                   <h2 className="text-white text-2xl font-extrabold leading-tight">30-Day Full Access Trial</h2>
                 </div>
               </div>
               <p className="text-slate-300 text-sm mb-6 max-w-lg leading-relaxed">
-                Experience every core feature of Vitar — no payment details, no commitment.
+                Experience every core feature of Vitar with no payment details and no commitment.
                 Most Nigerian clinics are fully set up and seeing results within the first week.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4">
@@ -225,7 +225,7 @@ export default function PricingPage() {
         <div className="flex items-center gap-4">
           <div className="flex-1 h-px bg-slate-200" />
           <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest whitespace-nowrap">
-            Paid plans — upgrade when ready
+            Paid plans, upgrade when ready
           </p>
           <div className="flex-1 h-px bg-slate-200" />
         </div>
@@ -377,9 +377,9 @@ export default function PricingPage() {
         {/* ── Trust signals ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { icon: Shield,     title: 'Secure payments',        desc: 'Paystack & Stripe — bank-grade encryption on every transaction' },
+            { icon: Shield,     title: 'Secure payments',        desc: 'Paystack & Stripe, bank-grade encryption on every transaction' },
             { icon: Clock,      title: 'Cancel anytime',         desc: 'No lock-in contracts. Cancel before your next billing date.' },
-            { icon: CreditCard, title: 'Local payment methods',  desc: 'Cards, bank transfer, USSD — all supported in Nigeria' },
+            { icon: CreditCard, title: 'Local payment methods',  desc: 'Cards, bank transfer, USSD, all supported in Nigeria' },
           ].map(({ icon: Icon, title, desc }) => (
             <div key={title} className="flex items-start gap-3 bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
               <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0">

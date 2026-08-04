@@ -43,15 +43,15 @@ const ACTION_TABS = [
 const FAQS = [
   {
     q: 'What is Vitar?',
-    a: "Vitar is a clinic management platform built by LiveVault for Nigerian clinics. It handles appointments, patients, and reminders, and is designed to help reduce missed appointments — up to 40% based on industry benchmarks for automated reminders.",
+    a: "Vitar is a clinic management platform built by LiveVault for Nigerian clinics, handling appointments, patients, and reminders so your front desk spends less time chasing no-shows.",
   },
   {
     q: 'Is there a free trial?',
-    a: 'Yes — 30 days full access, no credit card required.',
+    a: 'Yes, 30 days full access, no credit card required.',
   },
   {
     q: 'What does Vitar cost?',
-    a: 'The Pro plan is ₦15,000/month after your free trial. There\'s no setup fee and no long-term contract.',
+    a: 'Starter is ₦6,000/month, Pro is ₦15,000/month, and Enterprise is custom-priced for larger clinics, all after your 30-day free trial. No setup fee, no long-term contract.',
   },
   {
     q: 'Do I need new hardware or an app?',
@@ -268,7 +268,7 @@ export default function LandingPage() {
           <div className="step">
             <div className="step-num">2</div>
             <h4>Clinic confirms appointment</h4>
-            <p>Your front desk sees the request instantly and confirms it — no back-and-forth phone calls.</p>
+            <p>Your front desk sees the request instantly and confirms it, no back-and-forth phone calls.</p>
           </div>
           <div className="step">
             <div className="step-num">3</div>
@@ -301,7 +301,7 @@ export default function LandingPage() {
       <section className="section" id="product">
         <p className="section-label">See Vitar in action</p>
         <Reveal as="h2" className="section-title">The dashboard your front desk will actually use</Reveal>
-        <Reveal as="p" className="section-sub">A real look at how Vitar organizes bookings, patients, and reminders — the same screens your staff will open every morning.</Reveal>
+        <Reveal as="p" className="section-sub">A real look at how Vitar organizes bookings, patients, and reminders, the same screens your staff will open every morning.</Reveal>
         <Reveal className="action-tabs" role="tablist" aria-label="Product screens">
           {ACTION_TABS.map((tab) => (
             <button
@@ -365,7 +365,7 @@ export default function LandingPage() {
 
           <div className={`action-panel${activeTab === 'ap-patients' ? ' active' : ''}`}>
             <div className="ap-title">Patient records</div>
-            <p className="ap-sub">Search any patient's visit history in seconds — no folders.</p>
+            <p className="ap-sub">Search any patient's visit history in seconds, no folders.</p>
             <div className="ap-grid">
               <div className="ap-card"><strong>Chiamaka Eze</strong><span>Hypertension · 8 visits</span></div>
               <div className="ap-card"><strong>Musa Danjuma</strong><span>Diabetes review · 5 visits</span></div>
@@ -391,7 +391,7 @@ export default function LandingPage() {
 
           <div className={`action-panel${activeTab === 'ap-booking' ? ' active' : ''}`}>
             <div className="ap-title" style={{ textAlign: 'center' }}>Patient booking page</div>
-            <p className="ap-sub" style={{ textAlign: 'center' }}>What patients see when they book — no app download needed.</p>
+            <p className="ap-sub" style={{ textAlign: 'center' }}>What patients see when they book, no app download needed.</p>
             <div className="ap-booking">
               <div className="ap-field"><label>Choose a doctor</label><div className="fake-input">Dr. Tunde Adeyemi</div></div>
               <div className="ap-field"><label>Preferred time</label><div className="fake-input">Tomorrow, 11:30 AM</div></div>
@@ -418,7 +418,7 @@ export default function LandingPage() {
           <div className="feature-card">
             <div className="feature-icon">📝</div>
             <h3>Online Patient Registration</h3>
-            <p>Patients complete their registration from their phone before they arrive — no more paperwork at the front desk.</p>
+            <p>Patients complete their registration from their phone before they arrive, no more paperwork at the front desk.</p>
           </div>
           <div className="feature-card">
             <div className="feature-icon">🔍</div>
@@ -481,7 +481,7 @@ export default function LandingPage() {
             <Link to="/contact" className="plan-btn ghost">Contact Sales</Link>
           </div>
         </Reveal>
-        <p className="testimonial-note" style={{ marginTop: 24 }}>Early days, honest pricing — as Vitar grows with real clinic feedback, these plans will evolve too.</p>
+        <p className="testimonial-note" style={{ marginTop: 24 }}>Early days, honest pricing. As Vitar grows with real clinic feedback, these plans will evolve too.</p>
       </section>
 
       {/* TRUST */}
@@ -519,7 +519,7 @@ export default function LandingPage() {
           <div className="trust-card">
             <span className="icon">🏢</span>
             <h4>Who's behind Vitar</h4>
-            <p>Built by LiveVault, a Nigerian software company focused on healthcare technology — based in Enugu State. <Link to="/contact">Reach out anytime</Link>.</p>
+            <p>Built by LiveVault, a Nigerian software company focused on healthcare technology, based in Enugu State. <Link to="/contact">Reach out anytime</Link>.</p>
           </div>
         </Reveal>
       </section>
@@ -546,7 +546,7 @@ export default function LandingPage() {
           <div className="mini-teaser-text">
             <p className="section-label" style={{ color: 'var(--teal-lt)' }}>Growing with you</p>
             <h3>Coming next</h3>
-            <p className="mt-sub">We're onboarding our first clinics now — see where customer logos, usage numbers, and case studies will live as they come in.</p>
+            <p className="mt-sub">We're onboarding our first clinics now. This is where customer logos, usage numbers, and case studies will live as they come in.</p>
           </div>
           <Link to="/growth" className="mini-teaser-link">See our roadmap →</Link>
         </div>
@@ -556,7 +556,7 @@ export default function LandingPage() {
       <section className="section final-cta" id="early-access">
         <p className="section-label" style={{ color: 'var(--teal-lt)', textAlign: 'center' }}>Early days · Become one of our first 10 partner clinics</p>
         <Reveal as="h2" className="section-title" style={{ textAlign: 'center', margin: '0 auto 16px' }}>Ready to modernize your clinic?</Reveal>
-        <Reveal as="p" className="section-sub" style={{ textAlign: 'center', margin: '0 auto 10px', color: 'rgba(255,255,255,0.75)' }}>Vitar is brand new — try it free for 30 days, help shape what we build next, and lock in discounted lifetime pricing as one of our first 10 partner clinics.</Reveal>
+        <Reveal as="p" className="section-sub" style={{ textAlign: 'center', margin: '0 auto 10px', color: 'rgba(255,255,255,0.75)' }}>Vitar is brand new. Try it free for 30 days, help shape what we build next, and lock in discounted lifetime pricing as one of our first 10 partner clinics.</Reveal>
         <Reveal className="final-cta-actions">
           <Link to="/register" className="btn-primary">Start Free Trial →</Link>
         </Reveal>
@@ -678,7 +678,7 @@ function ClinicSearchResults({ results, loading, onSelect }: {
       </>
     );
   }
-  return <div className="patient-search-empty">No clinics found — check the spelling or ask your clinic for their booking link.</div>;
+  return <div className="patient-search-empty">No clinics found. Check the spelling or ask your clinic for their booking link.</div>;
 }
 
 function ClinicSearch({ onNavigate }: { onNavigate?: () => void } = {}) {

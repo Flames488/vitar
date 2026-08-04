@@ -43,14 +43,14 @@ export default function FeedbackPage() {
         <section className="hero">
           <div className="hero-badge"><span>●</span> Takes about 2 minutes</div>
           <h1>Help us build Vitar around your clinic</h1>
-          <p>We're onboarding a small batch of Nigerian clinics first. A few honest answers here shape what we build next — no sales pitch, just questions.</p>
+          <p>We're onboarding a small batch of Nigerian clinics first. A few honest answers here shape what we build next. No sales pitch, just questions.</p>
         </section>
 
         <div className="content">
           {!submitted ? (
             <div className="form-card" id="feedback-form-card">
               <h2>A few questions about how you run things today</h2>
-              <p className="sub">Answer as many as apply — every field except clinic name is optional.</p>
+              <p className="sub">Answer as many as apply. Every field except clinic name is optional.</p>
 
               <form id="feedback-form" onSubmit={handleSubmit}>
                 <div className="field">
@@ -65,7 +65,7 @@ export default function FeedbackPage() {
                 </div>
 
                 <div className="field">
-                  <label>Email <span className="optional">(optional — only if you'd like us to follow up)</span></label>
+                  <label>Email <span className="optional">(optional, only if you'd like us to follow up)</span></label>
                   <input type="email" placeholder="you@clinic.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
 
@@ -128,13 +128,13 @@ export default function FeedbackPage() {
                 <button type="submit" className="submit-btn" disabled={submitting}>
                   {submitting ? 'Sending…' : 'Send feedback →'}
                 </button>
-                <p className="form-note">Your answers go straight to our team — nothing is shared or sold.</p>
+                <p className="form-note">Your answers go straight to our team. Nothing is shared or sold.</p>
               </form>
             </div>
           ) : (
             <div className="form-card success-state" id="feedback-success">
               <div className="success-badge">✓</div>
-              <h3>Thank you — this genuinely helps</h3>
+              <h3>Thank you, this genuinely helps</h3>
               <p>We read every response. If you left an email, we may reach out with a couple of follow-up questions or an early invite.</p>
               <Link className="back-link" to="/">← Back to home</Link>
             </div>

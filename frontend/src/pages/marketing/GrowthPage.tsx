@@ -40,7 +40,7 @@ export default function GrowthPage() {
 
           <div className="case-study-card">
             <h3>Your clinic could be our next success story</h3>
-            <p>As clinics onboard and run their day-to-day on Vitar, we'll share real results here — fewer no-shows, smoother scheduling, happier patients.</p>
+            <p>As clinics onboard and run their day-to-day on Vitar, we'll share real results here: fewer no-shows, smoother scheduling, happier patients.</p>
           </div>
 
           <div className="growth-cta">

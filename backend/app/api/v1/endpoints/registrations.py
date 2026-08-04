@@ -282,6 +282,12 @@ def get_status(
     Accepts either (patient_id, clinic_id) — the bootstrap identity available
     right after booking, before any registration/token exists — or a
     previously-issued token, e.g. from a dashboard "View/Edit" entry point.
+
+    patient_id alone proves nothing beyond "the caller once completed a
+    booking" — same non-secret status as everywhere else in this file (see
+    save_draft's docstring). It must never be enough to read back an
+    existing record's PHI or its registration_token, only to learn whether
+    one exists. Only a token proves this caller is the record's owner.
     """
     reg = None
     if token:
@@ -298,7 +304,14 @@ def get_status(
         raise HTTPException(status_code=422, detail="patient_id or token is required")
 
     if reg and reg.status == RegistrationStatus.SUBMITTED:
+        if not token:
+            return {"registered": True}
         return {"registered": True, **_serialize(reg, include_token=True)}
+
+    if reg and not token:
+        # A draft exists but was reached via patient_id, not its token —
+        # say so without handing back its contents or the token itself.
+        return {"registered": False, "has_draft": True, "draft": None, "prefill": None}
 
     prefill = None
     if patient_id:
@@ -307,6 +320,7 @@ def get_status(
 
     return {
         "registered": False,
+        "has_draft": False,
         "draft": _serialize(reg, include_token=True) if reg else None,
         "prefill": prefill,
     }

@@ -82,6 +82,15 @@ def subscribe(
     )
 
     if existing:
+        # FIX: also re-point clinic_id/user_id to the caller's current
+        # session, not just the push keys. A browser endpoint is per-device,
+        # not per-account — if the same browser previously subscribed while
+        # logged into a different clinic (e.g. a consultant managing more
+        # than one clinic), the old row's clinic_id/user_id stuck around
+        # unchanged, so push notifications kept going out for the *previous*
+        # clinic's bookings even after switching accounts on this device.
+        existing.clinic_id = clinic.id
+        existing.user_id = current_user.id
         existing.p256dh = body.keys.p256dh
         existing.auth = body.keys.auth
         existing.user_agent = body.user_agent

@@ -7,10 +7,10 @@ fast inference, no per-token billing surprises.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.core.utils import utcnow
 from app.core.database import get_db
@@ -52,11 +52,21 @@ def risk_dashboard(
     Returns upcoming appointments sorted by no-show risk.
     Shows risk distribution and high-risk patient list.
     """
-    upcoming = db.query(Appointment).filter(
+    # joinedload(Appointment.patient): the loop below reads apt.patient for
+    # every high/critical-risk appointment — without eager-loading, each of
+    # those accesses was a separate lazy-load SELECT (N+1) instead of one JOIN.
+    # Also bounded to the next 30 days + a hard row cap — this previously
+    # fetched every future CONFIRMED appointment with no limit at all, so a
+    # clinic with a large backlog paid for an ever-growing unbounded query
+    # on every dashboard view.
+    upcoming = db.query(Appointment).options(
+        joinedload(Appointment.patient)
+    ).filter(
         Appointment.clinic_id == clinic.id,
         Appointment.status == AppointmentStatus.CONFIRMED,
         Appointment.scheduled_at > utcnow(),
-    ).order_by(Appointment.scheduled_at).all()
+        Appointment.scheduled_at <= utcnow() + timedelta(days=30),
+    ).order_by(Appointment.scheduled_at).limit(500).all()
 
     risk_buckets = {"low": 0, "medium": 0, "high": 0, "critical": 0}
     high_risk_appointments = []

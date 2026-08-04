@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.logging import get_logger
@@ -108,7 +108,15 @@ def list_payouts(
     if status:
         q = q.filter(Payout.status == status)
     total = q.count()
-    payouts = q.order_by(Payout.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    # serialize_payout() reads payout.appointment — eager-load it here so a
+    # full page (up to 200 rows) doesn't issue one lazy-load SELECT per row.
+    payouts = (
+        q.options(joinedload(Payout.appointment))
+        .order_by(Payout.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
     clinic_ids = [p.hospital_id for p in payouts]
     clinics = {c.id: c for c in db.query(Clinic).filter(Clinic.id.in_(clinic_ids)).all()} if clinic_ids else {}
     return {

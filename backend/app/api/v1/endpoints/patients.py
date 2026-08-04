@@ -240,6 +240,20 @@ async def wabizz_create_patient(
     Wabizz calls this to create a patient using only data it knows from WhatsApp.
     Uses async SQLAlchemy for non-blocking I/O.
     """
+    # clinic_id is declared Optional on PatientCreate only because the
+    # browser-facing create_patient() above doesn't require it (clinic comes
+    # from the JWT there). This endpoint has no session, so clinic_id is the
+    # only thing that ties the new row to a clinic — omitting it used to
+    # silently insert a patient with clinic_id=None, which then never shows
+    # up in any clinic's dashboard (every clinic query filters on clinic_id).
+    if not body.clinic_id:
+        raise HTTPException(status_code=422, detail="clinic_id is required")
+
+    from app.models.models import Clinic
+    clinic_result = await db.execute(select(Clinic.id).where(Clinic.id == body.clinic_id))
+    if clinic_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Clinic not found")
+
     # Prevent duplicate phone WITHIN this clinic only. Phone is not a unique
     # platform-wide identity — matching across clinics would silently hand
     # clinic B a patient row that belongs to clinic A (wrong clinic_id,

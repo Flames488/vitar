@@ -84,6 +84,8 @@ export default function RegistrationFormPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [alreadyRegisteredNoToken, setAlreadyRegisteredNoToken] = useState(false);
+  const [draftExistsNoToken, setDraftExistsNoToken] = useState(false);
   const [step, setStep] = useState(1);
   const [editMode, setEditMode] = useState(false);
   const [registrationId, setRegistrationId] = useState<string | null>(null);
@@ -123,12 +125,26 @@ export default function RegistrationFormPage() {
         if (cancelled) return;
 
         if (status.registered) {
-          // Already submitted — edit mode, consent is not re-collected.
+          if (!status.registration_token) {
+            // Reached via patient_id only — the backend deliberately won't
+            // hand back PHI or the edit token without proof of ownership
+            // (a real token). Nothing to silently fall back to here.
+            setAlreadyRegisteredNoToken(true);
+            setLoading(false);
+            return;
+          }
+          // Already submitted, reached via a real token — edit mode, consent is not re-collected.
           setEditMode(true);
           setRegistrationId(status.id);
           setToken(status.registration_token);
           reset(fillDefaults(status));
           setSearchParams({ clinic_id: resolvedClinicId, token: status.registration_token }, { replace: true });
+        } else if (status.has_draft) {
+          // Same reasoning — an in-progress draft exists but was reached
+          // via patient_id, so its token can't be handed back either.
+          setDraftExistsNoToken(true);
+          setLoading(false);
+          return;
         } else {
           if (!status.draft) {
             // Nothing saved yet — eligibility only matters for a brand-new registration.
@@ -268,6 +284,21 @@ export default function RegistrationFormPage() {
     <CenteredMessage
       title="Registration not available"
       body="Online registration isn't currently available for this clinic. Please contact the clinic directly, or complete registration in person at your visit."
+    />
+  );
+
+  if (alreadyRegisteredNoToken) return (
+    <CenteredMessage
+      title="Already Registered"
+      body="You've already completed registration with this clinic. To review or update your details, use the link from your original registration, or contact the clinic directly."
+      success
+    />
+  );
+
+  if (draftExistsNoToken) return (
+    <CenteredMessage
+      title="Registration In Progress"
+      body="You've already started this registration. To continue where you left off, use the link from when you started it — for your privacy, this link alone can't reopen it."
     />
   );
 

@@ -589,16 +589,25 @@ async def wabizz_book_appointment(
 )
 async def wabizz_get_appointment(
     appointment_id: str,
+    clinic_id: str = Query(..., description="Clinic to scope the lookup to — appointment_id alone would let any API-key caller read any clinic's appointment."),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Retrieves a single appointment by ID. Called by vitar-client.getAppointment(). Uses async SQLAlchemy."""
+    """
+    Retrieves a single appointment by ID. Called by vitar-client.getAppointment(). Uses async SQLAlchemy.
+
+    clinic_id is required and the lookup is scoped to it — ApiKey (see
+    app/middleware/api_key_auth.py) is a single platform-wide credential with
+    no clinic_id of its own, so an unscoped lookup would let any caller read
+    another clinic's appointment (patient name/phone/reason/payment) just by
+    guessing/enumerating appointment_id.
+    """
     # FIX: plain select() uses lazy-loading — in async sessions that raises
     # MissingGreenlet (or silently returns None).  Always use joinedload for
     # relationship columns accessed in _serialize().
     result = await db.execute(
         select(Appointment)
         .options(joinedload(Appointment.doctor), joinedload(Appointment.patient))
-        .where(Appointment.id == appointment_id)
+        .where(and_(Appointment.id == appointment_id, Appointment.clinic_id == clinic_id))
     )
     apt = result.scalar_one_or_none()
     if not apt:
@@ -614,17 +623,24 @@ async def wabizz_get_appointment(
 async def wabizz_update_appointment(
     appointment_id: str,
     body: AppointmentUpdate,
+    clinic_id: str = Query(..., description="Clinic to scope the lookup to — appointment_id alone would let any API-key caller mutate any clinic's appointment."),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Updates appointment status or notes. Used by Wabizz to cancel appointments.
     Called by vitar-client.cancelAppointment() with { status: 'cancelled' }. Uses async SQLAlchemy.
+
+    clinic_id is required and the lookup is scoped to it — ApiKey (see
+    app/middleware/api_key_auth.py) is a single platform-wide credential with
+    no clinic_id of its own, so an unscoped lookup would let any caller
+    reschedule/cancel another clinic's appointment just by
+    guessing/enumerating appointment_id.
     """
     # FIX: use joinedload so _serialize() can access apt.doctor / apt.patient.
     result = await db.execute(
         select(Appointment)
         .options(joinedload(Appointment.doctor), joinedload(Appointment.patient))
-        .where(Appointment.id == appointment_id)
+        .where(and_(Appointment.id == appointment_id, Appointment.clinic_id == clinic_id))
     )
     apt = result.scalar_one_or_none()
     if not apt:
@@ -632,9 +648,21 @@ async def wabizz_update_appointment(
 
     if body.status:
         try:
-            apt.status = AppointmentStatus(body.status)
+            new_status = AppointmentStatus(body.status)
         except ValueError:
             raise HTTPException(status_code=422, detail=f"Invalid status: {body.status}")
+
+        # Same terminal-state guard as the browser-facing update_appointment
+        # above — without it, a stale/duplicate Wabizz webhook call could
+        # silently reopen an appointment already counted in no-show/attendance
+        # analytics or already re-offered to the waiting list.
+        _TERMINAL = (AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW)
+        if apt.status in _TERMINAL and new_status != apt.status:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Appointment is already {apt.status.value} and cannot be moved to {new_status.value}.",
+            )
+        apt.status = new_status
 
     if body.notes is not None:
         apt.notes = body.notes

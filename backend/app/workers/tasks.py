@@ -343,7 +343,15 @@ def fire_pending_reminders(self):
         logger.info(f"fire_pending_reminders: dispatched {dispatched}/{len(due)} notifications")
 
     except Exception as e:
+        # FIX: this used to swallow the exception here without rollback or
+        # re-raise — the decorator's autoretry_for=(Exception,) only fires on
+        # an exception that actually propagates out of the task, so a
+        # mid-batch failure (e.g. a transient DB error after some Notification
+        # rows were already locked via with_for_update) was silently dropped
+        # until the next scheduled tick instead of being retried or rolled back.
+        db.rollback()
         logger.error(f"fire_pending_reminders error: {e}")
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
     finally:
         db.close()
 

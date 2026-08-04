@@ -2,14 +2,14 @@
 Vitar v5 - Doctors Endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
 
 from app.core.utils import utcnow
-from app.core.database import get_db
+from app.core.database import get_db, advisory_lock
 from app.core.database_async import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
@@ -85,8 +85,31 @@ def create_doctor(
     clinic=Depends(get_current_clinic),
     db: Session = Depends(get_db),
 ):
-    check_doctor_limit(clinic, db)
+    # check_doctor_limit() is a plain COUNT then this function INSERTs —
+    # without a lock, two concurrent "Add Doctor" requests (double-click, or
+    # two staff members) can both read the same pre-insert count and both
+    # pass the check, letting a clinic exceed its plan's doctor cap. There's
+    # no unique/check constraint to backstop it at the DB level (unlike the
+    # trial-booking counter, which uses an atomic UPDATE ... WHERE), so an
+    # advisory lock scoped to this clinic serializes the check + insert
+    # instead. Lock is transaction-scoped — released automatically on commit.
+    try:
+        with advisory_lock(db, f"doctor_limit:{clinic.id}"):
+            check_doctor_limit(clinic, db)
+            doctor = _create_doctor_row(body, clinic, db)
+    except RuntimeError:
+        raise HTTPException(
+            status_code=409,
+            detail="Another request is already adding a doctor for this clinic — please try again.",
+        )
 
+    cache.delete(doctor_list_key(str(clinic.id)))
+    if clinic.slug:
+        cache.delete(booking_page_key(clinic.slug))  # public booking page embeds the doctor list
+    return _serialize(doctor)
+
+
+def _create_doctor_row(body: "DoctorCreate", clinic, db: Session) -> Doctor:
     doctor = Doctor(
         clinic_id=clinic.id,
         full_name=body.full_name,
@@ -103,10 +126,7 @@ def create_doctor(
     db.add(doctor)
     db.commit()
     db.refresh(doctor)
-    cache.delete(doctor_list_key(str(clinic.id)))
-    if clinic.slug:
-        cache.delete(booking_page_key(clinic.slug))  # public booking page embeds the doctor list
-    return _serialize(doctor)
+    return doctor
 
 
 @router.get("/{doctor_id}")
@@ -349,14 +369,20 @@ def _serialize_doctor(d: Doctor) -> dict:
     summary="List doctors (Wabizz integration)",
 )
 async def wabizz_list_doctors(
+    clinic_id: str = Query(..., description="Clinic to scope the lookup to — without this every clinic's doctors are returned mixed together."),
     specialty: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Returns all active doctors.  Optionally filtered by specialty.
+    Returns all active doctors for one clinic.  Optionally filtered by specialty.
     Called by Wabizz vitar-client.getDoctors(). Uses async SQLAlchemy.
+
+    clinic_id is required: ApiKey (see app/middleware/api_key_auth.py) is a
+    single platform-wide credential with no clinic_id of its own, so without
+    this filter every clinic's doctor list — names, specialties, emails,
+    phones, bios — would come back mixed together for any caller.
     """
-    stmt = select(Doctor).where(Doctor.is_active == True)  # noqa: E712
+    stmt = select(Doctor).where(and_(Doctor.is_active == True, Doctor.clinic_id == clinic_id))  # noqa: E712
     if specialty:
         stmt = stmt.where(Doctor.specialty.ilike(f"%{specialty}%"))
     result = await db.execute(stmt)
@@ -372,19 +398,23 @@ async def wabizz_list_doctors(
 async def wabizz_get_slots(
     doctor_id: str,
     date: str,   # YYYY-MM-DD
+    clinic_id: str = Query(..., description="Clinic to scope the lookup to — doctor_id alone doesn't prove which clinic owns it."),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Returns available time slots for a doctor on a given date.
     Slots include timezone-aware ISO 8601 datetimes (Africa/Lagos = UTC+1).
     Called by Wabizz vitar-client.getAvailableSlots(). Uses async SQLAlchemy.
+
+    clinic_id is required so a doctor_id can't be probed across clinics —
+    same reasoning as every other Wabizz endpoint that accepts an ID.
     """
     from datetime import datetime, timedelta, timezone as _tz
     from app.models.models import Appointment, AppointmentStatus
     from app.core.config import settings
 
     result = await db.execute(
-        select(Doctor).where(and_(Doctor.id == doctor_id, Doctor.is_active == True))  # noqa: E712
+        select(Doctor).where(and_(Doctor.id == doctor_id, Doctor.clinic_id == clinic_id, Doctor.is_active == True))  # noqa: E712
     )
     d = result.scalar_one_or_none()
     if not d:

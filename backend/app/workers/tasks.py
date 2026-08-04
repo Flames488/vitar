@@ -604,7 +604,7 @@ def send_trial_nudges(self):
 def expire_trial_subscriptions(self):
     db = SessionLocal()
     try:
-        from app.models.models import Subscription, SubscriptionStatus
+        from app.models.models import Subscription, SubscriptionStatus, Clinic
         now = utcnow()
         expired = db.query(Subscription).filter(
             Subscription.status == SubscriptionStatus.TRIALING,
@@ -613,6 +613,13 @@ def expire_trial_subscriptions(self):
         for sub in expired:
             sub.status = SubscriptionStatus.EXPIRED
             logger.info(f"Trial expired: subscription={sub.id} clinic={sub.clinic_id}")
+        # Public directory eligibility (see models.Clinic.is_listed) — a
+        # clinic whose trial just expired with no active paid plan no longer
+        # qualifies; re-set to True if/when they actually pay (billing_service).
+        if expired:
+            db.query(Clinic).filter(Clinic.id.in_([s.clinic_id for s in expired])).update(
+                {"is_listed": False}, synchronize_session=False
+            )
         db.commit()
         logger.info(f"Expired {len(expired)} trial subscriptions")
     except Exception as e:

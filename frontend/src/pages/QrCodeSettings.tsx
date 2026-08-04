@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Download, RefreshCw, Printer, QrCode, ExternalLink, FileText } from "lucide-react";
+import { Download, RefreshCw, Printer, QrCode, ExternalLink, FileText, Copy, Check } from "lucide-react";
 
 interface QrInfo {
   qr_code_path: string | null;
@@ -19,6 +19,16 @@ export default function QrCodeSettings() {
   const [downloadingPoster, setDownloadingPoster] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [copied, setCopied] = useState<"booking" | "clinic" | null>(null);
+
+  const clinicPageUrl = qrInfo?.slug ? `${window.location.origin}/clinic/${qrInfo.slug}` : null;
+
+  const copyLink = (url: string, which: "booking" | "clinic") => {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(which);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
 
   // qr_code_path is an absolute path served by the static /uploads mount
   // (nginx / FastAPI StaticFiles) — it must NOT be prefixed with /api,
@@ -145,15 +155,48 @@ export default function QrCodeSettings() {
 
           {/* Portal URL */}
           {qrInfo?.portal_url && (
-            <a
-              href={qrInfo.portal_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-5 flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 hover:underline transition-colors"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              {qrInfo.portal_url}
-            </a>
+            <div className="mt-5 flex items-center gap-2">
+              <a
+                href={qrInfo.portal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 hover:underline transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                {qrInfo.portal_url}
+              </a>
+              <button
+                onClick={() => copyLink(qrInfo.portal_url, "booking")}
+                className="text-slate-400 hover:text-teal-600 transition-colors"
+                title="Copy booking link"
+              >
+                {copied === "booking" ? <Check className="w-3.5 h-3.5 text-teal-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          )}
+
+          {/* Public clinic page URL — same slug, same QR destination decision
+              kept as-is (QR still opens the booking link above); this is
+              the shareable link for WhatsApp/SMS/search results. */}
+          {clinicPageUrl && (
+            <div className="mt-2 flex items-center gap-2">
+              <a
+                href={clinicPageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-teal-700 hover:underline transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                {clinicPageUrl}
+              </a>
+              <button
+                onClick={() => copyLink(clinicPageUrl, "clinic")}
+                className="text-slate-400 hover:text-teal-600 transition-colors"
+                title="Copy clinic page link"
+              >
+                {copied === "clinic" ? <Check className="w-3.5 h-3.5 text-teal-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           )}
         </div>
 

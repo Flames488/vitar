@@ -12,9 +12,10 @@
  * (/pricing) keep using <MarketingLayout> exactly as before.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Reveal from '@/components/marketing/Reveal';
 import InstallAppButton from '@/components/shared/InstallAppButton';
+import { publicClinicsApi } from '@/lib/api/services';
 import '@/styles/landing.css';
 
 const ACTION_TABS = [
@@ -164,6 +165,8 @@ export default function LandingPage() {
             </Link>
           </div>
           <p className="hero-microlink">Explore the real dashboard, no signup needed · <a href="#how-it-works">see how it works ↓</a></p>
+
+          <ClinicSearch />
         </div>
 
         <div className="hero-visual">
@@ -614,6 +617,85 @@ export default function LandingPage() {
           <path d="M5 12l7-7 7 7" />
         </svg>
       </button>
+    </div>
+  );
+}
+
+// ── Patient clinic search (Phase 3) ─────────────────────────────────────────
+// Debounced call into the public directory search endpoint; nothing else on
+// the homepage changes. Separate audience from the Start Free Trial CTAs
+// above (clinics, not patients) so it's placed as its own small block rather
+// than mixed into hero-actions.
+
+interface ClinicSearchResult { name: string; city: string | null; state: string | null; slug: string }
+
+function ClinicSearch() {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<ClinicSearchResult[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults(null);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      setLoading(true);
+      publicClinicsApi.search({ q })
+        .then((data: ClinicSearchResult[]) => setResults(data))
+        .catch(() => setResults([]))
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
+
+  return (
+    <div className="patient-search" onBlur={(e) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false);
+    }}>
+      <label className="patient-search-label">Already a patient? Find your clinic</label>
+      <div className="patient-search-input-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+        </svg>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search by clinic name..."
+          className="patient-search-input"
+        />
+      </div>
+
+      {open && query.trim().length >= 2 && (
+        <div className="patient-search-results">
+          {loading ? (
+            <div className="patient-search-empty">Searching…</div>
+          ) : results && results.length > 0 ? (
+            results.map((c) => (
+              <button
+                key={c.slug}
+                type="button"
+                className="patient-search-result"
+                onClick={() => navigate(`/clinic/${c.slug}`)}
+              >
+                <span className="psr-name">{c.name}</span>
+                {(c.city || c.state) && (
+                  <span className="psr-loc">{[c.city, c.state].filter(Boolean).join(', ')}</span>
+                )}
+              </button>
+            ))
+          ) : (
+            <div className="patient-search-empty">No clinics found — check the spelling or ask your clinic for their booking link.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

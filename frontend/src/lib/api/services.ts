@@ -200,6 +200,14 @@ export const waitingListApi = {
   remove: (id: string) => api.delete(`/waiting-list/${id}`).then(r => r.data),
 };
 
+// ── Public Clinic Directory ──────────────────────────────────────────────────
+
+export const publicClinicsApi = {
+  search: (params: { q?: string; city?: string; state?: string }) =>
+    api.get('/public/clinics/search', { params }).then(r => r.data),
+  getBySlug: (slug: string) => api.get(`/public/clinics/${slug}`).then(r => r.data),
+};
+
 // ── Public Booking ────────────────────────────────────────────────────────────
 
 export const bookingApi = {

@@ -36,5 +36,9 @@ def complete_step(
         clinic.onboarding_step = body.step
     if body.step >= 5:
         clinic.onboarding_completed = True
+        # Public directory eligibility (see models.Clinic.is_listed) — trial
+        # is essentially always active for a clinic finishing onboarding
+        # right after signup, so this is safe unconditionally here.
+        clinic.is_listed = True
     db.commit()
     return {"step": clinic.onboarding_step, "completed": clinic.onboarding_completed}

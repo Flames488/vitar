@@ -45,6 +45,7 @@ RATE_RULES = [
     ("/api/v1/auth/",        20,  60),    # all other auth endpoints
     ("/api/v1/ai/chat",      10,  60),    # AI chat: expensive, 10 req/min
     ("/api/v1/ai/",          30,  60),    # AI endpoints: 30 req/min per IP
+    ("/api/v1/public/clinics/search", 30, 60),  # unauthenticated, scraper-exposed
     ("/api/v1/webhooks/",   500,  60),    # Webhooks need high limit
     ("/api/",               200,  60),    # Default API
 ]

@@ -179,6 +179,19 @@ class Clinic(Base):
     # lazily on first request, see referral_service.get_or_create_referral_code).
     referral_code = Column(String(20), unique=True, index=True, nullable=True)
 
+    # Public clinic directory — reuses the existing `slug` above as the
+    # public identifier (already used by /book/{slug} and the QR code); no
+    # second slug system. is_listed is the single source of truth for public
+    # search/page visibility — set true on onboarding completion and on
+    # subscription activation, set false when a trial expires unpaid (see
+    # onboarding.py, billing_service.py, and workers/tasks.py
+    # expire_trial_subscriptions). opening_hours/services have no existing
+    # data source or editing UI yet — nullable, omitted from the public page
+    # when empty rather than backfilled with placeholder content.
+    is_listed = Column(Boolean, default=False, nullable=False, index=True)
+    opening_hours = Column(Text, nullable=True)
+    services = Column(JSONB, nullable=True)
+
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

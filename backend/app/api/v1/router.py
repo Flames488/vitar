@@ -32,7 +32,8 @@ from app.api.v1.endpoints import (
     qr,
     push_notifications,
     referrals,
-    registrations,         # ← NEW
+    registrations,
+    public_clinics,        # ← NEW
 )
 
 api_router = APIRouter()
@@ -58,7 +59,8 @@ api_router.include_router(admin_api_keys.router, tags=["Admin — API Keys"])
 api_router.include_router(qr.router, prefix="/qr", tags=["QR Code"])
 api_router.include_router(push_notifications.router, prefix="/push", tags=["Push Notifications"])
 api_router.include_router(referrals.router, prefix="/referrals", tags=["Referrals"])
-api_router.include_router(registrations.router, prefix="/registrations", tags=["eRegistration"])  # ← NEW
+api_router.include_router(registrations.router, prefix="/registrations", tags=["eRegistration"])
+api_router.include_router(public_clinics.router, prefix="/public/clinics", tags=["Public Clinic Directory"])  # ← NEW
 
 # ── Superadmin Dashboard (/admin/*) ────────────────────────────────────────
 api_router.include_router(admin_users.router, tags=["Admin — Users"])

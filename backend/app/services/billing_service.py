@@ -567,6 +567,14 @@ class BillingService:
             logger.error(f"Automated payment for unknown clinic: {pending.clinic_id}")
             return False
 
+        # Public directory eligibility (see models.Clinic.is_listed) — an
+        # active paid subscription re-qualifies a clinic whose trial had
+        # already expired (unlisted by expire_trial_subscriptions). Only
+        # once onboarding is actually complete, matching the same rule
+        # applied at onboarding completion and in the search/detail endpoints.
+        if clinic.onboarding_completed:
+            clinic.is_listed = True
+
         now = utcnow()
         period_end = now + timedelta(days=30 if pending.billing_cycle == "monthly" else 365)
 

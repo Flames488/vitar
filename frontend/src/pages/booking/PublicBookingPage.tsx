@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, addDays } from 'date-fns';
-import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Mail, Phone, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Phone, MessageCircle } from 'lucide-react';
 import { bookingApi, registrationsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -91,7 +91,11 @@ export default function PublicBookingPage() {
 
   const clinic = clinicData?.clinic;
   const doctors = clinicData?.doctors ?? [];
-  const availableSlots = (slotsData?.slots ?? []).filter((s: any) => s.available);
+  // Render every generated slot (free, booked, and past), not just free
+  // ones — the empty state still keys off "zero free slots", not "zero
+  // slots returned" (a fully-booked day still has slots, just none free).
+  const allSlots = slotsData?.slots ?? [];
+  const freeSlotsCount = allSlots.filter((s: any) => s.status === 'free').length;
 
   // Date options: next 14 days
   const dateOptions = Array.from({ length: 14 }, (_, i) => {
@@ -121,6 +125,14 @@ export default function PublicBookingPage() {
           </p>
           <p className="text-slate-400 text-xs">A confirmation will be sent to your phone/email.</p>
         </div>
+
+        {booked.appointment_id && booked.confirmation_token && (
+          <DoctorContactSection
+            doctorName={doctors.find((d: any) => d.id === selectedDoctor)?.full_name}
+            appointmentId={booked.appointment_id}
+            token={booked.confirmation_token}
+          />
+        )}
 
         {slug && clinic?.id && booked.patient_id && (
           <RegistrationPrompt
@@ -162,44 +174,6 @@ export default function PublicBookingPage() {
                     ₦{d.consultation_fee.toLocaleString()}
                   </p>
                 )}
-                {d.doctor_details && (
-                  <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
-                    {d.doctor_details.email && (
-                      <p className="text-slate-500 text-xs flex items-center gap-1.5">
-                        <Mail className="w-3 h-3" /> {d.doctor_details.email}
-                      </p>
-                    )}
-                    {d.doctor_details.phone && (
-                      <p className="text-slate-500 text-xs flex items-center gap-1.5">
-                        <Phone className="w-3 h-3" /> {d.doctor_details.phone}
-                      </p>
-                    )}
-                    {(d.doctor_details.talk_with_doctor_url || d.doctor_details.call_url) && (
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {d.doctor_details.talk_with_doctor_url && (
-                          <a
-                            href={d.doctor_details.talk_with_doctor_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 px-2.5 py-1.5 rounded-lg transition-colors"
-                          >
-                            <MessageCircle className="w-3 h-3" /> Chat on WhatsApp
-                          </a>
-                        )}
-                        {d.doctor_details.call_url && (
-                          <a
-                            href={d.doctor_details.call_url}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 px-2.5 py-1.5 rounded-lg transition-colors"
-                          >
-                            <Phone className="w-3 h-3" /> Call Doctor
-                          </a>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
               </button>
             ))}
           </div>
@@ -234,16 +208,34 @@ export default function PublicBookingPage() {
               <p className="text-red-500 text-sm text-center py-4">
                 Couldn't load availability. Please try a different date or refresh the page.
               </p>
-            ) : availableSlots.length === 0 ? (
+            ) : freeSlotsCount === 0 ? (
               <p className="text-slate-500 text-sm text-center py-4">No available slots on this date</p>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {availableSlots.map((slot: any) => (
-                  <button key={slot.time} onClick={() => setSelectedSlot(slot.time)}
-                    className={`py-2 rounded-lg text-sm font-medium transition-all border ${selectedSlot === slot.time ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-200 text-slate-700 hover:border-teal-400'}`}>
-                    {slot.time}
-                  </button>
-                ))}
+                {allSlots.map((slot: any) => {
+                  const isFree = slot.status === 'free';
+                  const isBooked = slot.status === 'booked';
+                  return (
+                    <button
+                      key={slot.time}
+                      disabled={!isFree}
+                      onClick={() => isFree && setSelectedSlot(slot.time)}
+                      title={isBooked ? 'Already booked' : !isFree ? 'No longer available' : undefined}
+                      className={`py-2 rounded-lg text-sm font-medium transition-all border flex flex-col items-center gap-0.5 ${
+                        selectedSlot === slot.time
+                          ? 'bg-teal-600 text-white border-teal-600'
+                          : isBooked
+                            ? 'bg-red-50 text-red-400 border-red-100 cursor-not-allowed'
+                            : !isFree
+                              ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                              : 'border-slate-200 text-slate-700 hover:border-teal-400'
+                      }`}
+                    >
+                      <span>{slot.time}</span>
+                      {isBooked && <span className="text-[10px] font-normal">✕ Booked</span>}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -294,6 +286,56 @@ export default function PublicBookingPage() {
               </button>
             </form>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Post-booking Doctor Contact (Phase B redesign) ──────────────────────────
+// Moved here from the pre-booking doctor-selection card. No patient login
+// exists in Vitar, so confirmation_token (already in the booking response,
+// same field /confirm/{token} uses) proves this is genuinely the patient's
+// own appointment — server-side ownership + plan + doctor-opt-in checks all
+// happen in get_appointment_doctor_contact. If any check fails (wrong plan,
+// contact disabled, etc.) the endpoint 404s/402s and this silently renders
+// nothing — a patient has no actionable use for "your clinic isn't on the
+// right plan," so there's no separate prompt for that case, just no section.
+
+function DoctorContactSection({ doctorName, appointmentId, token }: {
+  doctorName?: string; appointmentId: string; token: string;
+}) {
+  const { data: contact } = useQuery({
+    queryKey: ['appointment-doctor-contact', appointmentId],
+    queryFn: () => bookingApi.getDoctorContact(appointmentId, token),
+    retry: false,
+  });
+
+  if (!contact || (!contact.talk_with_doctor_url && !contact.call_url)) return null;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-3">
+      <p className="text-sm text-slate-700">
+        Have a question before your visit? Message {doctorName ? `Dr. ${doctorName}` : 'your doctor'} directly.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {contact.talk_with_doctor_url && (
+          <a
+            href={contact.talk_with_doctor_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 px-3 py-2 rounded-lg transition-colors"
+          >
+            <MessageCircle className="w-4 h-4" /> Chat on WhatsApp
+          </a>
+        )}
+        {contact.call_url && (
+          <a
+            href={contact.call_url}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 px-3 py-2 rounded-lg transition-colors"
+          >
+            <Phone className="w-4 h-4" /> Call Doctor
+          </a>
         )}
       </div>
     </div>

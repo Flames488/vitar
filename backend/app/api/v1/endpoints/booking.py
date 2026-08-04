@@ -26,7 +26,7 @@ from app.core.logging import get_logger, log_booking_event
 from app.models.models import (
     Clinic, Doctor, Patient, Appointment, WaitingList, AppointmentStatus, PaymentStatus,
 )
-from app.services.trial_guard import check_trial_booking_limit
+from app.services.trial_guard import check_trial_booking_limit, has_doctor_contact_access
 from app.services.hospital_payments import hospital_payments
 
 router = APIRouter()
@@ -141,13 +141,10 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
         Doctor.is_active == True,
     ).all()
 
-    # Doctor contact info is a core feature (not gated by subscription).
-    # Which buttons actually show is controlled per-hospital via Hospital
-    # Contact Settings, and per-doctor via doctor_details_enabled.
-    whatsapp_on = bool(clinic.contact_whatsapp_enabled)
-    call_on = bool(clinic.contact_call_enabled)
-    any_contact_enabled = whatsapp_on or call_on
-
+    # Doctor Contact (WhatsApp/Call) no longer appears here — moved to
+    # post-booking only (see get_appointment_doctor_contact below), gated
+    # by has_doctor_contact_access() + appointment ownership. Do not add
+    # doctor_details/contact fields back to this pre-booking response.
     result = {
         "clinic": {
             "id": str(clinic.id),
@@ -171,14 +168,6 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
                 "avatar_url": d.avatar_url or "",
                 "consultation_fee": float(d.consultation_fee) if d.consultation_fee else 0.0,
                 "bio": d.bio or "",
-                "doctor_details": {
-                    "email": d.email or None,
-                    # Only surface the phone number itself if at least one
-                    # direct-contact channel is enabled for this hospital.
-                    "phone": d.phone if any_contact_enabled else None,
-                    "talk_with_doctor_url": _whatsapp_link(d.phone) if whatsapp_on else None,
-                    "call_url": _call_link(d.phone) if call_on else None,
-                } if d.doctor_details_enabled else None,
             }
             for d in doctors
         ],
@@ -257,10 +246,21 @@ def get_public_available_slots(slug: str, doctor_id: str, date: str, db: Session
     while current < end_dt:
         slot_end = current + timedelta(minutes=slot_duration)
         overlaps = any(current < b_end and slot_end > b_start for b_start, b_end in booked_intervals)
+        # status distinguishes *why* a slot can't be booked — "available" alone
+        # conflated "someone else booked this" with "this time already passed
+        # today", which is what let the calendar mislabel a plain past slot as
+        # if it were taken. Kept "available" too for any existing consumer.
+        if overlaps:
+            status = "booked"
+        elif current <= now:
+            status = "past"
+        else:
+            status = "free"
         slots.append({
             "time": current.strftime("%H:%M"),
             "datetime": current.isoformat(),
             "available": not overlaps and current > now,
+            "status": status,
         })
         current += timedelta(minutes=slot_duration)
 
@@ -525,6 +525,46 @@ def get_public_appointment_status(appointment_id: str, db: Session = Depends(get
         "status": apt.status.value if hasattr(apt.status, "value") else apt.status,
         "payment_status": apt.payment_status.value if hasattr(apt.payment_status, "value") else apt.payment_status,
         "payment_reference": apt.payment_provider_ref,
+    }
+
+
+@router.get("/appointments/{appointment_id}/doctor-contact")
+def get_appointment_doctor_contact(appointment_id: str, token: str, db: Session = Depends(get_db)):
+    """
+    Doctor Contact (WhatsApp/Call), moved here from the pre-booking doctor
+    list (see get_clinic_booking_page). Vitar has no patient login, so
+    ownership is proven the same way Appointment.confirmation_token already
+    proves it for /confirm/{token} — the patient only has this token because
+    they just made this exact booking. Real authorization boundary: verify
+    every check server-side, never trust appointment_id alone.
+    """
+    apt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not apt or apt.confirmation_token != token:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if apt.status in (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW):
+        raise HTTPException(status_code=409, detail="This appointment is no longer active")
+
+    clinic = db.query(Clinic).filter(Clinic.id == apt.clinic_id).first()
+    doctor = db.query(Doctor).filter(Doctor.id == apt.doctor_id).first()
+    if not clinic or not doctor:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not has_doctor_contact_access(clinic):
+        raise HTTPException(status_code=402, detail="Doctor contact is not available on this clinic's current plan")
+    if not doctor.doctor_details_enabled:
+        raise HTTPException(status_code=404, detail="Doctor contact is not available")
+
+    whatsapp_on = bool(clinic.contact_whatsapp_enabled)
+    call_on = bool(clinic.contact_call_enabled)
+    if not (whatsapp_on or call_on):
+        raise HTTPException(status_code=404, detail="Doctor contact is not available")
+
+    return {
+        "doctor_name": doctor.full_name or "",
+        "email": doctor.email or None,
+        "phone": doctor.phone if (whatsapp_on or call_on) else None,
+        "talk_with_doctor_url": _whatsapp_link(doctor.phone) if whatsapp_on else None,
+        "call_url": _call_link(doctor.phone) if call_on else None,
     }
 
 

@@ -259,10 +259,20 @@ def get_available_slots(
     while current < end_dt:
         slot_end = current + timedelta(minutes=slot_duration)
         overlaps = any(current < b_end and slot_end > b_start for b_start, b_end in booked_intervals)
+        # status distinguishes *why* a slot isn't bookable (see booking.py's
+        # public equivalent for the same change) — "available" alone
+        # conflated "booked" with "already past today".
+        if overlaps:
+            status = "booked"
+        elif current <= now:
+            status = "past"
+        else:
+            status = "free"
         slots.append({
             "time": current.strftime("%H:%M"),
             "datetime": current.isoformat(),
             "available": not overlaps and current > now,
+            "status": status,
         })
         current += timedelta(minutes=slot_duration)
 

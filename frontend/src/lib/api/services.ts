@@ -217,6 +217,8 @@ export const bookingApi = {
   book: (slug: string, data: Record<string, unknown>) =>
     api.post(`/booking/clinic/${slug}/book`, data).then(r => r.data),
   confirm: (token: string) => api.get(`/booking/confirm/${token}`).then(r => r.data),
+  getDoctorContact: (appointmentId: string, token: string) =>
+    api.get(`/booking/appointments/${appointmentId}/doctor-contact`, { params: { token } }).then(r => r.data),
   getCancelPage: (token: string) => api.get(`/booking/cancel/${token}`).then(r => r.data),
   cancelByToken: (token: string) => api.post(`/booking/cancel/${token}`).then(r => r.data),
   joinWaitlist: (slug: string, data: Record<string, unknown>) =>

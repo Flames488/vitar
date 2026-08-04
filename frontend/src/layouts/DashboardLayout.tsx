@@ -18,6 +18,7 @@ import TrialBanner from '@/components/shared/TrialBanner';
 import VitarLogo from '@/components/shared/VitarLogo';
 import InstallAppButton from '@/components/shared/InstallAppButton';
 import FirstLoginInstallPrompt from '@/components/shared/FirstLoginInstallPrompt';
+import FirstLoginPushPrompt from '@/components/shared/FirstLoginPushPrompt';
 
 const NAV_GROUPS = [
   {
@@ -306,6 +307,7 @@ export default function DashboardLayout() {
       </div>
 
       <FirstLoginInstallPrompt />
+      <FirstLoginPushPrompt />
 
       {/* AI Chatbot bubble */}
       <div className="fixed bottom-6 right-6 z-40">

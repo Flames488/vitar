@@ -149,6 +149,30 @@ def has_paid_feature_access(clinic) -> bool:
     return plan in ("basic", "pro", "enterprise") and status == "active"
 
 
+def has_doctor_contact_access(clinic) -> bool:
+    """
+    Doctor Contact (WhatsApp/Call, post-booking) — free during any active
+    trial, then requires Pro or Enterprise specifically. Unlike
+    has_paid_feature_access(), Basic does NOT qualify after the trial ends;
+    this is a deliberate Pro-tier differentiator for this one feature, not
+    the general "any paid plan" rule. Does not replace or change
+    has_paid_feature_access() itself, which other features still use as-is.
+    """
+    sub = clinic.subscription
+    if not sub:
+        return False
+
+    status = _status_value(sub.status)
+    if status == "trialing":
+        now = utcnow()
+        if clinic.trial_ends_at and now > clinic.trial_ends_at:
+            return False
+        return True
+
+    plan = _plan_value(sub.plan)
+    return status == "active" and plan in ("pro", "enterprise")
+
+
 def get_trial_status(clinic) -> dict:
     sub = clinic.subscription
     now = utcnow()

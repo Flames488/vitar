@@ -9,9 +9,9 @@
 import { usePWAInstall } from '@/lib/usePWAInstall'
 
 export default function PWAInstallBanner() {
-  const { canInstall, install, dismiss } = usePWAInstall()
+  const { canInstall, bannerDismissed, install, dismiss } = usePWAInstall()
 
-  if (!canInstall) return null
+  if (!canInstall || bannerDismissed) return null
 
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-md">

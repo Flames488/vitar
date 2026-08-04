@@ -182,7 +182,15 @@ export default function RegistrationFormPage() {
     if (Object.values(payload).every((v) => !v)) return; // nothing worth saving yet
 
     try {
-      const res = await registrationsApi.saveDraft({ clinic_id: clinicId, patient_id: bootstrapPatientId, ...payload });
+      // Only the very first save (before a draft/token exists) identifies by
+      // patient_id — every save after that must prove ownership with the
+      // token, same as every other registrations endpoint. See save_draft's
+      // docstring on the backend for why patient_id alone isn't enough once
+      // a draft already exists.
+      const body = token
+        ? { clinic_id: clinicId, token, ...payload }
+        : { clinic_id: clinicId, patient_id: bootstrapPatientId, ...payload };
+      const res = await registrationsApi.saveDraft(body);
       if (!token && res.registration_token) {
         setToken(res.registration_token);
         setRegistrationId(res.id);

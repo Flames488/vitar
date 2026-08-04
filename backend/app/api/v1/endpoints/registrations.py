@@ -152,31 +152,48 @@ def _get_patient_in_clinic(patient_id: str, clinic_id: str, db: Session) -> Pati
 # ── Draft / autosave ────────────────────────────────────────────────────────
 
 class DraftRequest(RegistrationFields):
-    patient_id: str
     clinic_id: str
+    # patient_id is only for the true first-ever bootstrap call, before any
+    # draft (and therefore any token) exists. Once a draft exists, token is
+    # required to touch it — same rule as every other endpoint in this file.
+    # Without this, anyone who ever saw a patient_id (shared device, browser
+    # history, request logs) could read and overwrite another patient's
+    # in-progress draft, including their name/address/health fields, and
+    # extract the token that's supposed to gate everything else.
+    patient_id: Optional[str] = None
+    token: Optional[str] = None
 
 
 @router.post("/draft")
 def save_draft(body: DraftRequest, db: Session = Depends(get_db)):
-    _get_patient_in_clinic(body.patient_id, body.clinic_id, db)
-
-    reg = db.query(PatientRegistration).filter(
-        PatientRegistration.patient_id == body.patient_id,
-        PatientRegistration.clinic_id == body.clinic_id,
-    ).first()
-
-    if reg and reg.status == RegistrationStatus.SUBMITTED:
-        raise HTTPException(status_code=409, detail="Already submitted — use PATCH to edit")
-
-    if not reg:
+    if body.token:
+        reg = db.query(PatientRegistration).filter(
+            PatientRegistration.clinic_id == body.clinic_id,
+            PatientRegistration.registration_token == body.token,
+        ).first()
+        if not reg:
+            raise HTTPException(status_code=404, detail="Draft not found")
+    elif body.patient_id:
+        _get_patient_in_clinic(body.patient_id, body.clinic_id, db)
+        existing = db.query(PatientRegistration).filter(
+            PatientRegistration.patient_id == body.patient_id,
+            PatientRegistration.clinic_id == body.clinic_id,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="A draft already exists — token is required to continue it")
         reg = PatientRegistration(
             patient_id=body.patient_id,
             clinic_id=body.clinic_id,
             registration_token=secrets.token_urlsafe(16),
         )
         db.add(reg)
+    else:
+        raise HTTPException(status_code=422, detail="patient_id or token is required")
 
-    _apply_fields(reg, body, exclude={"patient_id", "clinic_id"})
+    if reg.status == RegistrationStatus.SUBMITTED:
+        raise HTTPException(status_code=409, detail="Already submitted — use PATCH to edit")
+
+    _apply_fields(reg, body, exclude={"patient_id", "clinic_id", "token"})
     db.commit()
     db.refresh(reg)
     return _serialize(reg, include_token=True)

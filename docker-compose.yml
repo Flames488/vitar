@@ -46,6 +46,13 @@ services:
         -c pg_stat_statements.track=all
         -c pg_stat_statements.max=10000
 
+  # RELIABILITY: shared by cache/rate-limit (db0), the Celery broker (db1),
+  # and the result backend (db2) — maxmemory-policy applies instance-wide,
+  # not per-db. `allkeys-lru` would silently evict queued Celery task
+  # messages once memory fills, with no error and no dead-letter trace.
+  # `noeviction` rejects writes loudly instead once full; every write path
+  # onto this Redis (app/core/cache.py, the *_dispatch_* Celery producer
+  # calls) already fails open on a Redis error and logs it.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -64,7 +71,7 @@ services:
       --save 60 1
       --save 300 10
       --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy noeviction
       --tcp-keepalive 60
     volumes:
       - redis_data:/data

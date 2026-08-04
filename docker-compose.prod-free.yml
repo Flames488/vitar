@@ -30,12 +30,40 @@ x-api-env: &api-env
     ENVIRONMENT: production
     DEBUG: "false"
 
+# RELIABILITY: Docker's default json-file log driver has no size cap — on a
+# long-running unattended single VM, logs grow forever until the disk fills.
+# A full disk takes down Postgres/Redis writes and Docker itself, not just
+# this app — exactly the slow, unattended failure mode this compose file
+# otherwise guards against with restart policies and health checks. Capped
+# and rotated (10MB × 3 files = 30MB max per container) here instead.
+x-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
 
   # ── Redis ─────────────────────────────────────────────────────────────────
+  # SECURITY/RELIABILITY: this one instance is shared by REDIS_URL (db0 —
+  # cache, rate limiting, idempotency), CELERY_BROKER_URL (db1 — the actual
+  # task queue), and CELERY_RESULT_BACKEND (db2). maxmemory-policy is
+  # instance-wide, not per-db. `allkeys-lru` would silently evict whichever
+  # keys are least-recently-used once memory hits the cap — including queued
+  # Celery messages sitting in the broker's list. An evicted task vanishes
+  # with no error, no log, no dead-letter entry (it's gone before a worker
+  # ever picks it up to fail), which over weeks of runtime under real load
+  # means reminders/push-notifications/payment-retries silently stop firing
+  # with nothing pointing at why. `noeviction` makes Redis reject writes
+  # loudly once full instead — every write path here (app/core/cache.py,
+  # the Celery producer calls in *_dispatch_* helpers) already wraps Redis
+  # calls in try/except and fails open with a logged error, so a full-instance
+  # OOM becomes a visible log line instead of silent data loss.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    <<: *default-logging
     deploy:
       resources:
         limits:
@@ -47,7 +75,7 @@ services:
       --appendfsync everysec
       --save 60 1
       --maxmemory 200mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     healthcheck:
@@ -61,6 +89,7 @@ services:
   pgbouncer:
     image: edoburu/pgbouncer:latest
     restart: unless-stopped
+    <<: *default-logging
     deploy:
       resources:
         limits:
@@ -95,6 +124,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
+    # NOTE: a mapping can only have one `<<:` merge key — combine both
+    # anchors into a single list-merge instead of two separate `<<:` entries
+    # (two would be a duplicate key; parsers differ on whether that errors
+    # or silently drops one, so don't risk it).
+    <<: [*api-env, *default-logging]
     deploy:
       resources:
         limits:
@@ -103,7 +137,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-    <<: *api-env
     environment:
       DATABASE_URL: postgresql://postgres:${SUPABASE_DB_PASSWORD}@pgbouncer:5432/postgres
       MIGRATION_DATABASE_URL: ${SUPABASE_DB_URL}
@@ -117,7 +150,13 @@ services:
       SKIP_MIGRATIONS: "true"
       STORAGE_BACKEND: local
       ALLOW_LOCAL_UPLOADS_IN_PRODUCTION: "true"
-      API_DOCS_ENABLED: "true"
+      # SECURITY: main.py gates /api/v1/docs + /api/v1/openapi.json with
+      # `API_DOCS_ENABLED or ENVIRONMENT != "production"` — this compose
+      # environment block overrides .env (env_file loses to explicit
+      # `environment:` entries), so "true" here was publishing the full API
+      # schema (every endpoint, including admin/Wabizz routes) regardless of
+      # ENVIRONMENT=production above it or whatever .env/.env.example say.
+      API_DOCS_ENABLED: "false"
       UPLOAD_DIR: /app/uploads
       FRONTEND_URL: https://${DOMAIN}
       ALLOWED_ORIGINS: '["https://${DOMAIN}","https://www.${DOMAIN}","https://app.${DOMAIN}","https://api.${DOMAIN}"]'
@@ -159,7 +198,7 @@ services:
         reservations:
           cpus: '0.25'
           memory: 144M
-    <<: *api-env
+    <<: [*api-env, *default-logging]
     environment:
       DATABASE_URL: postgresql://postgres:${SUPABASE_DB_PASSWORD}@pgbouncer:5432/postgres
       MIGRATION_DATABASE_URL: ${SUPABASE_DB_URL}
@@ -205,7 +244,7 @@ services:
         limits:
           cpus: '0.25'
           memory: 128M
-    <<: *api-env
+    <<: [*api-env, *default-logging]
     environment:
       DATABASE_URL: postgresql://postgres:${SUPABASE_DB_PASSWORD}@pgbouncer:5432/postgres
       MIGRATION_DATABASE_URL: ${SUPABASE_DB_URL}
@@ -238,7 +277,7 @@ services:
         limits:
           cpus: '0.25'
           memory: 128M
-    <<: *api-env
+    <<: [*api-env, *default-logging]
     environment:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
@@ -264,6 +303,7 @@ services:
   nginx:
     image: nginx:alpine
     restart: always
+    <<: *default-logging
     deploy:
       resources:
         limits:

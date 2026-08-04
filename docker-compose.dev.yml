@@ -28,7 +28,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # noeviction, not allkeys-lru: this Redis also backs the Celery broker
+    # (queued task messages) — LRU eviction under memory pressure would
+    # silently drop queued tasks with no error/log/dead-letter trace.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     ports:

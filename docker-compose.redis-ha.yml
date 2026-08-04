@@ -57,7 +57,7 @@ services:
       --appendfsync everysec
       --replicaof redis 6379
       --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy noeviction
       --tcp-keepalive 60
     volumes:
       - redis_replica_data:/data

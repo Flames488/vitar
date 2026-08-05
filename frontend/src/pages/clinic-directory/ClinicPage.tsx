@@ -26,7 +26,7 @@ import { publicClinicsApi } from '@/lib/api/services';
 export default function ClinicPage() {
   const { slug } = useParams<{ slug: string }>();
   const { data: clinic, isLoading, isError } = useQuery({
-    queryKey: ['public-clinic', slug],
+    queryKey: ['clinic-directory', slug],
     queryFn: () => publicClinicsApi.getBySlug(slug!),
     enabled: !!slug,
     retry: 1,

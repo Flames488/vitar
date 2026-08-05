@@ -30,7 +30,7 @@ export default function PublicBookingPage() {
   const [booked, setBooked] = useState<any>(null);
 
   const { data: clinicData, isLoading: clinicLoading, isError: clinicError } = useQuery({
-    queryKey: ['public-clinic', slug],
+    queryKey: ['booking-clinic', slug],
     queryFn: () => bookingApi.getClinic(slug!),
     enabled: !!slug,
     retry: 1,

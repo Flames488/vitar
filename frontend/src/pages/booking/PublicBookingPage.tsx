@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, addDays } from 'date-fns';
-import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Phone, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Phone, MessageCircle, Mail } from 'lucide-react';
 import { bookingApi, registrationsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -311,13 +311,25 @@ function DoctorContactSection({ doctorName, appointmentId, token }: {
     retry: false,
   });
 
-  if (!contact || (!contact.talk_with_doctor_url && !contact.call_url)) return null;
+  if (!contact || (!contact.talk_with_doctor_url && !contact.call_url && !contact.email)) return null;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-3">
       <p className="text-sm text-slate-700">
-        Have a question before your visit? Message {doctorName ? `Dr. ${doctorName}` : 'your doctor'} directly.
+        Have a question before your visit? Reach {doctorName ? `Dr. ${doctorName}` : 'your doctor'} directly.
       </p>
+      <div className="space-y-1.5 text-sm text-slate-600">
+        {contact.phone && (
+          <div className="flex items-center gap-1.5">
+            <Phone className="w-4 h-4 text-slate-400" /> {contact.phone}
+          </div>
+        )}
+        {contact.email && (
+          <div className="flex items-center gap-1.5">
+            <Mail className="w-4 h-4 text-slate-400" /> {contact.email}
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
         {contact.talk_with_doctor_url && (
           <a

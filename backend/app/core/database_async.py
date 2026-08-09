@@ -54,8 +54,23 @@ def _get_async_engine():
                 pool_recycle=300,
                 pool_timeout=30,
                 connect_args={
+                    # FIX: server_settings is sent as a Postgres startup
+                    # parameter during the connection handshake. Production's
+                    # DATABASE_URL goes straight through Supabase's
+                    # transaction-mode pooler (see database.py's sync engine
+                    # comment — the local pgbouncer container isn't in the
+                    # live path), which validates startup parameters against
+                    # an allowlist and rejects anything it doesn't recognize.
+                    # {"jit": "off"} isn't on that list, so every single
+                    # async DB connection attempt failed outright with
+                    # asyncpg.exceptions.ProtocolViolationError: unsupported
+                    # startup parameter: jit — meaning every async endpoint
+                    # (all of doctors.py/patients.py/appointments.py's
+                    # Wabizz routes, plus any other async-session endpoint)
+                    # 500'd on every call. prepared_statement_cache_size is
+                    # a client-side asyncpg option, not a startup parameter,
+                    # so it's unaffected and stays.
                     "prepared_statement_cache_size": 0,
-                    "server_settings": {"jit": "off"},
                 },
             )
 

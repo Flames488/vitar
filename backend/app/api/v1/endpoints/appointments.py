@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.core.database_async import get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, text
+from sqlalchemy.exc import IntegrityError
 from app.core.security import get_current_clinic
 from app.core.logging import get_logger, log_booking_event
 from app.models.models import (
@@ -139,18 +140,45 @@ async def _async_check_double_booking(db: AsyncSession, doctor_id, scheduled_at,
     """Async version of _check_double_booking for Wabizz endpoints."""
     from datetime import timedelta
     end_at = scheduled_at + timedelta(minutes=duration_mins)
+    # Same stale-AWAITING_PAYMENT exclusion as the sync check above — without
+    # it, an abandoned browser checkout blocks this slot forever for Wabizz
+    # callers even after doctors.py's wabizz_get_slots has already told them
+    # (correctly) that the slot is free, so booking it fails with a false 409.
+    payment_cutoff = utcnow() - timedelta(minutes=settings.AWAITING_PAYMENT_TIMEOUT_MINUTES)
     stmt = select(Appointment).where(
         and_(
             Appointment.doctor_id == doctor_id,
             Appointment.status.not_in([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
+            or_(
+                Appointment.status != AppointmentStatus.AWAITING_PAYMENT,
+                Appointment.created_at >= payment_cutoff,
+            ),
             Appointment.scheduled_at >= (scheduled_at - timedelta(hours=4)),
             Appointment.scheduled_at < (end_at + timedelta(hours=4)),
         )
     )
     if exclude_id:
         stmt = stmt.where(Appointment.id != exclude_id)
-    result = await db.execute(stmt)
-    candidates = result.scalars().all()
+
+    try:
+        result = await db.execute(stmt.with_for_update(nowait=True))
+        candidates = result.scalars().all()
+    except Exception:
+        # Lock contention — another transaction is writing this slot right
+        # now. Treat conservatively as a conflict, matching the row-locking
+        # behavior _check_double_booking already has for the browser flow;
+        # without this the async Wabizz path had no locking at all, so two
+        # concurrent WhatsApp bookings for overlapping (non-identical) times
+        # could both pass this check and both insert.
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "SLOT_CONFLICT",
+                "message": "This time slot is currently being booked. Please try again.",
+            },
+        )
+
     for existing in candidates:
         existing_end = existing.scheduled_at + timedelta(minutes=existing.duration_mins or 30)
         if scheduled_at < existing_end and end_at > existing.scheduled_at:
@@ -551,6 +579,13 @@ async def wabizz_book_appointment(
             detail="Patient and doctor belong to different clinics",
         )
 
+    # Same guard the browser-facing create_appointment above already has —
+    # this endpoint was missing it, so a stale Wabizz slot cache (or the
+    # WAT/UTC mismatch fixed in wabizz_get_slots) could book a time already
+    # in the past.
+    if body.scheduled_at < utcnow():
+        raise HTTPException(status_code=400, detail="Cannot book appointments in the past")
+
     await _async_check_double_booking(db, body.doctor_id, body.scheduled_at, body.duration_mins)
 
     apt = Appointment(
@@ -566,7 +601,17 @@ async def wabizz_book_appointment(
         status=AppointmentStatus.CONFIRMED,
     )
     db.add(apt)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as e:
+        # Real conflict — e.g. the uq_doctor_slot unique constraint fired
+        # because someone else booked this exact slot in the meantime.
+        # _async_check_double_booking's locking above narrows the window but
+        # can't close it entirely, so this backstop must be caught here too —
+        # same as booking.py's browser-facing flow already does.
+        await db.rollback()
+        logger.warning(f"Wabizz booking conflict on commit: {e}")
+        raise HTTPException(status_code=409, detail="This slot was just booked by someone else. Please pick another time.")
 
     # FIX: db.refresh() only reloads scalar columns — relationships (doctor, patient)
     # remain unloaded (None) after an async commit.  Re-fetch with joinedload so
@@ -668,10 +713,20 @@ async def wabizz_update_appointment(
         apt.notes = body.notes
 
     if body.scheduled_at:
+        # Same guard the browser-facing reschedule endpoint already has.
+        if body.scheduled_at < utcnow():
+            raise HTTPException(status_code=400, detail="Cannot reschedule to a past time")
         await _async_check_double_booking(db, apt.doctor_id, body.scheduled_at, apt.duration_mins, exclude_id=apt.id)
         apt.scheduled_at = body.scheduled_at
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as e:
+        # Same uq_doctor_slot backstop as wabizz_book_appointment — a
+        # reschedule races another booking for the same exact slot.
+        await db.rollback()
+        logger.warning(f"Wabizz reschedule conflict on commit: {e}")
+        raise HTTPException(status_code=409, detail="This slot was just booked by someone else. Please pick another time.")
 
     # FIX: re-fetch after commit with joinedload — db.refresh() does not reload
     # relationships in async sessions, leaving apt.doctor / apt.patient as None.

@@ -8,7 +8,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, Users, UserCheck, BarChart3,
   Banknote, Settings, Brain, Clock, Bell, LogOut, Menu,
-  X, AlertTriangle, MessageSquare, ListOrdered, Key, QrCode,
+  X, AlertTriangle, MessageSquare, ListOrdered, QrCode,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useGeoStore } from '@/stores/geoStore';
@@ -29,11 +29,14 @@ const NAV_ITEMS = [
   { to: '/analytics',              label: 'Analytics',     icon: BarChart3 },
 ];
 
+// API key management (Wabizz) is a superadmin-only, platform-wide credential
+// with no clinic_id — see app/api/v1/endpoints/admin_api_keys.py. It lives
+// under /admin/api-keys (AdminLayout), not here; a clinic admin must never be
+// offered a link into that flow.
 const SETTINGS_ITEMS = [
   { to: '/settings',               label: 'General',       icon: Settings },
   { to: '/settings/billing',       label: 'Billing',       icon: Banknote },
   { to: '/settings/notifications', label: 'Notifications', icon: Bell },
-  { to: '/settings/api-keys',      label: 'API Keys',      icon: Key },
 ];
 
 export default function DashboardLayout() {

@@ -189,7 +189,12 @@ async def verify_api_key(
                 matched.label, request.url.path,
             )
         else:
-            # Key was revoked or deleted — invalidate stale cache entry
+            # Key was revoked or deleted — invalidate the stale cache entry.
+            # Without this the entry just sits there for the rest of its TTL:
+            # not a security issue (the DB check above already rejects it
+            # correctly on every request), but every request from this raw
+            # key until TTL expiry needlessly falls through to the slow path.
+            _invalidate_cached_key(raw_key)
             logger.info(
                 "api_key_auth: stale cache entry invalidated | key_id=%s", cached_key_id
             )

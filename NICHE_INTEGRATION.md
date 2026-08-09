@@ -43,13 +43,29 @@ GET   /api/v1/appointments/wabizz/{id}                   → get appointment det
 PATCH /api/v1/appointments/wabizz/{id}                   → update status/notes/reschedule
 ```
 
-## Generating a Wabizz API Key (Clinic Admin)
+## Generating a Wabizz API Key (Superadmin)
 
-1. Log into your Vitar dashboard
-2. Go to **Settings → API Keys** (`/settings/api-keys`)
+ApiKey is a single platform-wide credential (no `clinic_id` column) — one key
+authenticates Wabizz for every clinic, so this is a superadmin-only action,
+not something an individual clinic admin does.
+
+1. Log into the Vitar superadmin dashboard
+2. Go to **Admin → API Keys** (`/admin/api-keys`)
 3. Click **Generate Key**, enter label "Wabizz Integration"
 4. **Copy the key immediately** — it is only shown once
 5. Store it in Wabizz's Supabase Vault (see Wabizz NICHE_INTEGRATION.md)
+
+## Per-Clinic Setup (Clinic Admin)
+
+Each clinic only needs to hand Wabizz its own Clinic ID — the API key above
+is shared platform-wide and clinics never see or generate it themselves.
+
+1. Log into your Vitar dashboard
+2. Go to **Settings → General**, copy the Clinic ID shown in the Wabizz
+   Integration panel
+3. Enter it in **Wabizz dashboard → Niche Modules → Hospital → Vitar Clinic
+   ID**. Without it, patients booked via WhatsApp will not appear in your
+   Vitar dashboard.
 
 ## What Was NOT Changed
 

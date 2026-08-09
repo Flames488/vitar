@@ -471,13 +471,25 @@ async def wabizz_get_slots(
 
     # WAT = UTC+1 (Africa/Lagos, no DST)
     WAT = _tz(timedelta(hours=1))
+    WAT_OFFSET = timedelta(hours=1)
     now_utc = utcnow()
     slots = []
 
     while current < end_dt:
         slot_end = current + timedelta(minutes=slot_duration)
-        overlaps = any(current < b_end and slot_end > b_start for b_start, b_end in booked_intervals)
-        is_available = not overlaps and current > now_utc
+        # current/slot_end are WAT wall-clock values (avail.start_time is
+        # entered by clinic staff in their own local time, e.g. "09:00" means
+        # 9am Lagos time) but booked_intervals/now_utc are true UTC
+        # (Appointment.scheduled_at and utcnow()). Comparing them directly
+        # was off by exactly 1 hour: a doctor's real 9am-WAT booking (stored
+        # as 08:00 UTC) would not register as overlapping a slot literally
+        # named "09:00", and a slot already an hour into the past could still
+        # show as available. Shift to UTC for the comparisons; keep the WAT
+        # labeling below for the ISO timestamps Wabizz actually consumes.
+        current_utc = current - WAT_OFFSET
+        slot_end_utc = slot_end - WAT_OFFSET
+        overlaps = any(current_utc < b_end and slot_end_utc > b_start for b_start, b_end in booked_intervals)
+        is_available = not overlaps and current_utc > now_utc
         slot_wat = current.replace(tzinfo=WAT)
         end_wat = slot_end.replace(tzinfo=WAT)
         slots.append({

@@ -1,6 +1,20 @@
 """
 Vitar v5 - Database Models
 Full relational schema with indexes, constraints, and locking support
+
+Every Column(Enum(...)) below is declared with native_enum=False. The live
+schema was always created with these as plain VARCHAR (see 001_initial.py
+and every migration since — no CREATE TYPE ... AS ENUM anywhere), but
+without native_enum=False, SQLAlchemy's asyncpg dialect still assumes a
+native Postgres enum type exists and generates explicit `::typename`
+casts in async queries. Since that type was never actually created, every
+async query touching one of these columns (any AsyncSession endpoint —
+all of doctors.py/patients.py/appointments.py's Wabizz routes included)
+failed with asyncpg.exceptions.UndefinedObjectError: type "..." does not
+exist. The sync (psycopg2) engine never hit this because psycopg2 doesn't
+require the cast to be pre-resolved the same way. native_enum=False makes
+SQLAlchemy's assumption match the schema that has always actually existed
+— no migration needed, since the columns were VARCHAR already.
 """
 
 from sqlalchemy import (
@@ -144,7 +158,7 @@ class Clinic(Base):
     website = Column(String(255))
     timezone = Column(String(50), default="Africa/Lagos")
     currency = Column(String(10), default="NGN")
-    region = Column(Enum(Region), default=Region.NG)
+    region = Column(Enum(Region, native_enum=False), default=Region.NG)
     
     # Trial
     trial_started_at = Column(DateTime, default=func.now())
@@ -214,11 +228,11 @@ class Subscription(Base):
     id = Column(String(36), primary_key=True, default=gen_uuid)
     clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), unique=True, nullable=False)
     
-    plan = Column(Enum(SubscriptionPlan), nullable=False, default=SubscriptionPlan.TRIAL)
-    status = Column(Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.TRIALING)
+    plan = Column(Enum(SubscriptionPlan, native_enum=False), nullable=False, default=SubscriptionPlan.TRIAL)
+    status = Column(Enum(SubscriptionStatus, native_enum=False), nullable=False, default=SubscriptionStatus.TRIALING)
     
     # Provider IDs
-    provider = Column(Enum(PaymentProvider))
+    provider = Column(Enum(PaymentProvider, native_enum=False))
     provider_customer_id = Column(String(100))
     provider_subscription_id = Column(String(100))
     
@@ -249,11 +263,11 @@ class SubscriptionPayment(Base):
 
     id = Column(String(36), primary_key=True, default=gen_uuid)
     subscription_id = Column(String(36), ForeignKey("subscriptions.id"), nullable=False, index=True)
-    provider = Column(Enum(PaymentProvider), nullable=False)
+    provider = Column(Enum(PaymentProvider, native_enum=False), nullable=False)
     provider_reference = Column(String(255), unique=True)
     amount = Column(Numeric(12, 2), nullable=False)
     currency = Column(String(10), default="NGN")
-    status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING, index=True)
+    status = Column(Enum(PaymentStatus, native_enum=False), default=PaymentStatus.PENDING, index=True)
     paid_at = Column(DateTime)
     failed_at = Column(DateTime)
     retry_count = Column(Integer, default=0)
@@ -288,7 +302,7 @@ class PendingSubscriptionPayment(Base):
     currency = Column(String(10), default="NGN")
 
     paystack_reference = Column(String(255), unique=True, nullable=False, index=True)
-    status = Column(Enum(PendingPaymentStatus), default=PendingPaymentStatus.PENDING, nullable=False, index=True)
+    status = Column(Enum(PendingPaymentStatus, native_enum=False), default=PendingPaymentStatus.PENDING, nullable=False, index=True)
 
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=func.now(), index=True)
@@ -318,7 +332,7 @@ class Referral(Base):
     # unique: a clinic can only ever be attributed to one referrer
     referred_clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     referral_code = Column(String(20), nullable=False)
-    status = Column(Enum(ReferralStatus), default=ReferralStatus.SIGNED_UP, nullable=False)
+    status = Column(Enum(ReferralStatus, native_enum=False), default=ReferralStatus.SIGNED_UP, nullable=False)
 
     created_at = Column(DateTime, default=func.now())
     paid_at = Column(DateTime, nullable=True)
@@ -351,7 +365,7 @@ class PatientRegistration(Base):
     id = Column(String(36), primary_key=True, default=gen_uuid)
     patient_id = Column(String(36), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
-    status = Column(Enum(RegistrationStatus), default=RegistrationStatus.DRAFT, nullable=False)
+    status = Column(Enum(RegistrationStatus, native_enum=False), default=RegistrationStatus.DRAFT, nullable=False)
 
     registration_token = Column(String(100), unique=True, index=True, nullable=False)
 
@@ -486,7 +500,7 @@ class Patient(Base):
     total_no_shows = Column(Integer, default=0)
     total_cancellations = Column(Integer, default=0)
     last_no_show_at = Column(DateTime)
-    preferred_channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e]), default=NotificationChannel.SMS)
+    preferred_channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e], native_enum=False), default=NotificationChannel.SMS)
 
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -518,7 +532,7 @@ class Appointment(Base):
 
     scheduled_at = Column(DateTime, nullable=False, index=True)
     duration_mins = Column(Integer, default=30)
-    status = Column(Enum(AppointmentStatus), nullable=False, default=AppointmentStatus.CONFIRMED, index=True)
+    status = Column(Enum(AppointmentStatus, native_enum=False), nullable=False, default=AppointmentStatus.CONFIRMED, index=True)
 
     reason = Column(Text)
     notes = Column(Text)
@@ -532,11 +546,11 @@ class Appointment(Base):
     # Reminders
     reminder_sent_at = Column(DateTime)
     reminder_count = Column(Integer, default=0)
-    last_reminder_channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e]))
+    last_reminder_channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e], native_enum=False))
 
     # Payment
     payment_required = Column(Boolean, default=False)
-    payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.UNPAID)
+    payment_status = Column(Enum(PaymentStatus, native_enum=False), default=PaymentStatus.UNPAID)
     payment_amount = Column(Numeric(12, 2), default=0)
     payment_currency = Column(String(10), default="NGN")
     payment_provider_ref = Column(String(255))
@@ -596,13 +610,13 @@ class PatientPayment(Base):
     appointment_id = Column(String(36), ForeignKey("appointments.id", ondelete="RESTRICT"), unique=True, nullable=False)
     clinic_id = Column(String(36), ForeignKey("clinics.id"), nullable=False, index=True)
     patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False)
-    provider = Column(Enum(PaymentProvider), nullable=False)
+    provider = Column(Enum(PaymentProvider, native_enum=False), nullable=False)
     provider_reference = Column(String(255), unique=True, nullable=False)
     total_amount = Column(Numeric(12, 2), nullable=False)
     clinic_share = Column(Numeric(12, 2), nullable=False)
     platform_share = Column(Numeric(12, 2), nullable=False)
     currency = Column(String(10), default="NGN")
-    status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING)
+    status = Column(Enum(PaymentStatus, native_enum=False), default=PaymentStatus.PENDING)
     paid_at = Column(DateTime)
     extra_data = Column(JSONB, default={})
     created_at = Column(DateTime, default=func.now())
@@ -674,9 +688,9 @@ class Notification(Base):
     clinic_id = Column(String(36), ForeignKey("clinics.id"), nullable=False, index=True)
     patient_id = Column(String(36), ForeignKey("patients.id"), nullable=False)
 
-    channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e]), nullable=False)
+    channel = Column(Enum(NotificationChannel, values_callable=lambda e: [m.value for m in e], native_enum=False), nullable=False)
     notification_type = Column(String(50), nullable=False)  # reminder | confirmation | cancellation | follow_up
-    status = Column(Enum(NotificationStatus), default=NotificationStatus.PENDING)
+    status = Column(Enum(NotificationStatus, native_enum=False), default=NotificationStatus.PENDING)
 
     recipient = Column(String(255))  # phone or email
     message_body = Column(Text)

@@ -69,11 +69,11 @@ export function EarningsPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-slate-500 text-sm">On the way to you</p>
-            <p className="text-xl font-bold text-amber-600">{formatMoney((summary?.pending_amount ?? 0) * 100)}</p>
+            <p className="text-xl font-bold text-amber-600">{formatMoney(summary?.pending_amount ?? 0)}</p>
           </div>
           <div>
             <p className="text-slate-500 text-sm">Sent so far</p>
-            <p className="text-xl font-bold text-green-600">{formatMoney((summary?.sent_total ?? 0) * 100)}</p>
+            <p className="text-xl font-bold text-green-600">{formatMoney(summary?.sent_total ?? 0)}</p>
           </div>
         </div>
 
@@ -88,7 +88,7 @@ export function EarningsPage() {
             {history.items.map((item: any) => (
               <div key={item.id} className="flex items-center justify-between py-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-900">{formatMoney(item.amount_to_clinic * 100)}</p>
+                  <p className="text-sm font-medium text-slate-900">{formatMoney(item.amount_to_clinic)}</p>
                   <p className="text-xs text-slate-400">
                     {item.sent_at ? `Sent ${new Date(item.sent_at).toLocaleDateString()}` : `Received ${new Date(item.created_at).toLocaleDateString()}`}
                   </p>

@@ -54,7 +54,10 @@ export default function PublicBookingPage() {
       ...formData,
       email: formData.email || undefined,
       doctor_id: selectedDoctor,
-      scheduled_at: `${selectedDate}T${selectedSlot}:00`,
+      // Slot times are clinic-local wall-clock (WAT); convert to a UTC ISO
+      // string so the backend's naive-UTC normalization doesn't store the
+      // local time as-is (which would be off by the clinic's UTC offset).
+      scheduled_at: new Date(`${selectedDate}T${selectedSlot}:00`).toISOString(),
     }),
     onSuccess: (data) => {
       // If payment is required, the appointment is only tentatively held

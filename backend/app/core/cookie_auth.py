@@ -15,6 +15,19 @@ CSRF exempt endpoints (no established session / external callers):
   - POST /api/v1/auth/logout    ← FIX: was missing; caused logout to 403 after cookie expiry
   - /api/v1/webhooks/           (external services)
   - /api/v1/booking/            (public patient-facing)
+  - POST /api/v1/push/event     (reported by the push-notification service
+    worker, public/sw-push.js — a SW has no access to page JS/cookie storage
+    the way the axios client does, so it can't attach X-CSRF-Token. All auth
+    cookies are SameSite=Strict, which already blocks true cross-site
+    requests from ever carrying them — the CSRF token here is defense in
+    depth on top of that, not the only thing standing between this endpoint
+    and a forged request.)
+  - any request carrying X-API-Key (Wabizz machine-to-machine — see
+    app/middleware/api_key_auth.py; never has a browser session/CSRF cookie
+    to begin with, and CSRF specifically targets cookie-authenticated
+    requests a malicious page can trigger — a header it can't set is immune
+    by construction, so this covers current and future API-key-only routes
+    without hardcoding each one's path here)
 """
 
 import secrets
@@ -109,6 +122,15 @@ async def csrf_protect(request: Request) -> None:
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return
 
+    # Wabizz and any other machine-to-machine caller authenticates via
+    # X-API-Key (see app/middleware/api_key_auth.py), never a browser
+    # cookie session — CSRF is a same-origin-cookie attack; a request that
+    # doesn't rely on cookies for auth isn't a CSRF target, and a page
+    # can't forge a header value it doesn't know. verify_api_key still runs
+    # and rejects a missing/invalid key on its own.
+    if request.headers.get("X-API-Key"):
+        return
+
     exempt_prefixes = (
         "/api/v1/auth/login",
         "/api/v1/auth/register",
@@ -118,6 +140,7 @@ async def csrf_protect(request: Request) -> None:
         "/api/v1/auth/reset-password",
         "/api/v1/webhooks/",
         "/api/v1/booking/",
+        "/api/v1/push/event",
     )
     path = request.url.path
     if any(path.startswith(p) for p in exempt_prefixes):

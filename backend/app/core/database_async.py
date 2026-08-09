@@ -47,7 +47,11 @@ def _get_async_engine():
             kwargs.update(
                 pool_size=settings.DATABASE_POOL_SIZE,
                 max_overflow=settings.DATABASE_MAX_OVERFLOW,
-                pool_recycle=3600,
+                # FIX: match database.py's sync engine — Supabase's transaction
+                # pooler closes idle connections well under 3600s, so a 1hr
+                # recycle here let asyncpg connections go stale and raise
+                # "server closed the connection unexpectedly" under load.
+                pool_recycle=300,
                 pool_timeout=30,
                 connect_args={
                     "prepared_statement_cache_size": 0,

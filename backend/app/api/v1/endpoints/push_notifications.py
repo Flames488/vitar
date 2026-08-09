@@ -184,12 +184,15 @@ def _log_push_event(
     )
 
 
-def _confirm_appointment(appointment_id: str, clinic, db: Session):
+def _confirm_appointment(appointment_id: str, clinic_id: str, db: Session):
+    # FIX: caller passes clinic.id (a str) — this used to be named `clinic`
+    # and re-accessed `.id` on it below, which raised AttributeError on a str
+    # and crashed track_push_event for every appointment_confirmed event.
     from app.models.models import Appointment, AppointmentStatus
 
     apt = db.query(Appointment).filter(
         Appointment.id == appointment_id,
-        Appointment.clinic_id == clinic.id,
+        Appointment.clinic_id == clinic_id,
     ).first()
 
     if apt and apt.status == AppointmentStatus.CONFIRMED:

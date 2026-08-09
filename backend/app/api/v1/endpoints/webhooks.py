@@ -22,7 +22,7 @@ import json
 from app.core.utils import utcnow
 from app.core.database import get_db
 from app.core.logging import get_logger, log_payment_event
-from app.core.idempotency import is_webhook_processed
+from app.core.idempotency import is_webhook_processed, invalidate
 from app.core.subscription_analytics import (
     subscription_started,
     subscription_upgraded,
@@ -162,88 +162,100 @@ async def paystack_webhook(
     amount = float(data.get("amount", 0)) / 100  # kobo → naira
     currency = data.get("currency", "NGN")
 
-    if event == "charge.success":
-        reference = data.get("reference", "")
-        from app.models.models import Appointment
-        appointment = db.query(Appointment).filter(Appointment.payment_provider_ref == reference).first()
-        metadata_appointment_id = metadata.get("appointment_id")
-        if not appointment and metadata_appointment_id:
-            appointment = db.query(Appointment).filter(Appointment.id == metadata_appointment_id).first()
+    try:
+        if event == "charge.success":
+            reference = data.get("reference", "")
+            from app.models.models import Appointment
+            appointment = db.query(Appointment).filter(Appointment.payment_provider_ref == reference).first()
+            metadata_appointment_id = metadata.get("appointment_id")
+            if not appointment and metadata_appointment_id:
+                appointment = db.query(Appointment).filter(Appointment.id == metadata_appointment_id).first()
 
-        if appointment:
-            finalize_paid_appointment(appointment, data, db)
-            return {"status": "ok"}
+            if appointment:
+                finalize_paid_appointment(appointment, data, db)
+                return {"status": "ok"}
 
-        from app.models.models import PendingSubscriptionPayment
-        is_automated = bool(reference) and db.query(PendingSubscriptionPayment).filter(
-            PendingSubscriptionPayment.paystack_reference == reference
-        ).first() is not None
+            from app.models.models import PendingSubscriptionPayment
+            is_automated = bool(reference) and db.query(PendingSubscriptionPayment).filter(
+                PendingSubscriptionPayment.paystack_reference == reference
+            ).first() is not None
 
-        if is_automated:
-            # Smart payment system: automated bank-transfer charge created via
-            # /billing/subscribe. Amount/reference are verified inside.
-            success = await billing_service.finalize_paystack_payment(reference, data, db)
-            if success:
-                await _send_activation_email(data, "paystack", db)
-                subscription_started(
-                    clinic_id=clinic_id or _extract_clinic_id(data, db),
-                    plan=plan or "unknown",
-                    amount=amount,
-                    currency=currency,
-                    provider="paystack",
-                )
-        else:
-            # Legacy / manual bank-transfer flow (unchanged).
-            success = await billing_service.handle_payment_success("paystack", data, db)
-            if success:
-                await _send_activation_email(data, "paystack", db)
-                subscription_started(
-                    clinic_id=clinic_id or _extract_clinic_id(data, db),
-                    plan=plan or "unknown",
-                    amount=amount,
-                    currency=currency,
-                    provider="paystack",
-                )
+            if is_automated:
+                # Smart payment system: automated bank-transfer charge created via
+                # /billing/subscribe. Amount/reference are verified inside.
+                success = await billing_service.finalize_paystack_payment(reference, data, db)
+                if success:
+                    await _send_activation_email(data, "paystack", db)
+                    subscription_started(
+                        clinic_id=clinic_id or _extract_clinic_id(data, db),
+                        plan=plan or "unknown",
+                        amount=amount,
+                        currency=currency,
+                        provider="paystack",
+                    )
+            else:
+                # Legacy / manual bank-transfer flow (unchanged).
+                success = await billing_service.handle_payment_success("paystack", data, db)
+                if success:
+                    await _send_activation_email(data, "paystack", db)
+                    subscription_started(
+                        clinic_id=clinic_id or _extract_clinic_id(data, db),
+                        plan=plan or "unknown",
+                        amount=amount,
+                        currency=currency,
+                        provider="paystack",
+                    )
 
-    elif event == "subscription.create":
-        log_payment_event("subscription_created", "paystack", data.get("subscription_code"), clinic_id)
-        subscription_started(
-            clinic_id=clinic_id,
-            plan=plan or data.get("plan", {}).get("name", "unknown"),
-            amount=amount,
-            currency=currency,
-            provider="paystack",
-        )
+        elif event == "subscription.create":
+            log_payment_event("subscription_created", "paystack", data.get("subscription_code"), clinic_id)
+            subscription_started(
+                clinic_id=clinic_id,
+                plan=plan or data.get("plan", {}).get("name", "unknown"),
+                amount=amount,
+                currency=currency,
+                provider="paystack",
+            )
 
-    elif event == "subscription.disable":
-        await _handle_cancellation("paystack", data.get("subscription_code"), db)
-        subscription_cancelled(
-            clinic_id=clinic_id,
-            plan=plan or "unknown",
-            reason="paystack_subscription_disabled",
-        )
+        elif event == "subscription.disable":
+            await _handle_cancellation("paystack", data.get("subscription_code"), db)
+            subscription_cancelled(
+                clinic_id=clinic_id,
+                plan=plan or "unknown",
+                reason="paystack_subscription_disabled",
+            )
 
-    elif event in ("invoice.payment_failed", "charge.failed"):
-        await _handle_payment_failed("paystack", data, db)
-        payment_failed(
-            clinic_id=clinic_id,
-            plan=plan or "unknown",
-            amount=amount,
-            currency=currency,
-            provider="paystack",
-            reason=data.get("gateway_response", "charge_failed"),
-        )
+        elif event in ("invoice.payment_failed", "charge.failed"):
+            await _handle_payment_failed("paystack", data, db)
+            payment_failed(
+                clinic_id=clinic_id,
+                plan=plan or "unknown",
+                amount=amount,
+                currency=currency,
+                provider="paystack",
+                reason=data.get("gateway_response", "charge_failed"),
+            )
 
-    elif event in ("transfer.success", "transfer.failed"):
-        from app.models.models import Payout, PayoutStatus
-        transfer_code = data.get("transfer_code") or data.get("reference")
-        if transfer_code:
-            payout = db.query(Payout).filter(Payout.paystack_transfer_code == transfer_code).first()
-            if payout:
-                payout.status = PayoutStatus.SENT.value if event == "transfer.success" else PayoutStatus.FAILED.value
-                if event == "transfer.success" and not payout.sent_at:
-                    payout.sent_at = utcnow()
-                db.commit()
+        elif event in ("transfer.success", "transfer.failed"):
+            from app.models.models import Payout, PayoutStatus
+            transfer_code = data.get("transfer_code") or data.get("reference")
+            if transfer_code:
+                payout = db.query(Payout).filter(Payout.paystack_transfer_code == transfer_code).first()
+                if payout:
+                    payout.status = PayoutStatus.SENT.value if event == "transfer.success" else PayoutStatus.FAILED.value
+                    if event == "transfer.success" and not payout.sent_at:
+                        payout.sent_at = utcnow()
+                    db.commit()
+    except Exception:
+        # We already marked this event_id as processed (atomic SET NX above,
+        # before dispatch) so a raw exception here — DB blip, provider SDK
+        # error, etc — would otherwise get silently dropped as "duplicate"
+        # on Paystack's retry, since is_webhook_processed() would now return
+        # True even though nothing actually got applied. Clear the key so
+        # the retry gets a real second attempt, then let the 500 through so
+        # Paystack knows to retry in the first place.
+        if event_id:
+            invalidate("webhook", f"paystack:{event}:{event_id}")
+        raise
 
     return {"status": "ok"}
 
@@ -288,58 +300,67 @@ async def stripe_webhook(
     clinic_id = meta.get("clinic_id")
     plan = meta.get("plan")
 
-    if event_type == "checkout.session.completed":
-        success = await billing_service.handle_payment_success("stripe", data_obj, db)
-        if success:
-            await _send_activation_email(data_obj, "stripe", db)
-            amount = float(data_obj.get("amount_total", 0)) / 100
+    try:
+        if event_type == "checkout.session.completed":
+            success = await billing_service.handle_payment_success("stripe", data_obj, db)
+            if success:
+                await _send_activation_email(data_obj, "stripe", db)
+                amount = float(data_obj.get("amount_total", 0)) / 100
+                currency = (data_obj.get("currency") or "usd").upper()
+                subscription_started(
+                    clinic_id=clinic_id,
+                    plan=plan or "unknown",
+                    amount=amount,
+                    currency=currency,
+                    provider="stripe",
+                )
+
+        elif event_type == "customer.subscription.updated":
+            # Detect plan upgrade vs cancellation flag
+            prev = event_obj.get("data", {}).get("previous_attributes", {}) if isinstance(event_obj, dict) else {}
+            old_plan = (prev.get("items", {}).get("data", [{}])[0]
+                        .get("price", {}).get("nickname") or "unknown")
+            new_plan = plan or "unknown"
+            if old_plan != new_plan and old_plan != "unknown":
+                subscription_upgraded(
+                    clinic_id=clinic_id,
+                    old_plan=old_plan,
+                    new_plan=new_plan,
+                    provider="stripe",
+                )
+
+        elif event_type == "customer.subscription.deleted":
+            await _handle_cancellation("stripe", data_obj.get("id"), db)
+            subscription_cancelled(
+                clinic_id=clinic_id,
+                plan=plan or "unknown",
+                reason="stripe_subscription_deleted",
+            )
+
+        elif event_type == "invoice.payment_failed":
+            await _handle_payment_failed("stripe", data_obj, db)
+            amount = float(data_obj.get("amount_due", 0)) / 100
             currency = (data_obj.get("currency") or "usd").upper()
-            subscription_started(
+            payment_failed(
                 clinic_id=clinic_id,
                 plan=plan or "unknown",
                 amount=amount,
                 currency=currency,
                 provider="stripe",
+                reason=data_obj.get("last_payment_error", {}).get("message", "invoice_payment_failed"),
             )
 
-    elif event_type == "customer.subscription.updated":
-        # Detect plan upgrade vs cancellation flag
-        prev = event_obj.get("data", {}).get("previous_attributes", {}) if isinstance(event_obj, dict) else {}
-        old_plan = (prev.get("items", {}).get("data", [{}])[0]
-                    .get("price", {}).get("nickname") or "unknown")
-        new_plan = plan or "unknown"
-        if old_plan != new_plan and old_plan != "unknown":
-            subscription_upgraded(
-                clinic_id=clinic_id,
-                old_plan=old_plan,
-                new_plan=new_plan,
-                provider="stripe",
-            )
-
-    elif event_type == "customer.subscription.deleted":
-        await _handle_cancellation("stripe", data_obj.get("id"), db)
-        subscription_cancelled(
-            clinic_id=clinic_id,
-            plan=plan or "unknown",
-            reason="stripe_subscription_deleted",
-        )
-
-    elif event_type == "invoice.payment_failed":
-        await _handle_payment_failed("stripe", data_obj, db)
-        amount = float(data_obj.get("amount_due", 0)) / 100
-        currency = (data_obj.get("currency") or "usd").upper()
-        payment_failed(
-            clinic_id=clinic_id,
-            plan=plan or "unknown",
-            amount=amount,
-            currency=currency,
-            provider="stripe",
-            reason=data_obj.get("last_payment_error", {}).get("message", "invoice_payment_failed"),
-        )
-
-    elif event_type == "customer.subscription.trial_will_end":
-        # Stripe fires this 3 days before trial ends
-        trial_started(clinic_id=clinic_id, plan=plan or "trial")
+        elif event_type == "customer.subscription.trial_will_end":
+            # Stripe fires this 3 days before trial ends
+            trial_started(clinic_id=clinic_id, plan=plan or "trial")
+    except Exception:
+        # See paystack_webhook: the idempotency key was already set before
+        # dispatch, so an unhandled error here must not leave the event
+        # permanently marked "processed" — clear it so Stripe's retry isn't
+        # silently swallowed as a duplicate.
+        if event_id:
+            invalidate("webhook", f"stripe:{event_type}:{event_id}")
+        raise
 
     return {"status": "ok"}
 
@@ -395,10 +416,12 @@ def _extract_clinic_id(data: dict, db: Session) -> str:
     try:
         email = data.get("customer", {}).get("email", "")
         if email:
-            from app.models.models import User
+            from app.models.models import User, Clinic
             user = db.query(User).filter(User.email == email).first()
             if user:
-                return str(user.clinic_id or "")
+                clinic = db.query(Clinic).filter(Clinic.owner_id == user.id).first()
+                if clinic:
+                    return str(clinic.id)
     except Exception:
         pass
     return ""

@@ -497,6 +497,12 @@ class Patient(Base):
 
     __table_args__ = (
         Index("ix_patient_clinic_phone", "clinic_id", "phone"),
+        # FIX: migration 014_patient_phone_unique added this constraint (the
+        # conflict target for booking.py's INSERT ... ON CONFLICT upsert) but
+        # the model never declared it — Base.metadata.create_all() (used for
+        # SQLite tests) built a schema without it, and alembic autogenerate
+        # would see it as an "unexpected" constraint to drop.
+        UniqueConstraint("clinic_id", "phone", name="uq_patient_clinic_phone"),
     )
 
 
@@ -623,6 +629,18 @@ class HospitalBankAccount(Base):
 
     __table_args__ = (
         Index("ix_hospital_bank_active", "hospital_id", "active"),
+        # FIX: migration 018_bank_account_unique added this partial unique
+        # index (the DB-level guarantee behind "one active account per
+        # hospital") but the model never declared it — undeclared here, it
+        # wasn't built by Base.metadata.create_all() and would look like an
+        # unexpected object to alembic autogenerate.
+        Index(
+            "uq_hospital_bank_account_active",
+            "hospital_id",
+            unique=True,
+            postgresql_where=text("active = true"),
+            sqlite_where=text("active = 1"),
+        ),
     )
 
 

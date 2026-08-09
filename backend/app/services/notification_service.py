@@ -268,9 +268,20 @@ async def send_notification_with_fallback(
             pass
         return result
 
-    # Fallback chain
+    # Fallback chain — skip the channel already attempted above, otherwise a
+    # failed primary channel gets tried a second time here (e.g. WHATSAPP
+    # primary would run try_whatsapp() twice), risking a duplicate send if
+    # the first attempt actually went through but the response looked like
+    # a failure (timeout, non-2xx after delivery, etc).
     logger.info(f"Primary channel {channel} failed, attempting fallback chain")
-    for fallback in [try_sms, try_whatsapp, try_email]:
+    channel_val = channel.value if isinstance(channel, Channel) else channel
+    remaining = [
+        fn for chan, fn in (
+            (Channel.SMS, try_sms), (Channel.WHATSAPP, try_whatsapp), (Channel.EMAIL, try_email),
+        )
+        if chan.value != channel_val
+    ]
+    for fallback in remaining:
         result = await fallback()
         if result and result.success:
             logger.info(f"Fallback succeeded via {result.provider}")

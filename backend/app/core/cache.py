@@ -6,19 +6,20 @@ All operations fail-open: if Redis is down, the app continues uncached.
 Usage:
     from app.core.cache import cache
 
-    # In an endpoint or service:
-    data = await cache.get("clinic:stats:abc123")
+    # All methods below are synchronous — do NOT `await` them, cache.py
+    # has no async client. (In an endpoint or service:)
+    data = cache.get("clinic:stats:abc123")
     if data is None:
         data = expensive_query(...)
-        await cache.set("clinic:stats:abc123", data, ttl=300)
+        cache.set("clinic:stats:abc123", data, ttl=300)
 
     # Decorator pattern (sync functions):
     @cache.cached(key_prefix="geo", ttl=3600)
     def get_country_from_ip(ip: str): ...
 
     # Invalidation:
-    await cache.delete("clinic:stats:abc123")
-    await cache.delete_pattern("clinic:stats:*")
+    cache.delete("clinic:stats:abc123")
+    cache.delete_pattern("clinic:stats:*")
 """
 
 import json

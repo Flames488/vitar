@@ -180,7 +180,12 @@ app.add_middleware(MetricsMiddleware)
 if settings.ENVIRONMENT == "production":
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
-app.include_router(api_router, prefix="/api/v1")
+# FIX: csrf_protect was imported but never wired to anything — the entire
+# double-submit CSRF check in cookie_auth.py was dead code, so every
+# mutating /api/v1 request was accepted with no CSRF validation regardless
+# of the X-CSRF-Token header. csrf_protect's own exempt_prefixes list still
+# carves out login/register/refresh/logout/webhooks/booking as before.
+app.include_router(api_router, prefix="/api/v1", dependencies=[Depends(csrf_protect)])
 app.include_router(metrics_router)
 
 

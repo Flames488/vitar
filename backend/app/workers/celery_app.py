@@ -14,6 +14,7 @@ Upgrades over v8:
 from celery import Celery
 from celery.schedules import crontab
 from app.core.config import settings
+from app.workers.celery_beat_additions import BEAT_SCHEDULE_ADDITIONS
 
 celery = Celery(
     "vitar",
@@ -65,6 +66,12 @@ beat_schedule = {
         "schedule": 900.0,
     },
 }
+
+# FIX: BEAT_SCHEDULE_ADDITIONS (cleanup-expired-push-subscriptions) was
+# defined in celery_beat_additions.py but never merged in here — the task
+# existed and its docstring claimed "runs daily", but it was never actually
+# scheduled, so expired push subscriptions accumulated in the DB forever.
+beat_schedule.update(BEAT_SCHEDULE_ADDITIONS)
 
 if settings.OPS_MONITORING_ENABLED:
     beat_schedule.update({

@@ -39,14 +39,22 @@ def send_push_notification(
     vapid_private_key: str,
     vapid_public_key: str,
     vapid_claims_email: str,
-) -> bool:
+) -> tuple[bool, bool]:
     """
     Send a single Web Push message.
-    Returns True on success, False on failure (logs the error).
+    Returns (success, expired):
+      - (True, False)  — delivered.
+      - (False, True)  — push service returned 410 Gone: subscription is
+        dead, caller should delete it from DB.
+      - (False, False) — transient failure (network error, timeout, 5xx
+        from the push service, etc). Caller must NOT delete the
+        subscription for this — it may still be valid; deleting it here
+        used to make any blip look identical to a real 410 and silently
+        unsubscribe users who never unsubscribed.
     """
     if not _vapid_available:
         logger.warning("push skipped — pywebpush not installed")
-        return False
+        return False, False
 
     try:
         webpush(
@@ -67,7 +75,7 @@ def send_push_notification(
             "push_notification_sent",
             extra={"title": payload.get("title"), "endpoint_prefix": endpoint[:40]},
         )
-        return True
+        return True, False
 
     except WebPushException as exc:  # type: ignore
         # 410 Gone = subscription expired; caller should delete it from DB
@@ -76,13 +84,11 @@ def send_push_notification(
             "push_notification_failed",
             extra={"status": status, "error": str(exc)[:200]},
         )
-        if status == 410:
-            return False  # caller deletes subscription
-        return False
+        return False, status == 410
 
     except Exception as exc:
         logger.error("push_notification_error", exc_info=exc)
-        return False
+        return False, False
 
 
 def build_reminder_payload(

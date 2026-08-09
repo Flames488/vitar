@@ -1,5 +1,5 @@
 // Booking Page Settings
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { clinicsApi } from '@/lib/api/services';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
@@ -9,9 +9,16 @@ export function BookingPageSettings() {
   const { clinic, refreshClinic } = useAuthStore();
   const bookingUrl = `${window.location.origin}/book/${clinic?.slug}`;
 
+  // authStore.clinic comes from _clinic_dict (auth/me, login, register),
+  // which doesn't include booking_page_enabled/online_booking_enabled — so
+  // reading those off the store clinic always fell back to the `?? true`
+  // default, showing "enabled" even when a clinic had actually turned this
+  // off. clinics/me returns the full record, same as the other settings panels.
+  const { data: clinicData, refetch } = useQuery({ queryKey: ['clinic-me'], queryFn: clinicsApi.getMe });
+
   const updateMutation = useMutation({
     mutationFn: (data: any) => clinicsApi.update(data),
-    onSuccess: () => { refreshClinic(); toast.success('Saved'); },
+    onSuccess: () => { refreshClinic(); refetch(); toast.success('Saved'); },
     onError: () => toast.error('Failed to save. Please try again.'),
   });
 
@@ -38,7 +45,7 @@ export function BookingPageSettings() {
             { key: 'booking_page_enabled', label: 'Booking page enabled', desc: 'Patients can view your booking page' },
             { key: 'online_booking_enabled', label: 'Online booking enabled', desc: 'Patients can book appointments online' },
           ].map(({ key, label, desc }) => {
-            const enabled = clinic?.[key as keyof typeof clinic] as boolean ?? true;
+            const enabled = (clinicData?.[key] as boolean) ?? true;
             return (
               <div key={key} className="flex items-center justify-between">
                 <div>

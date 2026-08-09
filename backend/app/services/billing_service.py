@@ -635,8 +635,9 @@ class BillingService:
     async def handle_payment_success(self, provider: str, payload: Dict, db) -> bool:
         from app.models.models import Clinic, Subscription, SubscriptionPayment
         from app.models.models import SubscriptionStatus, PaymentProvider, PaymentStatus
-        from app.core.idempotency import check_and_mark, check_payment_reference_db
+        from app.core.idempotency import check_and_mark, check_payment_reference_db, invalidate
 
+        reference = None
         try:
             if provider == "paystack":
                 # FIX: metadata key (not extra_data)
@@ -672,6 +673,11 @@ class BillingService:
             clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
             if not clinic:
                 logger.error(f"Payment for unknown clinic: {clinic_id}")
+                # Undo the idempotency mark set above — this reference was
+                # never actually processed, so a legitimate webhook retry
+                # (e.g. once the clinic row exists) must not be dropped as
+                # a "duplicate" for the next 24h.
+                invalidate("payment", reference)
                 return False
 
             sub = db.query(Subscription).filter(Subscription.clinic_id == clinic_id).first()
@@ -717,6 +723,12 @@ class BillingService:
         except Exception as e:
             db.rollback()
             logger.error(f"Payment success handler failed: {e}", exc_info=True)
+            # Same reasoning as above: a reference marked "processed" by
+            # check_and_mark() but never actually applied (we failed before
+            # committing) must be released, or the payment is lost silently
+            # until the 24h idempotency TTL expires.
+            if reference:
+                invalidate("payment", reference)
             return False
 
 

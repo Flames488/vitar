@@ -241,25 +241,36 @@ def get_public_available_slots(slug: str, doctor_id: str, date: str, db: Session
         for b in booked
     ]
 
+    # FIX: avail.start_time/end_time are clinic-entered WAT wall-clock (e.g.
+    # "09:00" means 9am Lagos time), but booked_intervals/now come from
+    # Appointment.scheduled_at and utcnow(), both true UTC. Comparing `current`
+    # directly against them (as this loop used to) was off by exactly 1 hour —
+    # same class of bug already fixed in doctors.py's slot endpoints — so a
+    # doctor's real 9am-WAT booking (stored as 08:00 UTC) wouldn't overlap a
+    # slot literally named "09:00", and a slot already an hour past could
+    # still show as free.
+    WAT_OFFSET = timedelta(hours=1)
     slots = []
     now = utcnow()
     while current < end_dt:
         slot_end = current + timedelta(minutes=slot_duration)
-        overlaps = any(current < b_end and slot_end > b_start for b_start, b_end in booked_intervals)
+        current_utc = current - WAT_OFFSET
+        slot_end_utc = slot_end - WAT_OFFSET
+        overlaps = any(current_utc < b_end and slot_end_utc > b_start for b_start, b_end in booked_intervals)
         # status distinguishes *why* a slot can't be booked — "available" alone
         # conflated "someone else booked this" with "this time already passed
         # today", which is what let the calendar mislabel a plain past slot as
         # if it were taken. Kept "available" too for any existing consumer.
         if overlaps:
             status = "booked"
-        elif current <= now:
+        elif current_utc <= now:
             status = "past"
         else:
             status = "free"
         slots.append({
             "time": current.strftime("%H:%M"),
-            "datetime": current.isoformat(),
-            "available": not overlaps and current > now,
+            "datetime": current_utc.isoformat(),
+            "available": not overlaps and current_utc > now,
             "status": status,
         })
         current += timedelta(minutes=slot_duration)
@@ -306,11 +317,26 @@ async def public_book_appointment(
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
 
-    # Determine slot duration safely
+    # Determine slot duration for the day actually being booked.
+    # FIX: doctor.availability[0] picked whichever DoctorAvailability row the
+    # relationship happened to load first, which may belong to a different
+    # weekday than the one being booked (a doctor can have a different
+    # slot_duration_mins per day). That undersized/oversized both the conflict
+    # window above and the appointment's own duration_mins vs. what the
+    # patient actually saw on the day-specific available-slots endpoint.
+    # scheduled_at is naive UTC at this point (see _normalize_scheduled_at) —
+    # shift back to WAT wall-clock before deriving the weekday, since
+    # DoctorAvailability.day_of_week is keyed to clinic-local (WAT) days.
     slot_duration = 30
     try:
-        if doctor.availability and len(doctor.availability) > 0:
-            slot_duration = doctor.availability[0].slot_duration_mins or 30
+        from app.models.models import DoctorAvailability
+        wat_dow = (body.scheduled_at + timedelta(hours=1)).weekday()
+        avail_for_day = db.query(DoctorAvailability).filter(
+            DoctorAvailability.doctor_id == doctor.id,
+            DoctorAvailability.day_of_week == wat_dow,
+        ).first()
+        if avail_for_day and avail_for_day.slot_duration_mins:
+            slot_duration = avail_for_day.slot_duration_mins
     except Exception:
         slot_duration = 30
 

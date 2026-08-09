@@ -159,6 +159,7 @@ function AuthObserver() {
 // Wrap the whole app in Sentry's ErrorBoundary so crashes are captured
 const SentryErrorBoundary = Sentry.withErrorBoundary(
   function AppInner() {
+    const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
     return (
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
@@ -253,7 +254,10 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
 
-          <PWAInstallBanner />
+          {/* PWAInstallBanner's own doc comment: only for logged-in clinic
+              users, not public booking/landing pages — gate on auth so it
+              doesn't prompt anonymous patients to "install" the app. */}
+          {isAuthenticated && <PWAInstallBanner />}
           <Toaster position="top-right" richColors closeButton />
         </BrowserRouter>
       </QueryClientProvider>

@@ -603,7 +603,13 @@ def send_trial_nudges(self):
                     logger.info(f"Trial nudge sent: clinic={clinic.id} days_left={days_left}")
 
     except Exception as e:
+        # FIX: same anti-pattern already fixed in fire_pending_reminders — a
+        # swallowed exception here never reaches the decorator's
+        # autoretry_for=(Exception,), so a transient failure (e.g. DB
+        # connection blip) silently skips this clinic's nudge instead of
+        # retrying.
         logger.error(f"send_trial_nudges error: {e}")
+        raise self.retry(exc=e, countdown=300 * (2 ** self.request.retries))
     finally:
         db.close()
 
@@ -631,8 +637,13 @@ def expire_trial_subscriptions(self):
         db.commit()
         logger.info(f"Expired {len(expired)} trial subscriptions")
     except Exception as e:
+        # FIX: same anti-pattern already fixed in fire_pending_reminders —
+        # swallowing this without re-raising means autoretry_for=(Exception,)
+        # never triggers, so a transient failure leaves expired trials
+        # un-expired (and still is_listed=True) until the next daily tick.
         db.rollback()
         logger.error(f"expire_trial_subscriptions error: {e}")
+        raise self.retry(exc=e, countdown=300 * (2 ** self.request.retries))
     finally:
         db.close()
 
@@ -659,8 +670,12 @@ def retry_failed_notifications(self):
         if retryable:
             logger.info(f"Reset {len(retryable)} notifications for retry")
     except Exception as e:
+        # FIX: same anti-pattern already fixed in fire_pending_reminders —
+        # without re-raising, autoretry_for=(Exception,) never fires and a
+        # transient DB error here just silently skips this tick's retry pass.
         db.rollback()
         logger.error(f"retry_failed_notifications error: {e}")
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
     finally:
         db.close()
 
@@ -683,7 +698,11 @@ def refresh_upcoming_risk_scores(self):
             calculate_no_show_risk.apply_async(args=[apt.id], queue="ai")
         logger.info(f"Queued risk refresh for {len(upcoming)} upcoming appointments")
     except Exception as e:
+        # FIX: same anti-pattern already fixed in fire_pending_reminders —
+        # without re-raising, autoretry_for=(Exception,) never fires and a
+        # transient DB error silently skips this hour's risk-score refresh.
         logger.error(f"refresh_upcoming_risk_scores error: {e}")
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
     finally:
         db.close()
 
@@ -703,6 +722,7 @@ def retry_failed_payments(self):
     from celery.exceptions import SoftTimeLimitExceeded
     db = SessionLocal()
     try:
+        from sqlalchemy.orm import joinedload
         from app.models.models import (
             SubscriptionPayment, Subscription,
             PaymentStatus, SubscriptionStatus,
@@ -712,6 +732,9 @@ def retry_failed_payments(self):
         cutoff = utcnow() - timedelta(hours=48)
         failed_payments = (
             db.query(SubscriptionPayment)
+            # FIX: payment.subscription is accessed for every row below —
+            # without eager loading that's an extra SELECT per row (N+1).
+            .options(joinedload(SubscriptionPayment.subscription))
             .filter(
                 SubscriptionPayment.status == PaymentStatus.FAILED,
                 SubscriptionPayment.created_at >= cutoff,

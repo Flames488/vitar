@@ -92,7 +92,7 @@ def send_push_reminders(self, appointment_id: str):
         expired_ids = []
         sent = 0
         for sub in subscriptions:
-            success = send_push_notification(
+            success, expired = send_push_notification(
                 endpoint=sub.endpoint,
                 p256dh=sub.p256dh,
                 auth=sub.auth,
@@ -109,8 +109,9 @@ def send_push_reminders(self, appointment_id: str):
                     "clinic_id": str(apt.clinic_id),
                     "channel": "push",
                 })
-            else:
-                # 410-Gone or persistent failure — queue for cleanup
+            elif expired:
+                # 410-Gone only — a transient failure must not delete a
+                # still-valid subscription (see push_service docstring).
                 expired_ids.append(sub.id)
 
         # Remove dead subscriptions
@@ -193,7 +194,7 @@ def notify_new_booking(self, appointment_id: str):
                 )
                 expired_ids = []
                 for sub in subscriptions:
-                    success = send_push_notification(
+                    success, expired = send_push_notification(
                         endpoint=sub.endpoint,
                         p256dh=sub.p256dh,
                         auth=sub.auth,
@@ -202,7 +203,7 @@ def notify_new_booking(self, appointment_id: str):
                         vapid_public_key=vapid_public,
                         vapid_claims_email=vapid_email,
                     )
-                    if not success:
+                    if expired:
                         expired_ids.append(sub.id)
                 if expired_ids:
                     db.query(PushSubscription).filter(
@@ -262,7 +263,7 @@ def cleanup_expired_push_subscriptions(self):
         expired = []
         for sub in subs:
             # Send a silent ping (empty payload validated by VAPID)
-            ok = send_push_notification(
+            ok, is_expired = send_push_notification(
                 endpoint=sub.endpoint,
                 p256dh=sub.p256dh,
                 auth=sub.auth,
@@ -271,7 +272,7 @@ def cleanup_expired_push_subscriptions(self):
                 vapid_public_key=vapid_public,
                 vapid_claims_email=vapid_email,
             )
-            if not ok:
+            if is_expired:
                 expired.append(sub.id)
 
         if expired:

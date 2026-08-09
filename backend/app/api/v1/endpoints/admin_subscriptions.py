@@ -216,6 +216,10 @@ def apply_override(
         sub.plan = body.plan or sub.plan
         sub.status = SubscriptionStatus.ACTIVE
         sub.amount = 0
+        # Match billing.py/billing_service.py: any (re)activation clears a
+        # pending self-service cancellation, else the clinic keeps seeing
+        # "Cancels at period end" despite the admin just granting access.
+        sub.cancel_at_period_end = False
 
     elif body.action == OverrideAction.GRANT_TEMPORARY:
         if not body.duration_days:
@@ -224,6 +228,7 @@ def apply_override(
         sub.status = SubscriptionStatus.ACTIVE
         sub.current_period_start = now
         sub.current_period_end = now + timedelta(days=body.duration_days)
+        sub.cancel_at_period_end = False
 
     elif body.action == OverrideAction.GRANT_LIFETIME:
         sub.plan = body.plan or SubscriptionPlan.ENTERPRISE
@@ -231,12 +236,14 @@ def apply_override(
         sub.amount = 0
         sub.current_period_start = now
         sub.current_period_end = now + timedelta(days=365 * LIFETIME_YEARS)
+        sub.cancel_at_period_end = False
 
     elif body.action == OverrideAction.EXTEND:
         if not body.duration_days:
             raise HTTPException(status_code=422, detail="duration_days is required for extend")
         base = sub.current_period_end if sub.current_period_end and sub.current_period_end > now else now
         sub.current_period_end = base + timedelta(days=body.duration_days)
+        sub.cancel_at_period_end = False
         if sub.status in (SubscriptionStatus.EXPIRED, SubscriptionStatus.CANCELLED, SubscriptionStatus.PAST_DUE):
             sub.status = SubscriptionStatus.ACTIVE
 
@@ -245,7 +252,11 @@ def apply_override(
             raise HTTPException(status_code=422, detail="expiration_date is required for set_expiration")
         try:
             from datetime import datetime
-            sub.current_period_end = datetime.fromisoformat(body.expiration_date)
+            parsed = datetime.fromisoformat(body.expiration_date)
+            # utcnow() (used for the comparison below and everywhere else in
+            # this file) returns a naive datetime — a tz-aware value here
+            # would raise TypeError on comparison instead of the intended 422.
+            sub.current_period_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
         except ValueError:
             raise HTTPException(status_code=422, detail="expiration_date must be a valid ISO date")
         if sub.current_period_end > now and sub.status in (

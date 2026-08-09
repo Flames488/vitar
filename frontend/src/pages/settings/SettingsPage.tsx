@@ -380,13 +380,18 @@ function PayoutAccountPanel({ clinicId }: { clinicId: string }) {
 
 export function SettingsPage() {
   const { clinic, refreshClinic } = useAuthStore();
+  const { data: clinicData } = useQuery({ queryKey: ['clinic-me'], queryFn: clinicsApi.getMe });
   const { register, handleSubmit, formState: { isSubmitting } } = useForm({
-    defaultValues: {
-      name: clinic?.name ?? '',
-      phone: '',
-      address: '',
-      city: '',
-      timezone: 'Africa/Lagos',
+    // `values` (not `defaultValues`) so the form re-syncs once clinicData
+    // loads — defaultValues alone froze phone/address/city as empty strings,
+    // and saving with those blank fields overwrote the clinic's real values
+    // (backend's exclude_none only drops None, not "").
+    values: {
+      name: clinicData?.name ?? clinic?.name ?? '',
+      phone: clinicData?.phone ?? '',
+      address: clinicData?.address ?? '',
+      city: clinicData?.city ?? '',
+      timezone: clinicData?.timezone ?? 'Africa/Lagos',
     },
   });
 

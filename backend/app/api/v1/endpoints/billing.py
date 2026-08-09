@@ -156,6 +156,23 @@ async def subscribe(
             detail="Enterprise plan requires contacting sales. Please email vitarhealthcare@gmail.com",
         )
 
+    # create_automated_subscription_payment always goes through Paystack's
+    # Nigerian bank-transfer charge (no currency field, no FX conversion —
+    # see initiate_bank_transfer_charge) and just multiplies the plan's
+    # price by 100 for "kobo". For a non-NGN clinic that silently charges
+    # the plan's dollar/pound/euro price AS NAIRA (e.g. a $19 plan becomes
+    # a ₦19 bank-transfer request — a massive undercharge), since there is
+    # no working Stripe checkout path yet to actually bill in another
+    # currency. Block self-serve here rather than let that happen.
+    if (clinic.currency or "NGN") != "NGN":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Online self-service checkout isn't available in your currency yet. "
+                "Please email vitarhealthcare@gmail.com to subscribe."
+            ),
+        )
+
     # Smart payment system: generates a dedicated Paystack bank-transfer
     # charge. The clinic transfers, Paystack webhooks us, and the
     # subscription activates automatically — no admin step required.

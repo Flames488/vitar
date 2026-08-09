@@ -3,13 +3,14 @@
  * Creates clinic + owner in one step, auto-starts 30-day trial
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { useGeoStore } from '@/stores/geoStore';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
 
@@ -25,6 +26,9 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+// Matches backend/app/services/geo_service.py's COUNTRY_CURRENCY exactly —
+// any code here must resolve to a real currency there, or the clinic gets
+// silently billed in the NGN fallback despite picking a specific country.
 const COUNTRIES = [
   { code: 'NG', label: 'Nigeria' },
   { code: 'GH', label: 'Ghana' },
@@ -34,8 +38,15 @@ const COUNTRIES = [
   { code: 'GB', label: 'United Kingdom' },
   { code: 'CA', label: 'Canada' },
   { code: 'AU', label: 'Australia' },
+  { code: 'DE', label: 'Germany' },
+  { code: 'FR', label: 'France' },
+  { code: 'ES', label: 'Spain' },
+  { code: 'IT', label: 'Italy' },
+  { code: 'NL', label: 'Netherlands' },
+  { code: 'IN', label: 'India' },
   { code: 'OTHER', label: 'Other' },
 ];
+const COUNTRY_CODES = new Set(COUNTRIES.map((c) => c.code));
 
 const PERKS = [
   '30-day free trial, no credit card',
@@ -47,15 +58,28 @@ const PERKS = [
 
 export default function RegisterPage() {
   const { register: signup } = useAuthStore();
+  const { country: detectedCountry, detect, detected } = useGeoStore();
   const navigate = useNavigate();
   const [showPw, setShowPw] = useState(false);
   const [searchParams] = useSearchParams();
   const referralCode = searchParams.get('ref') || undefined;
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { country: 'NG' },
   });
+
+  // Pre-select the country we already detected from IP (see useGeoStore),
+  // instead of always defaulting to Nigeria — otherwise a signup from
+  // outside Nigeria that doesn't think to change this dropdown ends up
+  // billed in NGN (see auth.py's registration handler) despite every other
+  // page having correctly shown them local pricing.
+  useEffect(() => { if (!detected) detect(); }, []);
+  useEffect(() => {
+    if (detected && COUNTRY_CODES.has(detectedCountry)) {
+      setValue('country', detectedCountry);
+    }
+  }, [detected, detectedCountry]);
 
   const onSubmit = async (data: FormData) => {
     try {

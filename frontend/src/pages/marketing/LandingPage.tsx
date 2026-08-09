@@ -13,10 +13,10 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import Reveal from '@/components/marketing/Reveal';
 import InstallAppButton from '@/components/shared/InstallAppButton';
-import { publicClinicsApi, billingApi } from '@/lib/api/services';
+import { publicClinicsApi } from '@/lib/api/services';
+import { useGeoStore } from '@/stores/geoStore';
 import '@/styles/landing.css';
 
 // Fallback so the pricing cards never show a blank/loading flash — this is
@@ -50,8 +50,11 @@ const FAQS = [
     a: 'Yes, 30 days full access, no credit card required.',
   },
   {
+    // `a` is a placeholder — replaced at render time with geo-detected
+    // pricing (see `faqs` below) so this stays in step with the currency
+    // shown on the rest of the page instead of always reading NGN.
     q: 'What does Vitar cost?',
-    a: 'Starter is ₦6,000/month, Pro is ₦15,000/month, and Enterprise is custom-priced for larger clinics, all after your 30-day free trial. No setup fee, no long-term contract.',
+    a: '',
   },
   {
     q: 'Do I need new hardware or an app?',
@@ -70,16 +73,33 @@ export default function LandingPage() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const tickingRef = useRef(false);
 
-  // Pricing preview — same source of truth as PricingPage.tsx/BillingPage.tsx
-  // (GET /billing/plans), so a new feature added to PLANS shows up here too
-  // instead of needing a fifth hand-maintained copy. NGN hardcoded, matching
-  // BillingPage.tsx's own approach (no geo-detection wired up there either).
-  const { data: plansData } = useQuery({
-    queryKey: ['billing', 'plans', 'NGN'],
-    queryFn: () => billingApi.getPlans('NGN'),
-  });
+  // Pricing preview — same source of truth as PricingPage.tsx (GET
+  // /geo/detect's plans, geo-detected currency), so a new feature added to
+  // PLANS shows up here too, and someone Browse ing from outside Nigeria
+  // sees the same currency here as everywhere else on the site instead of
+  // this section alone staying stuck in NGN.
+  const { currency_format, plans, detect, detected } = useGeoStore();
+  useEffect(() => { if (!detected) detect(); }, []);
+
   const planFeatures = (planKey: string): string[] =>
-    plansData?.plans?.find((p: any) => p.plan === planKey)?.features ?? PLAN_FEATURES_FALLBACK[planKey];
+    plans.find((p: any) => p.plan === planKey)?.features ?? PLAN_FEATURES_FALLBACK[planKey];
+
+  const formatPrice = (amount: number | null | undefined): string => {
+    if (amount == null) return 'Custom';
+    const sym = currency_format?.symbol ?? '₦';
+    const dec = currency_format?.decimals ?? 0;
+    if (dec === 0) return `${sym}${Math.round(amount).toLocaleString()}`;
+    return `${sym}${amount.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
+  };
+
+  const basicMonthly = (plans.find((p: any) => p.plan === 'basic') as any)?.monthly ?? 6000;
+  const proMonthly = (plans.find((p: any) => p.plan === 'pro') as any)?.monthly ?? 15000;
+
+  const faqs = FAQS.map((f) =>
+    f.q === 'What does Vitar cost?'
+      ? { ...f, a: `Starter is ${formatPrice(basicMonthly)}/month, Pro is ${formatPrice(proMonthly)}/month, and Enterprise is custom-priced for larger clinics, all after your 30-day free trial. No setup fee, no long-term contract.` }
+      : f
+  );
 
   // Smooth scrolling for on-page anchors (#product, #pricing, etc.) —
   // scoped to this page only, restored on unmount.
@@ -246,7 +266,7 @@ export default function LandingPage() {
         <div className="stats-bar">
           <div className="stat"><span className="stat-num">Up to 40%</span><span className="stat-label">Fewer no-shows*</span></div>
           <div className="stat"><span className="stat-num">30 days</span><span className="stat-label">Free trial · No card</span></div>
-          <div className="stat"><span className="stat-num">₦6,000</span><span className="stat-label">Starting price/month</span></div>
+          <div className="stat"><span className="stat-num">{formatPrice(basicMonthly)}</span><span className="stat-label">Starting price/month</span></div>
           <div className="stat"><span className="stat-num">5 min</span><span className="stat-label">To get started</span></div>
         </div>
         <p className="stats-bar-note">*Based on industry benchmarks for automated appointment reminders, not a guaranteed result for every clinic.</p>
@@ -440,7 +460,7 @@ export default function LandingPage() {
         <Reveal className="pricing-grid" style={{ maxWidth: 1180 }}>
           <div className="plan free">
             <div className="plan-name">Free Trial</div>
-            <div className="plan-price">₦0 <span>/30 days</span></div>
+            <div className="plan-price">{formatPrice(0)} <span>/30 days</span></div>
             <div className="plan-desc">Try every Pro feature, risk-free</div>
             <ul className="plan-features">
               <li>Full access to Pro features</li>
@@ -454,7 +474,7 @@ export default function LandingPage() {
           </div>
           <div className="plan">
             <div className="plan-name">Starter</div>
-            <div className="plan-price">₦6,000 <span>/month</span></div>
+            <div className="plan-price">{formatPrice(basicMonthly)} <span>/month</span></div>
             <div className="plan-desc">For small clinics just getting started</div>
             <ul className="plan-features">
               {planFeatures('basic').map((f) => <li key={f}>{f}</li>)}
@@ -464,7 +484,7 @@ export default function LandingPage() {
           <div className="plan popular">
             <div className="popular-badge">MOST POPULAR</div>
             <div className="plan-name">Pro</div>
-            <div className="plan-price">₦15,000 <span>/month</span></div>
+            <div className="plan-price">{formatPrice(proMonthly)} <span>/month</span></div>
             <div className="plan-desc">For growing clinics that want full AI power</div>
             <ul className="plan-features">
               {planFeatures('pro').map((f) => <li key={f}>{f}</li>)}
@@ -530,7 +550,7 @@ export default function LandingPage() {
         <Reveal as="h2" className="section-title">Questions clinics ask us</Reveal>
         <Reveal as="p" className="section-sub">Can't find what you're looking for? <Link to="/contact" style={{ color: 'var(--teal-dark)', fontWeight: 600 }}>Contact us directly</Link>.</Reveal>
         <Reveal className="faq-list">
-          {FAQS.map((item, i) => (
+          {faqs.map((item, i) => (
             <div key={item.q} className={`faq-item${openFaq === i ? ' open' : ''}`}>
               <button className="faq-q" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
                 {item.q}<span className="plus">+</span>

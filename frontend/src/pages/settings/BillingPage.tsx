@@ -13,15 +13,13 @@ import {
 } from 'lucide-react';
 import { billingApi, doctorsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
-import { formatNaira } from '@/lib/currency';
+import { getCurrencyFormat } from '@/lib/currency';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
 import { buildEnterpriseWhatsAppUrl } from '@/lib/whatsapp';
 import ReferralCard from '@/components/shared/ReferralCard';
 
 const PLAN_ICONS = { basic: Zap, pro: CheckCircle, enterprise: Building };
-const currency = 'NGN';
-const formatMoney = formatNaira;
 
 function formatCountdown(ms: number) {
   if (ms <= 0) return '00:00';
@@ -301,7 +299,7 @@ const PAYMENT_STATUS_STYLES: Record<string, string> = {
   unpaid: 'bg-slate-100 text-slate-600',
 };
 
-function PaymentHistorySection({ payments, isLoading }: { payments: any[]; isLoading: boolean }) {
+function PaymentHistorySection({ payments, isLoading, formatMoney }: { payments: any[]; isLoading: boolean; formatMoney: (n: number) => string }) {
   if (isLoading) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -347,6 +345,24 @@ export default function BillingPage() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [transferData, setTransferData] = useState<any>(null);
+
+  // The clinic's own billing currency (set at registration from their
+  // country — see auth.py's /register), not the visitor's current IP/VPN
+  // location: this page shows what the clinic is actually charged, which
+  // doesn't change just because someone is browsing from elsewhere.
+  const currency = clinic?.currency || 'NGN';
+  const currencyFormat = getCurrencyFormat(currency);
+  const formatMoney = (amount: number) => {
+    const { symbol, decimals } = currencyFormat;
+    if (decimals === 0) return `${symbol}${Math.round(amount).toLocaleString()}`;
+    return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+  };
+  // Self-serve checkout only actually charges correctly in NGN today (see
+  // billing.py's /subscribe guard) — Paystack's bank-transfer charge has no
+  // FX conversion, so a non-NGN plan price would otherwise be billed as
+  // that same number of Naira kobo. Until real multi-currency checkout
+  // exists, non-NGN clinics are routed to sales instead of the button.
+  const canSelfServe = currency === 'NGN';
 
   // Doctor count for the Enterprise WhatsApp pre-fill below. This list is
   // already fetched elsewhere in the app (Doctors page), so this is a cheap
@@ -423,7 +439,8 @@ export default function BillingPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Billing & Subscription</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Pricing shown in {currency} · Pay via direct bank transfer
+          Pricing shown in {currency}
+          {canSelfServe ? ' · Pay via direct bank transfer' : ' · Contact us to subscribe in your currency'}
         </p>
       </div>
 
@@ -478,7 +495,7 @@ export default function BillingPage() {
       <ReferralCard />
 
       {/* Payment history */}
-      <PaymentHistorySection payments={historyData?.payments ?? []} isLoading={historyLoading} />
+      <PaymentHistorySection payments={historyData?.payments ?? []} isLoading={historyLoading} formatMoney={formatMoney} />
 
       {/* Billing cycle toggle */}
       <div className="flex items-center justify-center gap-3">
@@ -579,6 +596,13 @@ export default function BillingPage() {
                     className="flex items-center justify-center gap-2 border-2 border-slate-300 hover:border-teal-500 text-slate-700 hover:text-teal-700 font-semibold py-2.5 rounded-xl transition-colors"
                   >
                     Contact Sales <ExternalLink className="w-4 h-4" />
+                  </a>
+                ) : !canSelfServe ? (
+                  <a
+                    href="mailto:vitarhealthcare@gmail.com"
+                    className="flex items-center justify-center gap-2 border-2 border-slate-300 hover:border-teal-500 text-slate-700 hover:text-teal-700 font-semibold py-2.5 rounded-xl transition-colors text-center text-sm"
+                  >
+                    Contact us to subscribe
                   </a>
                 ) : isCurrent ? (
                   <button

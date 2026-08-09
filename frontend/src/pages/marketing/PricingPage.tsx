@@ -12,6 +12,7 @@ import {
 import { useGeoStore } from '@/stores/geoStore';
 import { useAuthStore } from '@/stores/authStore';
 import { billingApi } from '@/lib/api/services';
+import { getApiError } from '@/lib/api/client';
 import { buildEnterpriseWhatsAppUrl } from '@/lib/whatsapp';
 import { toast } from 'sonner';
 
@@ -100,8 +101,8 @@ export default function PricingPage() {
         toast.success('Subscription activated!');
         navigate('/settings/billing');
       }
-    } catch {
-      toast.error('Failed to start checkout. Please try again.');
+    } catch (err) {
+      toast.error(getApiError(err) || 'Failed to start checkout. Please try again.');
     } finally {
       setLoadingPlan(null);
     }
@@ -199,7 +200,7 @@ export default function PricingPage() {
             </div>
             <div className="flex-shrink-0 text-center">
               <div className="mb-4">
-                <span className="text-6xl font-extrabold text-white">₦0</span>
+                <span className="text-6xl font-extrabold text-white">{currency_format?.symbol ?? '₦'}0</span>
                 <p className="text-teal-300 text-sm font-semibold mt-1">Free for 30 days</p>
               </div>
               <Link

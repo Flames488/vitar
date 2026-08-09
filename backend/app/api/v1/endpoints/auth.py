@@ -239,7 +239,13 @@ async def register(
 
     trial_ends = utcnow() + timedelta(days=settings.TRIAL_DAYS)
     region = _determine_region(body.country)
-    currency = "NGN" if body.country == "NG" else "USD"
+    # FIX: was a binary NGN-vs-USD check — any non-Nigerian signup (Ghana,
+    # Kenya, South Africa, UK, Canada, Australia...) got billed in USD
+    # regardless of their actual country, inconsistent with the GHS/KES/ZAR/
+    # GBP/CAD/AUD/EUR pricing the rest of the app (geo.py, geo_service.py)
+    # already knows how to show. Reuse the same country->currency mapping.
+    from app.services.geo_service import get_currency_for_country
+    currency = get_currency_for_country(body.country)
 
     clinic = Clinic(
         owner_id=user.id,

@@ -35,8 +35,9 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "USD": {
         "basic": {
-            "monthly": 33,        # updated from $29 (moderate ~14% bump)
-            "annual": 329,        # $33 x 12 x 0.83
+            "monthly": 19,        # reduced from $33 — too close to Pro ($89), didn't
+                                   # read as an entry tier. ~21% of Pro.
+            "annual": 189,        # $19 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
@@ -52,8 +53,8 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "GBP": {
         "basic": {
-            "monthly": 27,        # updated from £24 (moderate ~13% bump)
-            "annual": 269,        # £27 x 12 x 0.83
+            "monthly": 15,        # reduced from £27, same ~21%-of-Pro ratio as USD
+            "annual": 149,        # £15 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
@@ -69,8 +70,8 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "EUR": {
         "basic": {
-            "monthly": 31,        # updated from €27 (moderate ~15% bump)
-            "annual": 309,        # €31 x 12 x 0.83
+            "monthly": 17,        # reduced from €31, same ~21%-of-Pro ratio as USD
+            "annual": 169,        # €17 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {

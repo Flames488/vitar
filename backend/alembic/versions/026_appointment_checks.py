@@ -9,12 +9,19 @@ CheckConstraint DDL. The live DB has never enforced either invariant; only
 Base.metadata.create_all() (SQLite tests) ever built them. This adds both,
 matching what the model has claimed all along.
 
-Revision ID: 026_appointment_check_constraints
+Revision ID: 026_appointment_checks
 Revises: 025_patient_clinic_fk_set_null
+
+Note: revision id kept to <=32 chars — alembic_version.version_num is
+VARCHAR(32) in this DB, and a longer id (026_appointment_check_constraints,
+33 chars) failed with StringDataRightTruncation on the final bookkeeping
+UPDATE after the CHECK constraints had already been created, rolling back
+the whole transaction (verified: transactional DDL, so nothing partially
+applied — but it did crash-loop the api container until fixed).
 """
 from alembic import op
 
-revision = "026_appointment_check_constraints"
+revision = "026_appointment_checks"
 down_revision = "025_patient_clinic_fk_set_null"
 branch_labels = None
 depends_on = None

@@ -82,7 +82,7 @@ export default function LandingPage() {
   useEffect(() => { if (!detected) detect(); }, []);
 
   const planFeatures = (planKey: string): string[] =>
-    plans.find((p: any) => p.plan === planKey)?.features ?? PLAN_FEATURES_FALLBACK[planKey];
+    (plans.find((p: any) => p.plan === planKey) as any)?.features ?? PLAN_FEATURES_FALLBACK[planKey];
 
   const formatPrice = (amount: number | null | undefined): string => {
     if (amount == null) return 'Custom';

@@ -35,14 +35,16 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "USD": {
         "basic": {
-            "monthly": 19,        # reduced from $33 — too close to Pro ($89), didn't
-                                   # read as an entry tier. ~21% of Pro.
+            "monthly": 19,
             "annual": 189,        # $19 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 89,        # updated from $79 (moderate ~13% bump)
-            "annual": 854,        # $89 x 12 x 0.80
+            "monthly": 59,        # reduced from $89 — the $19 Starter was fine,
+                                   # but $89 Pro made the gap too wide (4.7x) to
+                                   # read as a sensible 2-tier spread. $59 keeps
+                                   # roughly the same ~3.1x ratio.
+            "annual": 566,        # $59 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {
@@ -53,13 +55,13 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "GBP": {
         "basic": {
-            "monthly": 15,        # reduced from £27, same ~21%-of-Pro ratio as USD
+            "monthly": 15,
             "annual": 149,        # £15 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 72,        # updated from £65 (moderate ~11% bump)
-            "annual": 691,        # £72 x 12 x 0.80
+            "monthly": 47,        # reduced from £72, same ~3.1x ratio as USD
+            "annual": 451,        # £47 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {
@@ -70,13 +72,13 @@ PRICING_TIERS: Dict[str, Dict] = {
     },
     "EUR": {
         "basic": {
-            "monthly": 17,        # reduced from €31, same ~21%-of-Pro ratio as USD
+            "monthly": 17,
             "annual": 169,        # €17 x 12 x 0.83
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 80,        # updated from €72 (moderate ~11% bump)
-            "annual": 768,        # €80 x 12 x 0.80
+            "monthly": 53,        # reduced from €80, same ~3.1x ratio as USD
+            "annual": 509,        # €53 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {

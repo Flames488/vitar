@@ -202,3 +202,46 @@ def update_lead_status(
         )
 
     return {"status": "updated", "lead_id": lead_id, "new_status": new_status.value}
+
+
+# ── Content Agent: draft approval ───────────────────────────────────────────
+# Reuses _get_content_or_404 defined above (Sales Agent section) — same
+# content_queue table, just a different content_type.
+
+@router.post("/content/approve/{content_id}")
+def approve_content_draft(
+    content_id: str,
+    request: Request,
+    admin=Depends(get_current_superadmin),
+    db: Session = Depends(get_db),
+):
+    from app.models.models import ContentStatus
+
+    content = _get_content_or_404(content_id, db)
+    content.status = ContentStatus.APPROVED
+    content.approved_by = admin.id
+    write_audit_log(
+        db, admin_id=admin.id, action="ai_core.content.approve",
+        entity_type="content_queue", entity_id=content_id, request=request,
+    )
+    db.commit()
+    return {"status": "approved", "content_id": content_id}
+
+
+@router.post("/content/reject/{content_id}")
+def reject_content_draft(
+    content_id: str,
+    request: Request,
+    admin=Depends(get_current_superadmin),
+    db: Session = Depends(get_db),
+):
+    from app.models.models import ContentStatus
+
+    content = _get_content_or_404(content_id, db)
+    content.status = ContentStatus.REJECTED
+    write_audit_log(
+        db, admin_id=admin.id, action="ai_core.content.reject",
+        entity_type="content_queue", entity_id=content_id, request=request,
+    )
+    db.commit()
+    return {"status": "rejected", "content_id": content_id}

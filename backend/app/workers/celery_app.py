@@ -22,7 +22,7 @@ celery = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.workers.tasks", "app.workers.push_tasks",
-        "app.agents.lead_hunter", "app.agents.sales_agent",
+        "app.agents.lead_hunter", "app.agents.sales_agent", "app.agents.content_agent",
     ],
 )
 
@@ -90,6 +90,12 @@ beat_schedule = {
     "sales-send-approved-outreach": {
         "task": "app.agents.sales_agent.send_approved_outreach",
         "schedule": 900.0,  # every 15 minutes
+        "options": {"queue": "ai"},
+    },
+    # ── AI Core: Content Agent ──────────────────────────────────────────────
+    "content-draft-weekly": {
+        "task": "app.agents.content_agent.draft_weekly_content",
+        "schedule": crontab(hour=7, minute=0, day_of_week=1),  # Monday 07:00
         "options": {"queue": "ai"},
     },
 }

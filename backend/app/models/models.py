@@ -864,3 +864,200 @@ class RefreshToken(Base):
     created_at = Column(DateTime, default=func.now())
 
     user = relationship("User", back_populates="refresh_tokens")
+
+
+# ─── AI Core: Growth Agents (Lead Hunter / Sales / Content / Customer Success) ─
+# Internal system powering Vitar's own growth toward its client-acquisition
+# goal — not a customer-facing feature. See app/agents/ for the Celery task
+# implementations and app/services/notifications.py + ai_provider.py for the
+# shared infrastructure every agent below is built on.
+
+class LeadSource(str, enum.Enum):
+    GOOGLE_MAPS = "google_maps"
+    LINKEDIN = "linkedin"
+    DIRECTORY = "directory"
+    MANUAL = "manual"
+
+
+class LeadStatus(str, enum.Enum):
+    NEW = "new"
+    CONTACTED = "contacted"
+    REPLIED = "replied"
+    TRIAL_STARTED = "trial_started"
+    PAID = "paid"
+    LOST = "lost"
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    clinic_name = Column(String(255), nullable=False)
+    phone = Column(String(20))
+    email = Column(String(255))
+    whatsapp = Column(String(20))
+    address = Column(Text)
+    city = Column(String(100))
+    source = Column(Enum(LeadSource, native_enum=False), nullable=False)
+    source_url = Column(Text)
+    status = Column(Enum(LeadStatus, native_enum=False), nullable=False, default=LeadStatus.NEW)
+    score = Column(Integer, nullable=False, default=0)
+    notes = Column(Text)
+    last_contacted_at = Column(DateTime)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # Partial unique index on phone — the ON CONFLICT target for Lead
+        # Hunter's upsert (see booking.py's patient upsert for the same
+        # pattern). Partial (WHERE phone IS NOT NULL) because many scraped
+        # listings have no phone at all.
+        Index("uq_leads_phone", "phone", unique=True, postgresql_where=text("phone IS NOT NULL")),
+        Index("ix_leads_status_score", "status", "score"),
+    )
+
+
+class ContentType(str, enum.Enum):
+    SOCIAL_POST = "social_post"
+    OUTREACH_TEMPLATE = "outreach_template"
+    EMAIL = "email"
+
+
+class ContentStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+    REJECTED = "rejected"
+
+
+class ContentQueue(Base):
+    __tablename__ = "content_queue"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    content_type = Column(Enum(ContentType, native_enum=False), nullable=False)
+    body = Column(Text, nullable=False)
+    target_platform = Column(String(50))
+    status = Column(Enum(ContentStatus, native_enum=False), nullable=False, default=ContentStatus.DRAFT)
+    created_by_agent = Column(String(50))
+    approved_by = Column(String(36), ForeignKey("users.id"))
+    created_at = Column(DateTime, default=func.now())
+    published_at = Column(DateTime)
+    # lead_id FK added in a later migration once Sales Agent (Phase 3) exists —
+    # not every content_queue row is tied to a lead (Content Agent's social
+    # posts aren't).
+
+    __table_args__ = (
+        Index("ix_content_queue_status", "status"),
+    )
+
+
+class AgentRunStatus(str, enum.Enum):
+    SUCCESS = "success"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
+class AgentRun(Base):
+    """
+    Run-history log every AI Core agent task writes to on every execution
+    (see app/agents/utils.py's log_agent_run) — powers the superadmin
+    dashboard's agent status dots and run history lists.
+    """
+    __tablename__ = "agent_runs"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    agent_name = Column(String(50), nullable=False)
+    task_name = Column(String(100), nullable=False)
+    status = Column(Enum(AgentRunStatus, native_enum=False), nullable=False)
+    started_at = Column(DateTime, nullable=False)
+    finished_at = Column(DateTime)
+    items_processed = Column(Integer, nullable=False, default=0)
+    items_created = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text)
+
+    __table_args__ = (
+        Index("ix_agent_runs_name_started", "agent_name", "started_at"),
+    )
+
+
+class HealthSignalType(str, enum.Enum):
+    LOW_USAGE = "low_usage"
+    NO_LOGIN_7D = "no_login_7d"
+    SUPPORT_FLAG = "support_flag"
+    UPSELL_OPPORTUNITY = "upsell_opportunity"
+
+
+class HealthSignalStatus(str, enum.Enum):
+    OPEN = "open"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+
+
+class CustomerHealthSignal(Base):
+    __tablename__ = "customer_health_signals"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    signal_type = Column(Enum(HealthSignalType, native_enum=False), nullable=False)
+    detail = Column(Text)
+    status = Column(Enum(HealthSignalStatus, native_enum=False), nullable=False, default=HealthSignalStatus.OPEN)
+    created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("ix_health_signals_clinic_status", "clinic_id", "status"),
+    )
+
+
+class NotificationEventType(str, enum.Enum):
+    LEADS_FOUND = "leads_found"
+    OUTREACH_READY = "outreach_ready"
+    LEAD_REPLIED = "lead_replied"
+    LEAD_TRIAL_STARTED = "lead_trial_started"
+    CONTENT_READY = "content_ready"
+    HEALTH_SIGNAL = "health_signal"
+    AGENT_FAILED = "agent_failed"
+
+
+class AgentNotification(Base):
+    """
+    Shared notification feed for the AI Core agents — the single source of
+    truth both the superadmin dashboard's notification center (Phase 6) and
+    the Telegram bot (Phase 7) read from independently. Every agent writes
+    here exactly once per event via app/services/notifications.py's notify()
+    — neither consumer triggers the other, so they can never show
+    conflicting unread state.
+
+    Named agent_notifications, NOT notifications — that table name is
+    already taken by the Notification model above (patient-facing SMS/
+    WhatsApp/email delivery tracking, a completely different concept: that
+    one is customer communication history, this one is an internal ops
+    alert feed).
+    """
+    __tablename__ = "agent_notifications"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    event_type = Column(Enum(NotificationEventType, native_enum=False), nullable=False)
+    agent_name = Column(String(50), nullable=False)
+    message = Column(Text, nullable=False)
+    related_id = Column(String(36))  # points at a lead/content/signal row; no FK — the target table varies by event_type
+    link_path = Column(Text)
+    is_read = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("ix_agent_notifications_is_read", "is_read"),
+        Index("ix_agent_notifications_created_at", "created_at"),
+    )
+
+
+class AiUsageLog(Base):
+    """Token usage per AI Core call, logged by app/services/ai_provider.py's
+    generate() — lets you track AI spend per agent over time."""
+    __tablename__ = "ai_usage_log"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    timestamp = Column(DateTime, default=func.now())
+    agent_name = Column(String(50), nullable=False)
+    tokens_used = Column(Integer, nullable=False, default=0)
+    model = Column(String(100))

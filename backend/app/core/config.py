@@ -209,5 +209,15 @@ class Settings(BaseSettings):
     PGBOUNCER_ENABLED: bool = True
     PGBOUNCER_URL: str = "postgresql://vitar:vitar@pgbouncer:5432/vitar"
 
+    # ─── AI Core (Lead Hunter / Sales / Content / Customer Success agents) ─
+    # DRY_RUN: cross-cutting safety flag for the whole AI Core system. When
+    # true, any agent action that touches something external or irreversible
+    # (Lead Hunter's live scrape, Sales Agent's actual WhatsApp send) skips
+    # the real external call, logs what it would have done, and still
+    # writes normally to leads/content_queue/agent_runs — so the full
+    # pipeline can be exercised end-to-end without scraping real pages or
+    # sending real messages.
+    DRY_RUN: bool = False
+
 
 settings = Settings()

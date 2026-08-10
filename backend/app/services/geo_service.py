@@ -40,11 +40,8 @@ PRICING_TIERS: Dict[str, Dict] = {
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 59,        # reduced from $89 — the $19 Starter was fine,
-                                   # but $89 Pro made the gap too wide (4.7x) to
-                                   # read as a sensible 2-tier spread. $59 keeps
-                                   # roughly the same ~3.1x ratio.
-            "annual": 566,        # $59 x 12 x 0.80
+            "monthly": 38,        # reduced from $59 — clean 2x Starter ratio.
+            "annual": 365,        # $38 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {
@@ -60,8 +57,8 @@ PRICING_TIERS: Dict[str, Dict] = {
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 47,        # reduced from £72, same ~3.1x ratio as USD
-            "annual": 451,        # £47 x 12 x 0.80
+            "monthly": 30,        # same 2x Starter ratio as USD
+            "annual": 288,        # £30 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {
@@ -77,8 +74,8 @@ PRICING_TIERS: Dict[str, Dict] = {
             "annual_savings_percent": 17,
         },
         "pro": {
-            "monthly": 53,        # reduced from €80, same ~3.1x ratio as USD
-            "annual": 509,        # €53 x 12 x 0.80
+            "monthly": 34,        # same 2x Starter ratio as USD
+            "annual": 326,        # €34 x 12 x 0.80
             "annual_savings_percent": 20,
         },
         "enterprise": {

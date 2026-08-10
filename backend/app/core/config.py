@@ -223,5 +223,19 @@ class Settings(BaseSettings):
     # scaling frequency/volume until this is a real rotating proxy pool).
     SCRAPER_PROXY_URL: str = ""
 
+    # Sales Agent's WhatsApp send, routed through Wabizz rather than a
+    # direct Meta Cloud API integration. Defaults to false — flip only once
+    # Wabizz's security audit is closed AND you've manually verified one
+    # real end-to-end send + reply round-trip through it. Independent of
+    # DRY_RUN: DRY_RUN always forces the stub path even if this is true.
+    WABIZZ_OUTREACH_ENABLED: bool = False
+    WABIZZ_API_BASE: str = "https://wabizz-app.emmyflames48.workers.dev"
+    WABIZZ_API_KEY: str = ""
+    # Shared secret Wabizz must send back on its inbound-reply webhook
+    # (see POST /api/v1/webhooks/wabizz-reply) — swap for Wabizz's own
+    # signature scheme once confirmed; a shared-secret header is a safe,
+    # standard default in the meantime.
+    WABIZZ_WEBHOOK_SECRET: str = ""
+
 
 settings = Settings()

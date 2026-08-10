@@ -904,6 +904,10 @@ class Lead(Base):
     score = Column(Integer, nullable=False, default=0)
     notes = Column(Text)
     last_contacted_at = Column(DateTime)
+    # How many times outreach has actually been SENT (not just drafted) to
+    # this lead — see app/agents/sales_agent.py's 7-day cooldown and
+    # auto-flip-to-lost-after-2-attempts logic.
+    attempt_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -943,9 +947,9 @@ class ContentQueue(Base):
     approved_by = Column(String(36), ForeignKey("users.id"))
     created_at = Column(DateTime, default=func.now())
     published_at = Column(DateTime)
-    # lead_id FK added in a later migration once Sales Agent (Phase 3) exists —
-    # not every content_queue row is tied to a lead (Content Agent's social
-    # posts aren't).
+    # Links an outreach_template draft back to its lead (Phase 3's Sales
+    # Agent). Nullable — Content Agent's social_post rows aren't lead-tied.
+    lead_id = Column(String(36), ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True)
 
     __table_args__ = (
         Index("ix_content_queue_status", "status"),

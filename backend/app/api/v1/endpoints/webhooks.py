@@ -16,8 +16,11 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel
+from typing import Optional
 import logging
 import json
+import secrets
 
 from app.core.utils import utcnow
 from app.core.database import get_db
@@ -425,3 +428,64 @@ def _extract_clinic_id(data: dict, db: Session) -> str:
     except Exception:
         pass
     return ""
+
+
+# ── AI Core: Wabizz inbound-reply webhook (Sales Agent) ─────────────────────
+
+class WabizzReplyPayload(BaseModel):
+    phone: str
+    message_text: str
+    received_at: Optional[str] = None
+
+
+@router.post("/wabizz-reply")
+async def wabizz_reply_webhook(
+    body: WabizzReplyPayload,
+    request: Request,
+    x_wabizz_webhook_secret: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Wabizz forwards an inbound WhatsApp message on Vitar's connected number
+    here. If it matches a 'contacted' lead by phone, flips it to 'replied'
+    and notifies — this is how leads move themselves along the pipeline
+    without a human having to notice a WhatsApp reply and update Vitar by
+    hand.
+
+    Verified via a shared-secret header rather than Wabizz's own webhook
+    signature scheme (not confirmed from this codebase) — swap for that
+    once known; a shared secret is a safe, standard default meanwhile.
+    Unauthenticated requests (missing/wrong secret) get a plain 401, same
+    as any other webhook consumer would expect.
+    """
+    from app.core.config import settings
+
+    if not settings.WABIZZ_WEBHOOK_SECRET or not x_wabizz_webhook_secret or not secrets.compare_digest(
+        x_wabizz_webhook_secret, settings.WABIZZ_WEBHOOK_SECRET
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or missing webhook secret")
+
+    from app.models.models import Lead, LeadStatus
+    from app.services.notifications import notify
+
+    lead = db.query(Lead).filter(Lead.phone == body.phone).first()
+    if not lead:
+        # Not an error — Wabizz forwards every inbound message on the
+        # connected number, most of which won't be from a known lead.
+        return {"status": "ok", "matched": False}
+
+    if lead.status == LeadStatus.CONTACTED:
+        lead.status = LeadStatus.REPLIED
+        lead.last_contacted_at = utcnow()
+        lead.notes = (lead.notes + "\n\n" if lead.notes else "") + f"[Reply] {body.message_text}"
+        db.commit()
+
+        notify(
+            event_type="lead_replied",
+            agent_name="sales_agent",
+            message=f"{lead.clinic_name} replied!",
+            related_id=lead.id,
+            link_path="/admin/agents/sales",
+        )
+
+    return {"status": "ok", "matched": True}

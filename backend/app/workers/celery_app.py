@@ -20,7 +20,10 @@ celery = Celery(
     "vitar",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.workers.tasks", "app.workers.push_tasks", "app.agents.lead_hunter"],
+    include=[
+        "app.workers.tasks", "app.workers.push_tasks",
+        "app.agents.lead_hunter", "app.agents.sales_agent",
+    ],
 )
 
 beat_schedule = {
@@ -69,6 +72,24 @@ beat_schedule = {
     "lead-hunter-daily": {
         "task": "app.agents.lead_hunter.hunt_leads_daily",
         "schedule": crontab(hour=6, minute=0),
+        "options": {"queue": "ai"},
+    },
+    # ── AI Core: Sales Agent ────────────────────────────────────────────────
+    # Drafting runs once daily, after Lead Hunter's 06:00 run, so freshly
+    # found leads get a draft the same day. Not specified explicitly in the
+    # build spec (unlike Lead Hunter/Content Agent's stated cadences) — this
+    # is a reasonable default cadence, easy to change later.
+    "sales-draft-outreach-daily": {
+        "task": "app.agents.sales_agent.draft_outreach_for_new_leads",
+        "schedule": crontab(hour=7, minute=0),
+        "options": {"queue": "ai"},
+    },
+    # Sending runs frequently so an approved draft goes out promptly rather
+    # than waiting for the next day's cycle — approval is the deliberate
+    # human gate, this just closes the loop quickly once that gate opens.
+    "sales-send-approved-outreach": {
+        "task": "app.agents.sales_agent.send_approved_outreach",
+        "schedule": 900.0,  # every 15 minutes
         "options": {"queue": "ai"},
     },
 }

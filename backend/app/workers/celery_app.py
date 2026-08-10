@@ -20,7 +20,7 @@ celery = Celery(
     "vitar",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.workers.tasks", "app.workers.push_tasks"],
+    include=["app.workers.tasks", "app.workers.push_tasks", "app.agents.lead_hunter"],
 )
 
 beat_schedule = {
@@ -64,6 +64,12 @@ beat_schedule = {
     "cancel-stale-awaiting-payment-appointments": {
         "task": "app.workers.tasks.cancel_stale_awaiting_payment_appointments",
         "schedule": 900.0,
+    },
+    # ── AI Core: Lead Hunter ────────────────────────────────────────────────
+    "lead-hunter-daily": {
+        "task": "app.agents.lead_hunter.hunt_leads_daily",
+        "schedule": crontab(hour=6, minute=0),
+        "options": {"queue": "ai"},
     },
 }
 

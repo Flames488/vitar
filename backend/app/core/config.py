@@ -218,6 +218,10 @@ class Settings(BaseSettings):
     # pipeline can be exercised end-to-end without scraping real pages or
     # sending real messages.
     DRY_RUN: bool = False
+    # Lead Hunter's Playwright scraper. Empty = no proxy (fine for early,
+    # low-volume runs — see the build spec's own operator note about not
+    # scaling frequency/volume until this is a real rotating proxy pool).
+    SCRAPER_PROXY_URL: str = ""
 
 
 settings = Settings()

@@ -33,7 +33,8 @@ from app.api.v1.endpoints import (
     push_notifications,
     referrals,
     registrations,
-    public_clinics,        # ← NEW
+    public_clinics,
+    admin_agents,           # ← NEW: AI Core
 )
 
 api_router = APIRouter()
@@ -69,3 +70,4 @@ api_router.include_router(admin_subscriptions.router, tags=["Admin — Subscript
 api_router.include_router(admin_analytics.router, tags=["Admin — Analytics"])
 api_router.include_router(admin_audit.router, tags=["Admin — Audit Log"])
 api_router.include_router(admin_payouts.router)
+api_router.include_router(admin_agents.router, tags=["Admin — AI Agents"])

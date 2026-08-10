@@ -20,6 +20,14 @@ RUN pip install --no-cache-dir --timeout=120 --retries=5 \
 # ── Layer 2: remaining dependencies ──────────────────────────────────────────
 RUN pip install --no-cache-dir --timeout=120 --retries=5 -r requirements.txt
 
+# ── Playwright browser (Lead Hunter's Google Maps scraper) ────────────────────
+# --with-deps installs the OS-level libraries Chromium needs (libnss3,
+# libatk, fonts, etc.) alongside the browser binary itself — must run as
+# root, before the USER directive below drops privileges. Only needed on
+# this image (worker runs the Celery tasks); the api/frontend images never
+# launch a browser.
+RUN playwright install --with-deps chromium
+
 COPY . .
 
 # Create beat schedule directory

@@ -57,6 +57,13 @@ MAX_LISTINGS_PER_RUN = 40
 MIN_ACTION_DELAY_S = 2.0
 MAX_ACTION_DELAY_S = 5.0
 
+# The worker image installs Debian's own `chromium` package (see
+# Dockerfile.worker) rather than Playwright's own downloaded browser —
+# Playwright's `--with-deps` installer assumes an older Debian/Ubuntu and
+# fails on this base image's release. Point Playwright at that binary
+# instead of letting it look for its own (never-downloaded) copy.
+CHROMIUM_EXECUTABLE_PATH = "/usr/bin/chromium"
+
 
 class GoogleMapsBlockedError(Exception):
     """Raised when Playwright detects a captcha/block page."""
@@ -146,7 +153,17 @@ def _scrape_google_maps(city: str, query: str, proxy: Optional[str]) -> List[Dic
     search_query = f"{query} in {city}, Nigeria"
 
     with sync_playwright() as p:
-        launch_args: Dict[str, Any] = {"headless": True}
+        launch_args: Dict[str, Any] = {
+            "headless": True,
+            "executable_path": CHROMIUM_EXECUTABLE_PATH,
+            # --no-sandbox: Chromium's sandbox needs kernel privileges this
+            # container doesn't have (running as non-root, no extra
+            # capabilities granted) — without this it fails to launch at
+            # all. --disable-dev-shm-usage: Docker's default /dev/shm is
+            # 64MB, too small for Chromium's shared memory use on heavier
+            # pages; this makes it use /tmp instead.
+            "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+        }
         if proxy:
             launch_args["proxy"] = {"server": proxy}
         browser = p.chromium.launch(**launch_args)

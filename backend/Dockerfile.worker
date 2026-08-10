@@ -20,13 +20,20 @@ RUN pip install --no-cache-dir --timeout=120 --retries=5 \
 # ── Layer 2: remaining dependencies ──────────────────────────────────────────
 RUN pip install --no-cache-dir --timeout=120 --retries=5 -r requirements.txt
 
-# ── Playwright browser (Lead Hunter's Google Maps scraper) ────────────────────
-# --with-deps installs the OS-level libraries Chromium needs (libnss3,
-# libatk, fonts, etc.) alongside the browser binary itself — must run as
-# root, before the USER directive below drops privileges. Only needed on
-# this image (worker runs the Celery tasks); the api/frontend images never
-# launch a browser.
-RUN playwright install --with-deps chromium
+# ── Chromium for Lead Hunter's Google Maps scraper ─────────────────────────
+# `playwright install --with-deps chromium` (Playwright's own downloaded
+# browser + its OS-dependency installer script) fails on this base image:
+# the installer's hardcoded package list assumes an older Debian/Ubuntu
+# and references packages (ttf-ubuntu-font-family, ttf-unifont) that were
+# renamed/removed on this image's Debian release. Installing Debian's own
+# `chromium` package instead sidesteps that entirely — apt resolves the
+# correct dependency set for whatever this exact base image actually is,
+# no hardcoded/stale package list to go stale again on a future rebuild.
+# lead_hunter.py points Playwright at this binary via executable_path
+# rather than Playwright's own downloaded copy. Must run as root, before
+# the USER directive below drops privileges.
+RUN apt-get update && apt-get install -y --no-install-recommends chromium \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 

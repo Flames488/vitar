@@ -25,6 +25,7 @@ from datetime import timedelta
 from typing import List, Optional
 
 import httpx
+from sqlalchemy import and_, or_
 
 from app.agents.utils import is_ai_core_enabled, is_dry_run, log_agent_run
 from app.core.config import settings
@@ -129,13 +130,25 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
             #     job to retire, not this task's job to skip silently)
             #   - no outreach_template for this lead actually SENT within
             #     the cooldown window
-            recently_outreached_lead_ids = (
+            #   - no outreach_template for this lead already sitting at
+            #     pending_approval/approved — an existing undecided draft
+            #     must be resolved (approved/rejected) before drafting a
+            #     second one for the same lead, regardless of cooldown.
+            #     Re-running this task after a rejection used to draft a
+            #     duplicate for any lead with a still-approved-but-unsent
+            #     draft from an earlier run.
+            excluded_lead_ids = (
                 db.query(ContentQueue.lead_id)
                 .filter(
                     ContentQueue.content_type == ContentType.OUTREACH_TEMPLATE,
-                    ContentQueue.status == ContentStatus.PUBLISHED,  # PUBLISHED = actually sent, see send_approved_outreach
-                    ContentQueue.published_at >= cooldown_cutoff,
                     ContentQueue.lead_id.isnot(None),
+                    or_(
+                        ContentQueue.status.in_([ContentStatus.PENDING_APPROVAL, ContentStatus.APPROVED]),
+                        and_(
+                            ContentQueue.status == ContentStatus.PUBLISHED,
+                            ContentQueue.published_at >= cooldown_cutoff,
+                        ),
+                    ),
                 )
             )
 
@@ -144,7 +157,7 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
                 .filter(
                     Lead.status.in_([LeadStatus.NEW, LeadStatus.CONTACTED]),
                     Lead.attempt_count < MAX_OUTREACH_ATTEMPTS,
-                    ~Lead.id.in_(recently_outreached_lead_ids),
+                    ~Lead.id.in_(excluded_lead_ids),
                 )
                 .order_by(Lead.score.desc())
                 .limit(batch_size)

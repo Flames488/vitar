@@ -120,7 +120,29 @@ def _extract_phone(text: str) -> Optional[str]:
     return m.group(1).strip() if m else None
 
 
+# A real street address in a Google Maps card usually reads like "12 Adeola
+# Odeku St, Victoria Island, Lagos" — a leading number followed by a
+# road-type word. The first live (non-DRY_RUN) run against real Lagos
+# listings (2026-08-11) came back with every address empty: the old
+# line-starts-with-a-digit heuristic assumed the address sits alone on its
+# own line, but Google's card text doesn't reliably lay it out that way.
+# This scans the whole blob instead of line-by-line and anchors on the
+# road-type keyword, which is the more reliable signal.
+_ADDRESS_RE = re.compile(
+    r"\d{1,5}[,\s][^\n,]{0,60}?"
+    r"(?:Street|St\.?|Road|Rd\.?|Avenue|Ave\.?|Close|Crescent|Way|Lane|Drive|Dr\.?|Boulevard|Blvd\.?)"
+    r"[^\n]{0,60}",
+    re.IGNORECASE,
+)
+
+
 def _extract_address(text: str) -> Optional[str]:
+    m = _ADDRESS_RE.search(text)
+    if m:
+        return m.group(0).strip()
+
+    # Fallback: the original line-starts-with-a-number heuristic — covers
+    # addresses that skip a road-type word entirely (estate/plot names).
     for line in text.split("\n"):
         line = line.strip()
         if line and line[:1].isdigit() and len(line) > 8:
@@ -202,10 +224,21 @@ def _scrape_google_maps(city: str, query: str, proxy: Optional[str]) -> List[Dic
                     source_url = link_el.get_attribute("href") if link_el else None
 
                     text_content = listing.inner_text()
+                    address = _extract_address(text_content)
+                    if address is None:
+                        # This environment can't run a live browser to
+                        # debug selectors interactively (see this file's
+                        # module docstring) — logging the raw text on a
+                        # miss is how the extraction heuristic actually
+                        # gets tuned, from real production runs.
+                        logger.info(
+                            "lead_hunter: address extraction miss for %r — raw text: %r",
+                            name.strip(), text_content[:300],
+                        )
                     results.append({
                         "clinic_name": name.strip(),
                         "phone": _extract_phone(text_content),
-                        "address": _extract_address(text_content),
+                        "address": address,
                         "source_url": source_url,
                         "review_count": _extract_review_count(text_content),
                     })

@@ -22,6 +22,7 @@ docstring in config.py for why this defaults to false.
 import logging
 import uuid
 from datetime import timedelta
+from typing import List, Optional
 
 import httpx
 
@@ -50,25 +51,51 @@ chaos: patients can book an appointment online instead of calling in and playing
 fill out their own registration details on their phone before they arrive instead of \
 scribbling the same paper form every visit, and get an automatic reminder before their \
 appointment so fewer people simply forget to show up. Billing is via Paystack in Naira. \
-Pricing: Starter is ₦6,000/month, Pro is ₦15,000/month, both after a 30-day free trial with \
-no credit card required.
+Pricing: Starter is ₦6,000/month, Pro is ₦15,000/month, both after a 30-day free trial, no \
+card needed.
 
-Write a short, warm WhatsApp message (3-5 sentences max) in plain, everyday language a busy \
-clinic owner would actually read and understand — NOT marketing or software jargon ("SaaS", \
-"platform", "solution", "streamline", "management software"). Open with a real problem their \
-front desk deals with (phone tag over bookings, patients re-filling the same paper form every \
-visit, missed appointments from forgotten bookings) rather than describing what Vitar is. \
-Mention one or two concrete things it does — online appointment booking, patients registering \
-themselves from their phone before arriving, automatic reminders — not a full feature list. \
-Introduce the clinic by name. Mention the free trial. Do not be pushy or use excessive emoji. \
+Write a short WhatsApp message in plain, everyday language a busy clinic owner would actually \
+read — NOT marketing or software jargon ("SaaS", "platform", "solution", "streamline", \
+"management software"). Clinic staff skim WhatsApp, so don't pad it: structure it as four \
+short beats, one sentence each (3-4 sentences total, no more):
+
+1. Open with the clinic's name, then a real front-desk pain point, stated as something clinics \
+generally deal with — phone tag over bookings, re-filling the same paper form every visit, \
+missed appointments from forgotten bookings. Do NOT open with "I'm sure you..." or any other \
+guess-at-them phrasing — it reads as an assumption, not something you actually know.
+2. Name Vitar explicitly, and pair one or two concrete things it does with the benefit it \
+gives THEM specifically (e.g. less back-and-forth for staff, fewer missed slots) rather than \
+just listing features.
+3. Give the free trial (and that no card is needed) its own short sentence — it's the \
+lowest-friction reason to say yes, don't bury it inside another sentence.
+4. Close with a soft, low-pressure question inviting a reply — not a hard call-to-action or a \
+link.
+
 Do not fabricate specific claims about the clinic (their patient volume, their current \
-software, etc.) — you only know their name and that they're a private clinic. Keep it short. \
-End with a soft, low-pressure question inviting a reply, not a hard call-to-action link."""
+software, etc.) — you only know their name and that they're a private clinic.
+
+This message is one of many being sent to different clinics in the same batch. Vary your \
+exact wording, sentence order, and which pain point/benefit you lead with each time — do not \
+default to the same opening sentence structure every time. Near-identical messages sent to \
+many different numbers are exactly what gets flagged as spam, so genuine variation between \
+messages matters as much as the tone of any single one."""
 
 
-def _draft_message(clinic_name: str) -> str:
+def _draft_message(clinic_name: str, avoid_openers: Optional[List[str]] = None) -> str:
+    prompt = f"Draft the WhatsApp message for: {clinic_name}"
+    if avoid_openers:
+        # Concrete anti-repetition signal, not just relying on sampling
+        # randomness — the system prompt's "vary your wording" instruction
+        # is easy for the model to ignore across independent calls since
+        # each one otherwise has zero visibility into what earlier drafts
+        # in this same batch actually said.
+        examples = "\n".join(f"- {o}" for o in avoid_openers)
+        prompt += (
+            "\n\nOpening sentences already used elsewhere in this batch — do not reuse "
+            "these or closely paraphrase them, open differently instead:\n" + examples
+        )
     return generate(
-        prompt=f"Draft the WhatsApp message for: {clinic_name}",
+        prompt=prompt,
         agent_name="sales_agent",
         system=SYSTEM_PROMPT,
     )
@@ -118,9 +145,15 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
             )
             run.items_processed = len(candidates)
 
+            # Openers from this run only (not persisted) — passed to each
+            # next draft so the batch doesn't read like a mail-merge
+            # template. Capped at the last 5 so the prompt doesn't grow
+            # unbounded on a large batch.
+            recent_openers: List[str] = []
+
             for lead in candidates:
                 try:
-                    body = _draft_message(lead.clinic_name)
+                    body = _draft_message(lead.clinic_name, avoid_openers=recent_openers[-5:])
                 except Exception:
                     logger.error("draft_outreach_for_new_leads: generate() failed for lead=%s", lead.id, exc_info=True)
                     continue
@@ -134,6 +167,10 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
                     lead_id=lead.id,
                 ))
                 drafted += 1
+
+                opener = body.split(".")[0].strip()
+                if opener:
+                    recent_openers.append(opener[:100])
 
             db.commit()
         except Exception:

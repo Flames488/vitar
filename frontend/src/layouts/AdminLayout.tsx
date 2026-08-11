@@ -12,10 +12,12 @@ import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Building2, CreditCard, BarChart3,
   ScrollText, LogOut, Menu, X, Moon, Sun, ArrowLeft, Key,
+  Target, PenSquare, MessageCircle, HeartPulse,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import VitarLogo from '@/components/shared/VitarLogo';
 import { AdminThemeProvider, useAdminTheme } from '@/components/admin/AdminUI';
+import NotificationBell from '@/components/admin/NotificationBell';
 
 const NAV_ITEMS = [
   { to: '/admin/overview', label: 'Overview', icon: LayoutDashboard },
@@ -25,6 +27,17 @@ const NAV_ITEMS = [
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/admin/audit-log', label: 'Audit Log', icon: ScrollText },
   { to: '/admin/api-keys', label: 'API Keys', icon: Key },
+];
+
+// "AI Agents" section — kept as a labeled group rather than a genuine
+// expand/collapse widget, matching the sidebar's existing flat-list
+// convention (no other nav group in this layout collapses either).
+const AGENT_NAV_ITEMS = [
+  { to: '/admin/agents/overview', label: 'Overview', icon: LayoutDashboard },
+  { to: '/admin/agents/lead-hunter', label: 'Lead Hunter', icon: Target },
+  { to: '/admin/agents/sales', label: 'Sales Agent', icon: MessageCircle },
+  { to: '/admin/agents/content', label: 'Content Agent', icon: PenSquare },
+  { to: '/admin/agents/customer-success', label: 'Customer Success', icon: HeartPulse },
 ];
 
 function AdminShell() {
@@ -66,6 +79,25 @@ function AdminShell() {
             {label}
           </NavLink>
         ))}
+
+        <div className={`pt-3 mt-3 border-t ${dark ? 'border-slate-800' : 'border-slate-700'}`}>
+          <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">AI Agents</p>
+          {AGENT_NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-teal-600 text-white' : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                }`
+              }
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              {label}
+            </NavLink>
+          ))}
+        </div>
 
         <div className={`pt-3 mt-3 border-t ${dark ? 'border-slate-800' : 'border-slate-700'}`}>
           <Link
@@ -122,14 +154,17 @@ function AdminShell() {
           <span className={`hidden lg:block text-sm font-medium ${c.textMuted}`}>
             Superadmin Control Panel
           </span>
-          <button
-            onClick={toggle}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${c.border} ${c.textMuted} ${c.panelHover}`}
-            title="Toggle dark mode"
-          >
-            {dark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-            {dark ? 'Light' : 'Dark'}
-          </button>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <button
+              onClick={toggle}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${c.border} ${c.textMuted} ${c.panelHover}`}
+              title="Toggle dark mode"
+            >
+              {dark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              {dark ? 'Light' : 'Dark'}
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto">

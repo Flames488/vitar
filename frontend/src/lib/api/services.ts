@@ -289,4 +289,49 @@ export const adminApi = {
     list: (params?: { entity_type?: string; entity_id?: string; clinic_id?: string; action?: string; page?: number; limit?: number }) =>
       api.get('/admin/audit-logs/', { params }).then(r => r.data),
   },
+
+  // AI Core — Lead Hunter / Sales Agent / Content Agent / Customer Success
+  agents: {
+    overview: () => api.get('/admin/agents/overview').then(r => r.data),
+    listRuns: (agentName: string, limit = 10) =>
+      api.get(`/admin/agents/${agentName}/runs`, { params: { limit } }).then(r => r.data),
+    runLeadHunter: (city: string, query = 'private clinic') =>
+      api.post('/admin/agents/lead-hunter/run', { city, query }).then(r => r.data),
+    listSalesDrafts: (status: string | null = 'pending_approval') =>
+      api.get('/admin/agents/sales/drafts', { params: { status } }).then(r => r.data),
+    approveSalesDraft: (contentId: string) =>
+      api.post(`/admin/agents/sales/approve/${contentId}`).then(r => r.data),
+    rejectSalesDraft: (contentId: string) =>
+      api.post(`/admin/agents/sales/reject/${contentId}`).then(r => r.data),
+    editSalesDraft: (contentId: string, body: string) =>
+      api.post(`/admin/agents/sales/edit/${contentId}`, { body }).then(r => r.data),
+    listContentDrafts: (status?: string) =>
+      api.get('/admin/agents/content/drafts', { params: { status } }).then(r => r.data),
+    approveContentDraft: (contentId: string) =>
+      api.post(`/admin/agents/content/approve/${contentId}`).then(r => r.data),
+    rejectContentDraft: (contentId: string) =>
+      api.post(`/admin/agents/content/reject/${contentId}`).then(r => r.data),
+  },
+
+  leads: {
+    list: (params?: { status?: string; city?: string; sort_by?: string; limit?: number }) =>
+      api.get('/admin/leads/', { params }).then(r => r.data),
+    updateStatus: (leadId: string, status: string) =>
+      api.patch(`/admin/leads/${leadId}/status`, { status }).then(r => r.data),
+  },
+
+  healthSignals: {
+    list: (status: string | null = 'open') =>
+      api.get('/admin/health-signals/', { params: { status } }).then(r => r.data),
+    update: (signalId: string, status: 'acknowledged' | 'resolved') =>
+      api.patch(`/admin/health-signals/${signalId}`, { status }).then(r => r.data),
+  },
+
+  notifications: {
+    list: (params?: { unread_only?: boolean; limit?: number }) =>
+      api.get('/admin/notifications/', { params }).then(r => r.data),
+    unreadCount: () => api.get('/admin/notifications/unread-count').then(r => r.data),
+    markRead: (id: string) => api.patch(`/admin/notifications/${id}/read`).then(r => r.data),
+    markAllRead: () => api.post('/admin/notifications/mark-all-read').then(r => r.data),
+  },
 };

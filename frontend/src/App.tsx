@@ -69,6 +69,11 @@ import AdminClinicsPage from '@/pages/superadmin/ClinicsPage';
 import AdminSubscriptionsPage from '@/pages/superadmin/SubscriptionsPage';
 import AdminAnalyticsPage from '@/pages/superadmin/AnalyticsPage';
 import AdminAuditLogPage from '@/pages/superadmin/AuditLogPage';
+import AgentsOverviewPage from '@/pages/superadmin/agents/AgentsOverviewPage';
+import LeadHunterPage from '@/pages/superadmin/agents/LeadHunterPage';
+import SalesAgentPage from '@/pages/superadmin/agents/SalesAgentPage';
+import ContentAgentPage from '@/pages/superadmin/agents/ContentAgentPage';
+import CustomerSuccessPage from '@/pages/superadmin/agents/CustomerSuccessPage';
 
 // Public Booking
 import PublicBookingPage from '@/pages/booking/PublicBookingPage';
@@ -249,6 +254,11 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
               <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
               <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
               <Route path="/admin/api-keys" element={<ApiKeysPage />} />
+              <Route path="/admin/agents/overview" element={<AgentsOverviewPage />} />
+              <Route path="/admin/agents/lead-hunter" element={<LeadHunterPage />} />
+              <Route path="/admin/agents/sales" element={<SalesAgentPage />} />
+              <Route path="/admin/agents/content" element={<ContentAgentPage />} />
+              <Route path="/admin/agents/customer-success" element={<CustomerSuccessPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

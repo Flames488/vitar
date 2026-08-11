@@ -61,38 +61,45 @@ short beats, one sentence each (3-4 sentences total, no more):
 
 1. Open with the clinic's name, then a real front-desk pain point, stated as something clinics \
 generally deal with — phone tag over bookings, re-filling the same paper form every visit, \
-missed appointments from forgotten bookings. Do NOT open with "I'm sure you..." or any other \
-guess-at-them phrasing — it reads as an assumption, not something you actually know.
+missed appointments from forgotten bookings. State it as a plain fact about running a clinic, \
+not a guess about THIS one. Never use "I'm sure...", "likely", "probably", "I bet", or any \
+other hedge-guess wording — all of those read as an assumption about them specifically, not \
+something you actually know.
 2. Name Vitar explicitly, and pair one or two concrete things it does with the benefit it \
 gives THEM specifically (e.g. less back-and-forth for staff, fewer missed slots) rather than \
 just listing features.
 3. Give the free trial (and that no card is needed) its own short sentence — it's the \
 lowest-friction reason to say yes, don't bury it inside another sentence.
 4. Close with a soft, low-pressure question inviting a reply — not a hard call-to-action or a \
-link.
+link. Vary the actual wording of this question between messages; don't default to "Are you \
+open to exploring..." (or any other single phrasing) every time.
 
 Do not fabricate specific claims about the clinic (their patient volume, their current \
 software, etc.) — you only know their name and that they're a private clinic.
 
 This message is one of many being sent to different clinics in the same batch. Vary your \
-exact wording, sentence order, and which pain point/benefit you lead with each time — do not \
-default to the same opening sentence structure every time. Near-identical messages sent to \
-many different numbers are exactly what gets flagged as spam, so genuine variation between \
+exact wording, sentence order, and which pain point/benefit you lead with each time — including \
+the closing question, not just the opener. Do not default to the same sentence structure every \
+time. Near-identical messages sent to many different numbers are exactly what gets flagged as \
+spam, so genuine variation between \
 messages matters as much as the tone of any single one."""
 
 
-def _draft_message(clinic_name: str, avoid_openers: Optional[List[str]] = None) -> str:
+def _draft_message(clinic_name: str, avoid_phrases: Optional[List[str]] = None) -> str:
     prompt = f"Draft the WhatsApp message for: {clinic_name}"
-    if avoid_openers:
+    if avoid_phrases:
         # Concrete anti-repetition signal, not just relying on sampling
         # randomness — the system prompt's "vary your wording" instruction
         # is easy for the model to ignore across independent calls since
         # each one otherwise has zero visibility into what earlier drafts
-        # in this same batch actually said.
-        examples = "\n".join(f"- {o}" for o in avoid_openers)
+        # in this same batch actually said. Covers both the opening and
+        # closing sentence — an early version of this only fed back
+        # openers, and the model just converged on a repeated closing
+        # question ("Are you open to exploring...") instead.
+        examples = "\n".join(f"- {p}" for p in avoid_phrases)
         prompt += (
-            "\n\nOpening sentences already used elsewhere in this batch — do not reuse "
-            "these or closely paraphrase them, open differently instead:\n" + examples
+            "\n\nOpening and closing sentences already used elsewhere in this batch — do "
+            "not reuse these or closely paraphrase them, phrase both differently:\n" + examples
         )
     return generate(
         prompt=prompt,
@@ -145,15 +152,15 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
             )
             run.items_processed = len(candidates)
 
-            # Openers from this run only (not persisted) — passed to each
-            # next draft so the batch doesn't read like a mail-merge
-            # template. Capped at the last 5 so the prompt doesn't grow
-            # unbounded on a large batch.
-            recent_openers: List[str] = []
+            # Opening + closing sentences from this run only (not persisted)
+            # — passed to each next draft so the batch doesn't read like a
+            # mail-merge template. Capped at the last 5 drafts' worth (10
+            # phrases) so the prompt doesn't grow unbounded on a large batch.
+            recent_phrases: List[str] = []
 
             for lead in candidates:
                 try:
-                    body = _draft_message(lead.clinic_name, avoid_openers=recent_openers[-5:])
+                    body = _draft_message(lead.clinic_name, avoid_phrases=recent_phrases[-10:])
                 except Exception:
                     logger.error("draft_outreach_for_new_leads: generate() failed for lead=%s", lead.id, exc_info=True)
                     continue
@@ -168,9 +175,11 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
                 ))
                 drafted += 1
 
-                opener = body.split(".")[0].strip()
-                if opener:
-                    recent_openers.append(opener[:100])
+                sentences = [s.strip() for s in body.split(".") if s.strip()]
+                if sentences:
+                    recent_phrases.append(sentences[0][:100])
+                    if len(sentences) > 1:
+                        recent_phrases.append(sentences[-1][:100])
 
             db.commit()
         except Exception:

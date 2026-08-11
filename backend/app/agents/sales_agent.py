@@ -20,6 +20,7 @@ like any other Wabizz customer would be. See WABIZZ_OUTREACH_ENABLED's
 docstring in config.py for why this defaults to false.
 """
 import logging
+import re
 import uuid
 from datetime import timedelta
 from typing import List, Optional
@@ -54,6 +55,11 @@ scribbling the same paper form every visit, and get an automatic reminder before
 appointment so fewer people simply forget to show up. Billing is via Paystack in Naira. \
 Pricing: Starter is ₦6,000/month, Pro is ₦15,000/month, both after a 30-day free trial, no \
 card needed.
+
+Output ONLY the WhatsApp message itself — nothing else. No preamble like "Here's a draft..." \
+or "For {clinic}, here's a message:", no meta-commentary before or after, no quotation marks \
+wrapping it, no labels. The clinic owner receiving this must see nothing but the message text \
+a real person would send them.
 
 Write a short WhatsApp message in plain, everyday language a busy clinic owner would actually \
 read — NOT marketing or software jargon ("SaaS", "platform", "solution", "streamline", \
@@ -102,11 +108,27 @@ def _draft_message(clinic_name: str, avoid_phrases: Optional[List[str]] = None) 
             "\n\nOpening and closing sentences already used elsewhere in this batch — do "
             "not reuse these or closely paraphrase them, phrase both differently:\n" + examples
         )
-    return generate(
+    return _strip_preamble(generate(
         prompt=prompt,
         agent_name="sales_agent",
         system=SYSTEM_PROMPT,
-    )
+    ))
+
+
+# The system prompt already forbids this, but LLM instruction-following isn't
+# 100% reliable and this specific failure mode (a "Here's a draft..." intro
+# line) has actually shown up in production output — a defensive strip here
+# means it can never reach a real clinic even if the prompt-level instruction
+# is ignored on some future call. Matches a leading line ending in ":" that
+# reads like meta-commentary about the message rather than being part of it.
+_PREAMBLE_RE = re.compile(
+    r"^(here'?s?\b.{0,80}?:|sure[,!]?.{0,80}?:|for [^\n:]{1,60},?\s+here'?s?\b.{0,80}?:)\s*\n+",
+    re.IGNORECASE,
+)
+
+
+def _strip_preamble(text: str) -> str:
+    return _PREAMBLE_RE.sub("", text.strip()).strip().strip('"')
 
 
 # ── Draft outreach ───────────────────────────────────────────────────────────

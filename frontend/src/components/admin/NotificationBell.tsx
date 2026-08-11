@@ -94,42 +94,51 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border shadow-xl z-50 ${c.panel}`}>
-          <div className={`flex items-center justify-between px-4 py-3 border-b ${c.border}`}>
-            <span className={`text-sm font-bold ${c.text}`}>Notifications</span>
-            {unreadCount > 0 && (
-              <button onClick={handleMarkAllRead} className="text-xs font-medium text-teal-500 hover:text-teal-400">
-                Mark all read
-              </button>
+        <>
+          {/* Mobile: dimmed backdrop, tap-outside-to-close (mousedown handler
+              above already closes on outside click, this just adds a visual
+              cue and blocks the page behind from feeling interactive). */}
+          <div className="fixed inset-0 z-40 bg-black/20 sm:hidden" onClick={() => setOpen(false)} />
+          <div
+            className={`fixed inset-x-4 top-16 z-50 max-h-[70vh] overflow-y-auto rounded-xl border shadow-xl
+              sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 sm:max-h-96 ${c.panel}`}
+          >
+            <div className={`flex items-center justify-between px-4 py-3 border-b ${c.border}`}>
+              <span className={`text-sm font-bold ${c.text}`}>Notifications</span>
+              {unreadCount > 0 && (
+                <button onClick={handleMarkAllRead} className="text-xs font-medium text-teal-500 hover:text-teal-400">
+                  Mark all read
+                </button>
+              )}
+            </div>
+            {notifications.length === 0 ? (
+              <div className={`py-10 text-center text-sm ${c.textFaint}`}>No notifications yet</div>
+            ) : (
+              <div className={`divide-y ${c.divide}`}>
+                {notifications.map((n: any) => (
+                  <button
+                    key={n.id}
+                    onClick={() => handleClick(n)}
+                    className={`w-full text-left px-4 py-3 transition-colors ${c.panelHover} ${
+                      !n.is_read ? (dark ? 'bg-teal-500/5' : 'bg-teal-50/50') : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-base flex-shrink-0 mt-0.5">{AGENT_ICON[n.agent_name] ?? '🔔'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm leading-snug ${!n.is_read ? `font-semibold ${c.text}` : c.textMuted}`}>
+                          {n.message}
+                        </p>
+                        <p className={`text-xs mt-0.5 ${c.textFaint}`}>{timeAgo(n.created_at)}</p>
+                      </div>
+                      {!n.is_read && <span className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0 mt-1.5" />}
+                    </div>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
-          {notifications.length === 0 ? (
-            <div className={`py-10 text-center text-sm ${c.textFaint}`}>No notifications yet</div>
-          ) : (
-            <div className={`divide-y ${c.divide}`}>
-              {notifications.map((n: any) => (
-                <button
-                  key={n.id}
-                  onClick={() => handleClick(n)}
-                  className={`w-full text-left px-4 py-3 transition-colors ${c.panelHover} ${
-                    !n.is_read ? (dark ? 'bg-teal-500/5' : 'bg-teal-50/50') : ''
-                  }`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-base flex-shrink-0 mt-0.5">{AGENT_ICON[n.agent_name] ?? '🔔'}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm leading-snug ${!n.is_read ? `font-semibold ${c.text}` : c.textMuted}`}>
-                        {n.message}
-                      </p>
-                      <p className={`text-xs mt-0.5 ${c.textFaint}`}>{timeAgo(n.created_at)}</p>
-                    </div>
-                    {!n.is_read && <span className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0 mt-1.5" />}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        </>
       )}
     </div>
   );

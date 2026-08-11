@@ -44,17 +44,26 @@ OUTREACH_COOLDOWN_DAYS = 7
 # auto-retired rather than contacted a third time.
 MAX_OUTREACH_ATTEMPTS = 2
 
-SYSTEM_PROMPT = """You are drafting a first-contact WhatsApp message on behalf of Vitar, \
-a clinic/hospital management SaaS for Nigerian private clinics (livevault.cloud). Vitar \
-handles appointment booking, patient records, and automated SMS/WhatsApp/email reminders \
-that reduce no-shows. Billing is via Paystack in Naira. Pricing: Starter is ₦6,000/month, \
-Pro is ₦15,000/month, both after a 30-day free trial with no credit card required.
+SYSTEM_PROMPT = """You are drafting a first-contact WhatsApp message on behalf of Vitar \
+(livevault.cloud), a tool built for Nigerian private clinics that gets rid of front-desk \
+chaos: patients can book an appointment online instead of calling in and playing phone tag, \
+fill out their own registration details on their phone before they arrive instead of \
+scribbling the same paper form every visit, and get an automatic reminder before their \
+appointment so fewer people simply forget to show up. Billing is via Paystack in Naira. \
+Pricing: Starter is ₦6,000/month, Pro is ₦15,000/month, both after a 30-day free trial with \
+no credit card required.
 
-Write a short, warm, professional WhatsApp message (3-5 sentences max) introducing Vitar \
-to the clinic by name. Mention the free trial. Do not be pushy or use excessive emoji. \
+Write a short, warm WhatsApp message (3-5 sentences max) in plain, everyday language a busy \
+clinic owner would actually read and understand — NOT marketing or software jargon ("SaaS", \
+"platform", "solution", "streamline", "management software"). Open with a real problem their \
+front desk deals with (phone tag over bookings, patients re-filling the same paper form every \
+visit, missed appointments from forgotten bookings) rather than describing what Vitar is. \
+Mention one or two concrete things it does — online appointment booking, patients registering \
+themselves from their phone before arriving, automatic reminders — not a full feature list. \
+Introduce the clinic by name. Mention the free trial. Do not be pushy or use excessive emoji. \
 Do not fabricate specific claims about the clinic (their patient volume, their current \
-software, etc.) — you only know their name and that they're a private clinic. End with a \
-soft, low-pressure question inviting a reply, not a hard call-to-action link."""
+software, etc.) — you only know their name and that they're a private clinic. Keep it short. \
+End with a soft, low-pressure question inviting a reply, not a hard call-to-action link."""
 
 
 def _draft_message(clinic_name: str) -> str:

@@ -25,7 +25,7 @@ from datetime import timedelta
 
 import httpx
 
-from app.agents.utils import is_dry_run, log_agent_run
+from app.agents.utils import is_ai_core_enabled, is_dry_run, log_agent_run
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.utils import utcnow
@@ -69,6 +69,10 @@ def _draft_message(clinic_name: str) -> str:
 
 @celery.task(bind=True, queue="ai")
 def draft_outreach_for_new_leads(self, batch_size: int = 20):
+    if not is_ai_core_enabled():
+        logger.info("draft_outreach_for_new_leads: AI_CORE_ENABLED=false — no-op")
+        return
+
     with log_agent_run("sales_agent", "draft_outreach_for_new_leads") as run:
         db = SessionLocal()
         drafted = 0
@@ -172,6 +176,10 @@ def _send_outreach(phone: str, message: str) -> bool:
 
 @celery.task(bind=True, queue="ai")
 def send_approved_outreach(self):
+    if not is_ai_core_enabled():
+        logger.info("send_approved_outreach: AI_CORE_ENABLED=false — no-op")
+        return
+
     with log_agent_run("sales_agent", "send_approved_outreach") as run:
         db = SessionLocal()
         sent = 0

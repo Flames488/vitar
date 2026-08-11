@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.agents.utils import is_dry_run, log_agent_run
+from app.agents.utils import is_ai_core_enabled, is_dry_run, log_agent_run
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.models import Lead, LeadSource, LeadStatus
@@ -301,6 +301,10 @@ def hunt_leads(self, city: str, query: str = "private clinic", proxy: Optional[s
     Manually triggered (see POST /admin/agents/lead-hunter/run) or called
     directly by hunt_leads_daily for the scheduled rotation.
     """
+    if not is_ai_core_enabled():
+        logger.info("hunt_leads: AI_CORE_ENABLED=false — no-op")
+        return
+
     proxy = proxy or (settings.SCRAPER_PROXY_URL or None)
 
     with log_agent_run("lead_hunter", "hunt_leads") as run:

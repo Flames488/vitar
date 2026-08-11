@@ -218,6 +218,15 @@ class Settings(BaseSettings):
     # pipeline can be exercised end-to-end without scraping real pages or
     # sending real messages.
     DRY_RUN: bool = False
+    # Kill switch for the whole AI Core system (Phase 8). When false, every
+    # agent Celery task (hunt_leads/hunt_leads_daily, draft_outreach_for_
+    # new_leads, send_approved_outreach, draft_weekly_content,
+    # scan_customer_health) no-ops immediately on entry — no scrape, no AI
+    # call, no DB write, not even an agent_runs row — so the whole system
+    # can be paused instantly via .env + restart, no redeploy or code
+    # change needed. Defaults true (system runs normally) — this is an
+    # emergency brake, not an opt-in flag.
+    AI_CORE_ENABLED: bool = True
     # Lead Hunter's Playwright scraper. Empty = no proxy (fine for early,
     # low-volume runs — see the build spec's own operator note about not
     # scaling frequency/volume until this is a real rotating proxy pool).

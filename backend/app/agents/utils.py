@@ -28,6 +28,15 @@ def is_dry_run() -> bool:
     return settings.DRY_RUN
 
 
+def is_ai_core_enabled() -> bool:
+    """The Phase 8 kill switch. Every agent Celery task checks this first,
+    before log_agent_run even starts — see AI_CORE_ENABLED's docstring in
+    config.py for why this is checked ahead of (not inside) the run-logging
+    wrapper: a kill means no trace of the attempt at all, not a logged
+    no-op run."""
+    return settings.AI_CORE_ENABLED
+
+
 class AgentRunHandle:
     """
     Mutable state a wrapped task body reports progress through — set

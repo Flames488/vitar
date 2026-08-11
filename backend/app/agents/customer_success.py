@@ -18,7 +18,7 @@ import uuid
 from datetime import timedelta
 from typing import Optional
 
-from app.agents.utils import log_agent_run
+from app.agents.utils import is_ai_core_enabled, log_agent_run
 from app.core.database import SessionLocal
 from app.core.utils import utcnow
 from app.models.models import (
@@ -80,6 +80,10 @@ def _check_clinic(db, clinic: Clinic, now) -> Optional[str]:
 
 @celery.task(bind=True, queue="ai")
 def scan_customer_health(self):
+    if not is_ai_core_enabled():
+        logger.info("scan_customer_health: AI_CORE_ENABLED=false — no-op")
+        return
+
     with log_agent_run("customer_success", "scan_customer_health") as run:
         db = SessionLocal()
         created = 0

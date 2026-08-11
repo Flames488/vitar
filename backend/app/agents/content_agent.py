@@ -10,7 +10,7 @@ import logging
 import random
 import uuid
 
-from app.agents.utils import log_agent_run
+from app.agents.utils import is_ai_core_enabled, log_agent_run
 from app.models.models import ContentQueue, ContentStatus, ContentType
 from app.core.database import SessionLocal
 from app.services.ai_provider import generate
@@ -62,6 +62,10 @@ def _draft_post(category: str, brief: str) -> str:
 
 @celery.task(bind=True, queue="ai")
 def draft_weekly_content(self, count: int = 3):
+    if not is_ai_core_enabled():
+        logger.info("draft_weekly_content: AI_CORE_ENABLED=false — no-op")
+        return
+
     with log_agent_run("content_agent", "draft_weekly_content") as run:
         chosen = random.sample(TOPICS, k=min(count, len(TOPICS)))
         run.items_processed = len(chosen)

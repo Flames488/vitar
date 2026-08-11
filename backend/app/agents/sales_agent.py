@@ -69,9 +69,12 @@ short beats, one sentence each (3-4 sentences total, no more):
 1. Open with the clinic's name, then a real front-desk pain point, stated as something clinics \
 generally deal with — phone tag over bookings, re-filling the same paper form every visit, \
 missed appointments from forgotten bookings. State it as a plain fact about running a clinic, \
-not a guess about THIS one. Never use "I'm sure...", "likely", "probably", "I bet", or any \
-other hedge-guess wording — all of those read as an assumption about them specifically, not \
-something you actually know.
+not a guess about THIS one specifically. This rules out an entire CATEGORY of wording, not \
+just a fixed list of words — anything that signals you're speculating about them ("I'm sure",
+"likely", "probably", "surely", "I bet", "no doubt", "I imagine", "I'd guess", etc., and any \
+other phrasing with that same guessing effect, even ones not listed here). If a sentence reads \
+like you're assuming something about this specific clinic rather than stating a fact about \
+clinics in general, rewrite it.
 2. Name Vitar explicitly, and pair one or two concrete things it does with the benefit it \
 gives THEM specifically (e.g. less back-and-forth for staff, fewer missed slots) rather than \
 just listing features.

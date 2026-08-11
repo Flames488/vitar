@@ -14,8 +14,10 @@ services:
       # (docker-compose.yml api service) hits http://localhost:8000/health/ready
       # directly, bypassing nginx, and TrustedHostMiddleware rejects that Host
       # header otherwise ("Invalid host header"), which Docker reports as the
-      # container being unhealthy even though it booted fine.
-      ALLOWED_HOSTS: '["localhost","127.0.0.1","livevault.cloud","www.livevault.cloud"]'
+      # container being unhealthy even though it booted fine. Same reasoning
+      # for "api": the Telegram bot (Phase 7) calls http://api:8000/... over
+      # the internal docker network, also bypassing nginx.
+      ALLOWED_HOSTS: '["localhost","127.0.0.1","api","livevault.cloud","www.livevault.cloud"]'
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       SKIP_MIGRATIONS: "false"
 

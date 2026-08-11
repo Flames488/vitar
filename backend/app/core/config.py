@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: List[str] = [
         "localhost", "127.0.0.1",
         "livevault.cloud", "www.livevault.cloud",
+        # Internal docker-network hostname of the api service itself — the
+        # Telegram bot (Phase 7) calls http://api:8000/... directly rather
+        # than going out through nginx, so its Host header is "api", not
+        # the public domain. Without this, TrustedHostMiddleware 400s every
+        # request from the bot with "Invalid host header".
+        "api",
     ]
 
     @field_validator("ALLOWED_ORIGINS", "ALLOWED_HOSTS", mode="before")

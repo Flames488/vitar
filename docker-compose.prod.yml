@@ -34,6 +34,10 @@ services:
       ENVIRONMENT: production
       OPS_MONITORING_ENABLED: "true"
 
+  telegram_bot:
+    environment:
+      ENVIRONMENT: production
+
   frontend:
     build:
       args:

@@ -70,3 +70,8 @@ locust==2.32.3
 
 # ── AI Core: Lead Hunter scraping ───────────────────────────────────────────
 playwright==1.49.0
+
+# ── AI Core: Telegram ops bot ────────────────────────────────────────────────
+# [job-queue] extra pulls in APScheduler — needed for the weekly digest
+# (run_daily) and the agent_notifications push poller (run_repeating).
+python-telegram-bot[job-queue]==21.9

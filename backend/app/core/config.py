@@ -237,5 +237,13 @@ class Settings(BaseSettings):
     # standard default in the meantime.
     WABIZZ_WEBHOOK_SECRET: str = ""
 
+    # Telegram ops bot — a SEPARATE bot/token from any other Telegram bot
+    # already in use elsewhere; Telegram allows only one active poller per
+    # token, so reusing another bot's token would conflict with its own
+    # connection. Empty by default: the bot process exits at startup with a
+    # clear error rather than silently no-op-ing if these aren't set.
+    VITAR_TELEGRAM_BOT_TOKEN: str = ""
+    VITAR_ADMIN_TELEGRAM_ID: str = ""
+
 
 settings = Settings()

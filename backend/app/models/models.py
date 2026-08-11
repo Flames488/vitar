@@ -1047,11 +1047,17 @@ class AgentNotification(Base):
     related_id = Column(String(36))  # points at a lead/content/signal row; no FK — the target table varies by event_type
     link_path = Column(Text)
     is_read = Column(Boolean, nullable=False, default=False)
+    # Separate from is_read on purpose — "the Telegram bot already sent
+    # this" and "an admin has seen the dashboard bell" are different facts;
+    # conflating them would make the bot pushing a notification silently
+    # mark it read for the dashboard too.
+    pushed_to_telegram = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=func.now())
 
     __table_args__ = (
         Index("ix_agent_notifications_is_read", "is_read"),
         Index("ix_agent_notifications_created_at", "created_at"),
+        Index("ix_agent_notifications_pushed", "pushed_to_telegram"),
     )
 
 

@@ -26,6 +26,8 @@ router = APIRouter(prefix="/admin/agents", tags=["Admin — AI Agents"])
 # incrementally across AI Core build phases rather than being split up).
 leads_router = APIRouter(prefix="/admin/leads", tags=["Admin — Leads"])
 
+health_signals_router = APIRouter(prefix="/admin/health-signals", tags=["Admin — Health Signals"])
+
 
 class LeadHunterRunRequest(BaseModel):
     city: str
@@ -245,3 +247,43 @@ def reject_content_draft(
     )
     db.commit()
     return {"status": "rejected", "content_id": content_id}
+
+
+# ── Customer Success: health signal triage ──────────────────────────────────
+
+class HealthSignalUpdateRequest(BaseModel):
+    status: str  # "acknowledged" or "resolved"
+
+
+@health_signals_router.patch("/{signal_id}")
+def update_health_signal(
+    signal_id: str,
+    body: HealthSignalUpdateRequest,
+    request: Request,
+    admin=Depends(get_current_superadmin),
+    db: Session = Depends(get_db),
+):
+    from app.models.models import CustomerHealthSignal, HealthSignalStatus
+
+    signal = db.query(CustomerHealthSignal).filter(CustomerHealthSignal.id == signal_id).first()
+    if not signal:
+        raise HTTPException(status_code=404, detail="Health signal not found")
+
+    try:
+        new_status = HealthSignalStatus(body.status.lower())
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid status: {body.status}")
+    if new_status == HealthSignalStatus.OPEN:
+        raise HTTPException(status_code=422, detail="Cannot manually reopen a signal to 'open'")
+
+    old_status = signal.status
+    signal.status = new_status
+    write_audit_log(
+        db, admin_id=admin.id, action="ai_core.health_signal.update",
+        entity_type="customer_health_signal", entity_id=signal_id,
+        old_data={"status": old_status.value if hasattr(old_status, "value") else old_status},
+        new_data={"status": new_status.value},
+        request=request,
+    )
+    db.commit()
+    return {"status": "updated", "signal_id": signal_id, "new_status": new_status.value}

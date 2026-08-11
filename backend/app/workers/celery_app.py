@@ -23,6 +23,7 @@ celery = Celery(
     include=[
         "app.workers.tasks", "app.workers.push_tasks",
         "app.agents.lead_hunter", "app.agents.sales_agent", "app.agents.content_agent",
+        "app.agents.customer_success",
     ],
 )
 
@@ -96,6 +97,12 @@ beat_schedule = {
     "content-draft-weekly": {
         "task": "app.agents.content_agent.draft_weekly_content",
         "schedule": crontab(hour=7, minute=0, day_of_week=1),  # Monday 07:00
+        "options": {"queue": "ai"},
+    },
+    # ── AI Core: Customer Success ───────────────────────────────────────────
+    "customer-success-daily-scan": {
+        "task": "app.agents.customer_success.scan_customer_health",
+        "schedule": crontab(hour=8, minute=0),
         "options": {"queue": "ai"},
     },
 }

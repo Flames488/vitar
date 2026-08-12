@@ -193,7 +193,11 @@ def _scrape_google_maps(city: str, query: str, proxy: Optional[str]) -> List[Dic
             page = browser.new_page()
             page.goto(
                 f"https://www.google.com/maps/search/{search_query.replace(' ', '+')}",
-                timeout=30000,
+                # Bumped from 30s after two runs (2026-08-11, 2026-08-12) failed
+                # with a plain navigation timeout/ERR_TIMED_OUT rather than an
+                # actual captcha/block page — more room for an occasionally
+                # slow response before giving up, not a block workaround.
+                timeout=45000,
             )
             _random_delay()
 

@@ -28,6 +28,12 @@ CSRF exempt endpoints (no established session / external callers):
     requests a malicious page can trigger — a header it can't set is immune
     by construction, so this covers current and future API-key-only routes
     without hardcoding each one's path here)
+  - any request authenticated via a bare `Authorization: Bearer` header
+    with no access-token cookie present (the Telegram bot, and any other
+    server-to-server caller minting its own short-lived JWT — see
+    app/telegram_bot/bot.py's _api() helper) — same reasoning as above,
+    generalized: a request that isn't relying on ambient cookie auth isn't
+    a CSRF target, full stop.
 """
 
 import secrets
@@ -129,6 +135,20 @@ async def csrf_protect(request: Request) -> None:
     # can't forge a header value it doesn't know. verify_api_key still runs
     # and rejects a missing/invalid key on its own.
     if request.headers.get("X-API-Key"):
+        return
+
+    # Same reasoning, generalized: ANY request authenticating via a bare
+    # `Authorization: Bearer` header instead of the httpOnly access-token
+    # cookie isn't a CSRF target either — a same-site malicious page can
+    # make the browser auto-attach a cookie, but it cannot read or forge
+    # an Authorization header it was never given. This is exactly how the
+    # Telegram bot (Phase 7) and any other server-to-server caller
+    # authenticate (see app/telegram_bot/bot.py's _api() helper) — they
+    # mint a short-lived JWT and send it as a Bearer header, never a
+    # cookie, and were getting a blanket 403 on every approve/reject/edit
+    # call before this fix, since get_current_user() happily accepts the
+    # header but this check never accounted for that auth path.
+    if not request.cookies.get(ACCESS_COOKIE) and request.headers.get("authorization", "").lower().startswith("bearer "):
         return
 
     exempt_prefixes = (

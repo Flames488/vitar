@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useGeoStore } from '@/stores/geoStore';
 import AIChatbot from '@/components/ai/AIChatbot';
 import TrialBanner from '@/components/shared/TrialBanner';
+import VerifyEmailBanner from '@/components/shared/VerifyEmailBanner';
 import VitarLogo from '@/components/shared/VitarLogo';
 import InstallAppButton from '@/components/shared/InstallAppButton';
 import FirstLoginInstallPrompt from '@/components/shared/FirstLoginInstallPrompt';
@@ -299,6 +300,9 @@ export default function DashboardLayout() {
         {showTrialBanner && trial && (
           <TrialBanner trial={trial} onUpgrade={() => navigate('/settings/billing')} />
         )}
+
+        {/* Verify-email banner — soft nudge, not a gate */}
+        {user && user.is_verified === false && <VerifyEmailBanner />}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">

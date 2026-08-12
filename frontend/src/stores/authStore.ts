@@ -24,6 +24,7 @@ interface User {
   email: string;
   full_name: string;
   is_superadmin?: boolean;
+  is_verified?: boolean;
 }
 
 interface Clinic {

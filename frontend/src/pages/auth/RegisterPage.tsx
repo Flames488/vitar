@@ -84,6 +84,7 @@ export default function RegisterPage() {
   const onSubmit = async (data: FormData) => {
     try {
       await signup({ ...data, referral_code: referralCode });
+      toast.success("You're in! We've also sent a verification email — check your inbox.");
       navigate('/onboarding');
     } catch (err) {
       toast.error(getApiError(err));

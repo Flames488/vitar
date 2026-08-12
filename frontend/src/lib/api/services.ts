@@ -27,6 +27,12 @@ export const authApi = {
   resetPassword: (token: string, new_password: string) =>
     api.post('/auth/reset-password', { token, new_password }).then(r => r.data),
 
+  verifyEmail: (token: string) =>
+    api.post('/auth/verify-email', { token }).then(r => r.data),
+
+  resendVerification: () =>
+    api.post('/auth/resend-verification').then(r => r.data),
+
   // v12: session-restore that works for clinic owners AND superadmin-only
   // accounts with no clinic. Used by authStore.validateSession() on mount.
   me: () => api.get('/auth/me').then(r => r.data),

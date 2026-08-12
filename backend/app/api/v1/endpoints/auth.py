@@ -32,7 +32,8 @@ from app.models.models import User, Clinic, Subscription, NotificationSettings
 from app.models.models import (
     SubscriptionPlan, SubscriptionStatus, Region, RefreshToken,
 )
-from app.services.email_service import send_welcome_email, send_password_reset_email
+from app.services.email_service import send_welcome_email, send_password_reset_email, send_verification_email
+from app.core.disposable_email import is_disposable_email
 from app.services.qr_service import generate_clinic_qr
 
 router = APIRouter()
@@ -66,6 +67,10 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     is_superadmin: bool = False
+    is_verified: bool = False
+
+class VerifyEmailRequest(BaseModel):
+    token: str
 
 class ClinicOut(BaseModel):
     id: str
@@ -224,6 +229,9 @@ async def register(
     if db.query(User).filter(User.email == body.email.lower()).first():
         raise HTTPException(409, "Email already registered")
 
+    if is_disposable_email(body.email):
+        raise HTTPException(422, "Please use a permanent email address, not a temporary/disposable one")
+
     user = User(
         email=body.email.lower(),
         hashed_password=hash_password(body.password),
@@ -303,12 +311,16 @@ async def register(
         logging.getLogger(__name__).warning(f"QR generation failed at registration for {clinic.id}: {qr_err}")
 
     background_tasks.add_task(send_welcome_email, user.email, user.full_name, clinic.name)
+    background_tasks.add_task(send_verification_email, user.email, user.full_name, user.email_verification_token)
 
     csrf_token = set_auth_cookies(response, access_token, refresh_token)
 
     return {
         "csrf_token": csrf_token,
-        "user": {"id": user.id, "email": user.email, "full_name": user.full_name, "is_superadmin": user.is_superadmin},
+        "user": {
+            "id": user.id, "email": user.email, "full_name": user.full_name,
+            "is_superadmin": user.is_superadmin, "is_verified": user.is_verified,
+        },
         "clinic": _clinic_dict(clinic),
     }
 
@@ -346,7 +358,10 @@ async def login(
 
     return {
         "csrf_token": csrf_token,
-        "user": {"id": user.id, "email": user.email, "full_name": user.full_name, "is_superadmin": user.is_superadmin},
+        "user": {
+            "id": user.id, "email": user.email, "full_name": user.full_name,
+            "is_superadmin": user.is_superadmin, "is_verified": user.is_verified,
+        },
         "clinic": _clinic_dict(clinic) if clinic else None,
     }
 
@@ -370,6 +385,7 @@ async def get_me(
             "email": current_user.email,
             "full_name": current_user.full_name,
             "is_superadmin": current_user.is_superadmin,
+            "is_verified": current_user.is_verified,
         },
         "clinic": _clinic_dict(clinic) if clinic else None,
     }
@@ -494,3 +510,44 @@ async def reset_password(
     # Clear auth cookies (force re-login)
     clear_auth_cookies(response)
     return {"message": "Password updated. Please log in again."}
+
+
+@router.post("/verify-email")
+async def verify_email(
+    body: VerifyEmailRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Public (no login required) — the token in the emailed link is the only
+    credential needed, same pattern as reset-password. Soft verification:
+    this only flips is_verified, it never blocks login/access either way
+    (see register()/login() — nothing checks is_verified as a gate).
+    """
+    user = db.query(User).filter(User.email_verification_token == body.token).first()
+    if not user:
+        raise HTTPException(400, "Invalid or expired verification link")
+
+    user.is_verified = True
+    user.email_verification_token = None
+    db.commit()
+    return {"message": "Email verified"}
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Authenticated (unlike verify-email) — this resends to whoever is
+    currently logged in, not an arbitrary address, so it can't be used to
+    spam other people's inboxes."""
+    if current_user.is_verified:
+        return {"message": "Already verified"}
+
+    current_user.email_verification_token = generate_secure_token()
+    db.commit()
+    background_tasks.add_task(
+        send_verification_email, current_user.email, current_user.full_name, current_user.email_verification_token
+    )
+    return {"message": "Verification email sent"}

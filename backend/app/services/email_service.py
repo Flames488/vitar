@@ -124,6 +124,20 @@ async def send_welcome_email(to_email: str, full_name: str, clinic_name: str):
     await _send(to_email, f"Welcome to Vitar — {clinic_name} is live!", html)
 
 
+async def send_verification_email(to_email: str, full_name: str, token: str):
+    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+    html = _base_template(
+        "Verify your email address",
+        f"""
+        <p>Hi {full_name.split()[0] if full_name else 'there'},</p>
+        <p>Please confirm this is your email address so we can reach you about your account.</p>
+        <a href="{verify_url}" class="btn">Verify Email →</a>
+        <p style="color:#999;font-size:13px;">Your account already works fully in the meantime — this just confirms we can reach you.</p>
+        """,
+    )
+    await _send(to_email, "Verify your email — Vitar", html)
+
+
 async def send_password_reset_email(to_email: str, token: str, frontend_url: str):
     reset_url = f"{frontend_url}/reset-password?token={token}"
     html = _base_template(

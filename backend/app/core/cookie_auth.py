@@ -12,6 +12,7 @@ CSRF exempt endpoints (no established session / external callers):
   - POST /api/v1/auth/refresh   ← FIX: was missing; caused all token refreshes to 403
   - POST /api/v1/auth/forgot-password
   - POST /api/v1/auth/reset-password
+  - POST /api/v1/auth/verify-email  (public, token-based, same reasoning as reset-password)
   - POST /api/v1/auth/logout    ← FIX: was missing; caused logout to 403 after cookie expiry
   - /api/v1/webhooks/           (external services)
   - /api/v1/booking/            (public patient-facing)
@@ -158,6 +159,7 @@ async def csrf_protect(request: Request) -> None:
         "/api/v1/auth/logout",        # FIX: must work even after CSRF cookie expiry
         "/api/v1/auth/forgot-password",
         "/api/v1/auth/reset-password",
+        "/api/v1/auth/verify-email",  # public, token-based — same pattern as reset-password
         "/api/v1/webhooks/",
         "/api/v1/booking/",
         "/api/v1/push/event",

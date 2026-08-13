@@ -68,9 +68,13 @@ export function DoctorsPage() {
           <div key={d.id} className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-lg flex-shrink-0">
-                  {d.full_name.charAt(0)}
-                </div>
+                {d.avatar_url ? (
+                  <img src={d.avatar_url} alt={d.full_name} className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-lg flex-shrink-0">
+                    {d.full_name.charAt(0)}
+                  </div>
+                )}
                 <div>
                   <p className="font-semibold text-slate-900">Dr. {d.full_name}</p>
                   <p className="text-slate-500 text-xs">{d.specialty ?? 'General'}</p>

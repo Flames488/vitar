@@ -336,6 +336,7 @@ def _serialize(d: Doctor) -> dict:
         "consultation_fee": float(d.consultation_fee) if d.consultation_fee else 0,
         "is_active": d.is_active,
         "doctor_details_enabled": bool(d.doctor_details_enabled),
+        "avatar_url": d.avatar_url,
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
 

@@ -482,6 +482,34 @@ async def public_book_appointment(
                 )
         db.commit()
         db.refresh(appointment)
+
+        # Close the loop on the waiting list: if this patient/doctor pair
+        # has an open waitlist entry (joined before this slot existed, or
+        # notified once one opened up), link it to the appointment they
+        # just actually booked. Matched on phone, not patient_id — the
+        # waitlist supports non-registered patients where patient_id is
+        # never set (see WaitingList's own column comment). Best-effort:
+        # this must never break a successful booking if it fails.
+        try:
+            from app.models.models import WaitingList
+            waitlist_entry = (
+                db.query(WaitingList)
+                .filter(
+                    WaitingList.clinic_id == clinic.id,
+                    WaitingList.doctor_id == body.doctor_id,
+                    WaitingList.patient_phone == body.phone,
+                    WaitingList.status.in_(["waiting", "notified"]),
+                )
+                .order_by(WaitingList.created_at)
+                .first()
+            )
+            if waitlist_entry:
+                waitlist_entry.status = "booked"
+                waitlist_entry.booked_appointment_id = appointment.id
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Waitlist linkage skipped for appointment {appointment.id}: {e}")
     except HTTPException:
         raise
     except IntegrityError as e:

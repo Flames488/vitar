@@ -1,12 +1,12 @@
 // General Settings Page
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { clinicsApi, hospitalBankAccountApi } from '@/lib/api/services';
 import { useAuthStore } from '@/stores/authStore';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
-import { Loader2, Copy, Check, Link2, Banknote, Info, Landmark, ShieldCheck, Phone } from 'lucide-react';
+import { Loader2, Copy, Check, Link2, Banknote, Info, Landmark, ShieldCheck, Phone, Image, Camera } from 'lucide-react';
 
 // ── Clinic ID copy panel ──────────────────────────────────────────────────────
 
@@ -52,6 +52,74 @@ function ClinicIdPanel({ clinicId }: { clinicId: string }) {
             </>
           )}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Clinic logo panel ──────────────────────────────────────────────────────────
+
+function ClinicLogoPanel() {
+  const qc = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { data } = useQuery({ queryKey: ['clinic-me'], queryFn: clinicsApi.getMe });
+
+  const mutation = useMutation({
+    mutationFn: (file: File) => clinicsApi.uploadLogo(file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clinic-me'] });
+      toast.success('Logo updated');
+    },
+    onError: (err) => toast.error(getApiError(err)),
+  });
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Image className="w-4 h-4 text-teal-600" />
+        <h2 className="text-sm font-semibold text-slate-900">Clinic Logo</h2>
+      </div>
+      <p className="text-xs text-slate-500 leading-relaxed">
+        Shown on your public booking page and patient-facing pages. JPEG, PNG, WebP, or GIF, up to 5MB.
+      </p>
+      <div className="flex items-center gap-4">
+        <div className="relative w-20 h-20 flex-shrink-0 group">
+          {data?.logo_url ? (
+            <img src={data.logo_url} alt="Clinic logo" className="w-20 h-20 rounded-lg object-cover border border-slate-200" />
+          ) : (
+            <div className="w-20 h-20 rounded-lg bg-slate-100 flex items-center justify-center">
+              <Image className="w-6 h-6 text-slate-300" />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={mutation.isPending}
+            title="Change logo"
+            className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all disabled:opacity-100 disabled:bg-black/40"
+          >
+            {mutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={mutation.isPending}
+          className="border border-slate-300 hover:bg-slate-50 disabled:opacity-60 text-slate-700 font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+        >
+          {data?.logo_url ? 'Replace logo' : 'Upload logo'}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) mutation.mutate(file);
+            e.target.value = '';
+          }}
+        />
       </div>
     </div>
   );
@@ -404,6 +472,9 @@ export function SettingsPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-slate-900">Clinic Settings</h1>
+
+      {/* Clinic logo shown on the public booking page */}
+      {clinic?.id && <ClinicLogoPanel />}
 
       {/* Clinic UUID panel — required for Wabizz integration */}
       {clinic?.id && <ClinicIdPanel clinicId={clinic.id} />}

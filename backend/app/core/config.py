@@ -95,9 +95,6 @@ class Settings(BaseSettings):
     # Paystack's own charge fee (~1.5%+₦100) and transfer fee (₦10-50) with a
     # small margin. Set to 0 to pass 100% through to clinics.
     PLATFORM_PAYOUT_FEE_PCT: float = 0.02
-    FLUTTERWAVE_SECRET_KEY: str = ""
-    FLUTTERWAVE_PUBLIC_KEY: str = ""
-    FLUTTERWAVE_WEBHOOK_SECRET: str = ""
     STRIPE_SECRET_KEY: str = ""
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
@@ -210,10 +207,6 @@ class Settings(BaseSettings):
     TASK_STUCK_THRESHOLD_S: int = 600
     AUTOHEAL_STUCK_TASKS: bool = False
     OPS_MONITORING_ENABLED: bool = False
-
-    # ─── PgBouncer ────────────────────────────────────────────────────────
-    PGBOUNCER_ENABLED: bool = True
-    PGBOUNCER_URL: str = "postgresql://vitar:vitar@pgbouncer:5432/vitar"
 
     # ─── AI Core (Lead Hunter / Sales / Content / Customer Success agents) ─
     # DRY_RUN: cross-cutting safety flag for the whole AI Core system. When

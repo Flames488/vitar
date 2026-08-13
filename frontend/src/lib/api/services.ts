@@ -43,6 +43,13 @@ export const authApi = {
 export const clinicsApi = {
   getMe: () => api.get('/clinics/me').then(r => r.data),
   update: (data: Record<string, unknown>) => api.patch('/clinics/me', data).then(r => r.data),
+  uploadLogo: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post('/uploads/clinics/me/logo', form, {
+      headers: { 'Content-Type': undefined },
+    }).then(r => r.data);
+  },
 };
 
 // ── Doctors ───────────────────────────────────────────────────────────────────
@@ -58,6 +65,17 @@ export const doctorsApi = {
     api.get(`/doctors/${id}/available-slots`, { params: { date } }).then(r => r.data),
   blockTime: (id: string, data: Record<string, unknown>) =>
     api.post(`/doctors/${id}/block-time`, data).then(r => r.data),
+  uploadAvatar: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    // Content-Type: undefined overrides the axios instance's default
+    // 'application/json' header so the browser sets its own
+    // multipart/form-data boundary — without this the request goes out
+    // as JSON-typed multipart data and the backend rejects it.
+    return api.post(`/uploads/doctors/${id}/avatar`, form, {
+      headers: { 'Content-Type': undefined },
+    }).then(r => r.data);
+  },
 };
 
 // ── Patients ──────────────────────────────────────────────────────────────────
@@ -283,6 +301,13 @@ export const adminApi = {
     }) => api.post(`/admin/subscriptions/${clinicId}/override`, data).then(r => r.data),
     resetActiveTrials: (dryRun = false) =>
       api.post('/admin/subscriptions/reset-trials', null, { params: { dry_run: dryRun } }).then(r => r.data),
+  },
+
+  payouts: {
+    list: (params?: { status?: string; page?: number; limit?: number }) =>
+      api.get('/admin/payouts/', { params }).then(r => r.data),
+    send: (payoutId: string) =>
+      api.post(`/admin/payouts/${payoutId}/send`).then(r => r.data),
   },
 
   analytics: {

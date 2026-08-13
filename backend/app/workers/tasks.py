@@ -540,6 +540,44 @@ def notify_waiting_list(self, clinic_id: str, doctor_id: str, slot_datetime_iso:
         db.close()
 
 
+@celery.task(
+    name="app.workers.tasks.expire_stale_waiting_list_entries",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=300,
+)
+def expire_stale_waiting_list_entries(self):
+    """
+    WaitingList.expires_at gets set when a patient joins (see booking.py's
+    join_waiting_list — 7 days out), but nothing ever actually checked it:
+    an entry just sat at 'waiting' or 'notified' forever even long after its
+    own expiry, still eligible to be matched by notify_waiting_list and
+    still showing up in the clinic's active waitlist view. This sweep
+    closes that gap, same pattern as cancel_stale_awaiting_payment_appointments.
+    """
+    from app.models.models import WaitingList
+
+    db = SessionLocal()
+    try:
+        now = utcnow()
+        stale = db.query(WaitingList).filter(
+            WaitingList.status.in_(["waiting", "notified"]),
+            WaitingList.expires_at.isnot(None),
+            WaitingList.expires_at < now,
+        ).all()
+        for entry in stale:
+            entry.status = "expired"
+        db.commit()
+        logger.info(f"[waiting_list_expiry] Expired {len(stale)} stale waiting-list entries")
+        return {"expired": len(stale)}
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"expire_stale_waiting_list_entries failed: {exc}")
+        raise self.retry(exc=exc)
+    finally:
+        db.close()
+
+
 @celery.task(bind=True, max_retries=3, autoretry_for=(Exception,), retry_backoff=5, retry_jitter=True, queue="notifications")
 def send_reschedule_notification(self, appointment_id: str):
     db = SessionLocal()

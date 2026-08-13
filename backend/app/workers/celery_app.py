@@ -69,6 +69,10 @@ beat_schedule = {
         "task": "app.workers.tasks.cancel_stale_awaiting_payment_appointments",
         "schedule": 900.0,
     },
+    "expire-stale-waiting-list-entries": {
+        "task": "app.workers.tasks.expire_stale_waiting_list_entries",
+        "schedule": crontab(minute=0),  # hourly — the expiry window itself is 7 days, no need for tighter precision
+    },
     # ── AI Core: Lead Hunter ────────────────────────────────────────────────
     "lead-hunter-daily": {
         "task": "app.agents.lead_hunter.hunt_leads_daily",

@@ -12,7 +12,7 @@ import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Building2, CreditCard, BarChart3,
   ScrollText, LogOut, Menu, X, Moon, Sun, ArrowLeft, Key,
-  Target, PenSquare, MessageCircle, HeartPulse,
+  Target, PenSquare, MessageCircle, HeartPulse, Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import VitarLogo from '@/components/shared/VitarLogo';
@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/clinics', label: 'Clinics', icon: Building2 },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { to: '/admin/payouts', label: 'Payouts', icon: Send },
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/admin/audit-log', label: 'Audit Log', icon: ScrollText },
   { to: '/admin/api-keys', label: 'API Keys', icon: Key },

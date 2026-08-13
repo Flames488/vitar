@@ -68,6 +68,7 @@ import AdminOverviewPage from '@/pages/superadmin/OverviewPage';
 import AdminUsersPage from '@/pages/superadmin/UsersPage';
 import AdminClinicsPage from '@/pages/superadmin/ClinicsPage';
 import AdminSubscriptionsPage from '@/pages/superadmin/SubscriptionsPage';
+import AdminPayoutsPage from '@/pages/superadmin/PayoutsPage';
 import AdminAnalyticsPage from '@/pages/superadmin/AnalyticsPage';
 import AdminAuditLogPage from '@/pages/superadmin/AuditLogPage';
 import AgentsOverviewPage from '@/pages/superadmin/agents/AgentsOverviewPage';
@@ -253,6 +254,7 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/clinics" element={<AdminClinicsPage />} />
               <Route path="/admin/subscriptions" element={<AdminSubscriptionsPage />} />
+              <Route path="/admin/payouts" element={<AdminPayoutsPage />} />
               <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
               <Route path="/admin/audit-log" element={<AdminAuditLogPage />} />
               <Route path="/admin/api-keys" element={<ApiKeysPage />} />

@@ -66,11 +66,14 @@ def validate_production_config() -> None:
     if not prod_origins:
         errors.append("ALLOWED_ORIGINS contains no production origin. Set it to your domain.")
 
-    # Payment: at least one provider
+    # Payment: at least one provider. Flutterwave isn't listed here — its
+    # config keys exist but nothing in the app actually charges through it
+    # (the only code that ever did, app/core/resilience.py's dead fallback
+    # chain, was removed). Listing it as "configured" here would be
+    # misleading — it would never actually be used even with a real key set.
     has_paystack = bool(settings.PAYSTACK_SECRET_KEY and not settings.PAYSTACK_SECRET_KEY.startswith("sk_test"))
     has_stripe   = bool(settings.STRIPE_SECRET_KEY and not settings.STRIPE_SECRET_KEY.startswith("sk_test"))
-    has_flutter  = bool(settings.FLUTTERWAVE_SECRET_KEY)
-    if not (has_paystack or has_stripe or has_flutter):
+    if not (has_paystack or has_stripe):
         warnings.append("No production payment provider configured.")
 
     # Notifications

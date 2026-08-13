@@ -6,8 +6,10 @@
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { doctorsApi } from '@/lib/api/services';
+import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
+import { Camera, Loader2 } from 'lucide-react';
 import DoctorDetailsSection, { type DoctorDetailsValue } from '@/components/shared/DoctorDetailsSection';
 
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -51,6 +53,16 @@ export default function DoctorDetailPage() {
     onError: () => toast.error('Failed to save'),
   });
 
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const avatarMutation = useMutation({
+    mutationFn: (file: File) => doctorsApi.uploadAvatar(id!, file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['doctor', id] });
+      toast.success('Avatar updated');
+    },
+    onError: (err) => toast.error(getApiError(err)),
+  });
+
   const detailsMutation = useMutation({
     mutationFn: (next: DoctorDetailsValue) => doctorsApi.update(id!, next),
     onSuccess: () => {
@@ -92,8 +104,42 @@ export default function DoctorDetailPage() {
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-16 h-16 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-2xl">
-            {doctor.full_name?.charAt(0)}
+          <div className="relative w-16 h-16 flex-shrink-0 group">
+            {doctor.avatar_url ? (
+              <img
+                src={doctor.avatar_url}
+                alt={doctor.full_name}
+                className="w-16 h-16 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-2xl">
+                {doctor.full_name?.charAt(0)}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarMutation.isPending}
+              title="Change photo"
+              className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all disabled:opacity-100 disabled:bg-black/40"
+            >
+              {avatarMutation.isPending ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Camera className="w-5 h-5" />
+              )}
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) avatarMutation.mutate(file);
+                e.target.value = '';
+              }}
+            />
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900">Dr. {doctor.full_name}</h1>

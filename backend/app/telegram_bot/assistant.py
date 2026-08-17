@@ -443,6 +443,30 @@ def _outreach_sent_since(days: int) -> dict:
         db.close()
 
 
+def _truncate_bodies(drafts: list, max_len: int = 200) -> list:
+    """
+    Trims each draft's full message body before it goes back to the model as
+    a tool result, and drops the internal id (never useful to the model —
+    this assistant is read-only, so there's nothing to act on it with, and
+    the prompt already forbids surfacing raw UUIDs anyway).
+
+    Not just a token-budget nicety: with several full drafts in one result,
+    the tool-result payload alone was large enough to blow past this
+    account's Groq rate limit (8000 TPM) on the very next model call within
+    the same turn — a real 413 hit in testing — regardless of how concise
+    the model's eventual summary would have been.
+    """
+    trimmed = []
+    for d in drafts:
+        d = dict(d)
+        d.pop("id", None)
+        body = d.get("body")
+        if isinstance(body, str) and len(body) > max_len:
+            d["body"] = body[:max_len] + "…"
+        trimmed.append(d)
+    return trimmed
+
+
 async def _execute_tool(name: str, args: dict) -> dict:
     if name == "get_agents_overview":
         return await call_api("GET", "/admin/agents/overview")
@@ -465,16 +489,16 @@ async def _execute_tool(name: str, args: dict) -> dict:
             # status param is omitted — an explicit empty string is what
             # actually bypasses its filter to return every status.
             sales_params = {"limit": limit, "status": "" if status == "all" else status}
-            result["sales"] = (
-                await call_api("GET", "/admin/agents/sales/drafts", params=sales_params)
-            ).get("drafts", [])
+            result["sales"] = _truncate_bodies(
+                (await call_api("GET", "/admin/agents/sales/drafts", params=sales_params)).get("drafts", [])
+            )
         if kind in ("content", "all"):
             content_params = {"limit": limit}
             if status != "all":
                 content_params["status"] = status
-            result["content"] = (
-                await call_api("GET", "/admin/agents/content/drafts", params=content_params)
-            ).get("drafts", [])
+            result["content"] = _truncate_bodies(
+                (await call_api("GET", "/admin/agents/content/drafts", params=content_params)).get("drafts", [])
+            )
         return result
 
     if name == "find_clinic_subscription":

@@ -222,6 +222,25 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "list_outreach_sent",
+            "description": "Outreach messages actually SENT to leads (not just drafted/approved — "
+                            "sent means it went out) in the last N days, with clinic name and send "
+                            "time. Use for 'have we sent our lead message today', 'any outreach sent "
+                            "today', or 'how many outreach messages went out this week'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": ["integer", "null"],
+                        "description": "Lookback window in days. Default 1 (today/last 24h). Omit or null for default.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_clinics",
             "description": "General clinic lookup/list — name, active/disabled status, onboarding "
                             "status, plan. Use for 'how many clinics do we have', 'any disabled "
@@ -368,6 +387,42 @@ def _new_users_since(days: int) -> dict:
         db.close()
 
 
+def _outreach_sent_since(days: int) -> dict:
+    from app.models.models import ContentQueue, ContentStatus, ContentType, Lead
+
+    db = SessionLocal()
+    try:
+        cutoff = utcnow() - timedelta(days=days)
+        rows = (
+            db.query(ContentQueue)
+            .filter(
+                ContentQueue.content_type == ContentType.OUTREACH_TEMPLATE,
+                ContentQueue.status == ContentStatus.PUBLISHED,
+                ContentQueue.published_at >= cutoff,
+            )
+            .order_by(ContentQueue.published_at.desc())
+            .limit(50)
+            .all()
+        )
+        lead_ids = [r.lead_id for r in rows if r.lead_id]
+        lead_names = (
+            {l.id: l.clinic_name for l in db.query(Lead).filter(Lead.id.in_(lead_ids)).all()}
+            if lead_ids else {}
+        )
+        return {
+            "count": len(rows),
+            "sent": [
+                {
+                    "clinic_name": lead_names.get(r.lead_id, "Unknown clinic"),
+                    "sent_at": r.published_at.isoformat() if r.published_at else None,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
+
+
 async def _execute_tool(name: str, args: dict) -> dict:
     if name == "get_agents_overview":
         return await call_api("GET", "/admin/agents/overview")
@@ -425,6 +480,10 @@ async def _execute_tool(name: str, args: dict) -> dict:
     if name == "list_new_users":
         days = int(args.get("days") or 1)
         return await asyncio.to_thread(_new_users_since, days)
+
+    if name == "list_outreach_sent":
+        days = int(args.get("days") or 1)
+        return await asyncio.to_thread(_outreach_sent_since, days)
 
     if name == "list_clinics":
         params = {"limit": min(int(args.get("limit") or 10), 100)}

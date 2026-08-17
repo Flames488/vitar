@@ -33,8 +33,13 @@ logger = logging.getLogger("vitar.ai_core.telegram_bot.assistant")
 
 _MAX_TOOL_ROUNDS = 6  # guards against a runaway tool-call loop; broad "what's going on" questions can span several tools
 
-_SYSTEM_PROMPT = """You are the Vitar AI Core assistant, reachable by the admin over Telegram —
+_SYSTEM_PROMPT_TEMPLATE = """You are the Vitar AI Core assistant, reachable by the admin over Telegram —
 built so the admin never has to open the dashboard just to see what's going on.
+
+Current date/time: {now} (Africa/Lagos, WAT). Use this for any relative-date
+question ("how many days until X", "is that soon") — you can compute it
+yourself from a date already in this conversation or from a tool result,
+without calling a tool just for arithmetic.
 
 Vitar is a healthcare-clinic SaaS. You have live, read-only tool access to
 essentially the whole admin dashboard: leads, outreach/content drafts, agent
@@ -62,7 +67,19 @@ bullets or numbering markup. Dates in "DD Mon YYYY" form, money as
 question, say so plainly rather than speculating. If asked to do something
 mutating (approve, reject, edit, send a payout, disable a clinic), tell the
 admin to use /pending or the dashboard instead — you are read-only.
+
+This is a continuing conversation — earlier turns are included below. Resolve
+pronouns and short follow-ups ("them", "that", "list them all", "how many days
+until then") against that history and any tool results already returned in
+it, instead of re-asking the admin to clarify something they already told
+you or you already showed them. Only ask a clarifying question when the
+history genuinely doesn't disambiguate it.
 """
+
+
+def _build_system_prompt() -> str:
+    now = utcnow() + timedelta(hours=1)  # WAT = UTC+1, no DST — same convention as bot.py
+    return _SYSTEM_PROMPT_TEMPLATE.format(now=now.strftime("%A, %d %b %Y, %H:%M"))
 
 TOOLS = [
     {
@@ -129,8 +146,10 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_trials_expiring_soon",
-            "description": "Clinics currently on an active free trial, sorted by soonest trial "
-                            "expiry first. Use this for 'which trials are expiring' type questions.",
+            "description": "Clinics currently on an active free trial (i.e. signed up but haven't "
+                            "subscribed/paid yet), sorted by soonest trial expiry first. Use this for "
+                            "'which trials are expiring', 'pending clinics', 'clinics yet to "
+                            "subscribe', or 'clinics not yet paying' type questions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -205,9 +224,11 @@ TOOLS = [
         "function": {
             "name": "list_clinics",
             "description": "General clinic lookup/list — name, active/disabled status, onboarding "
-                            "status, plan. Broader than find_clinic_subscription: use this for "
-                            "'how many clinics do we have', 'any disabled clinics', or general "
-                            "clinic info not specifically about billing/trial dates.",
+                            "status, plan. Use for 'how many clinics do we have', 'any disabled "
+                            "clinics', 'list all clinics', or general clinic info not specifically "
+                            "about billing/trial dates. NOT for 'clinics that haven't subscribed yet' "
+                            "or 'pending clinics' — that phrasing means still-trialing clinics, use "
+                            "list_trials_expiring_soon for that instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -245,15 +266,15 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "find_user",
-            "description": "Look up a user account by (partial) name or email — role, active/"
-                            "suspended status, their clinic, and last login time. Use for questions "
-                            "like 'did X log in today' or 'is user Y still active'.",
+            "description": "Look up user accounts — role, active/suspended status, their clinic, and "
+                            "last login time. Use for 'did X log in today', 'is user Y still active', "
+                            "or 'list all users' / 'list them all' (omit search to get everyone).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "search": {"type": "string", "description": "Name or email to search for."},
+                    "search": {"type": "string", "description": "Name or email to search for. Omit to list all users."},
+                    "limit": {"type": "integer", "description": "Max rows to return, default 20, max 100."},
                 },
-                "required": ["search"],
             },
         },
     },
@@ -418,8 +439,10 @@ async def _execute_tool(name: str, args: dict) -> dict:
         return await call_api("GET", "/admin/health-signals/", params=params)
 
     if name == "find_user":
-        search = args.get("search") or ""
-        return await call_api("GET", "/admin/users/", params={"search": search, "limit": 10})
+        params = {"limit": min(int(args.get("limit") or 20), 100)}
+        if args.get("search"):
+            params["search"] = args["search"]
+        return await call_api("GET", "/admin/users/", params=params)
 
     if name == "get_recent_activity":
         params = {"limit": min(int(args.get("limit") or 15), 100)}
@@ -428,11 +451,18 @@ async def _execute_tool(name: str, args: dict) -> dict:
     return {"error": f"Unknown tool: {name}"}
 
 
-async def answer_question(question: str) -> str:
-    messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": question},
-    ]
+async def answer_question(question: str, history: Optional[list] = None) -> str:
+    """
+    history is the prior turns of *this* Telegram chat as plain
+    {"role": "user"|"assistant", "content": str} dicts (no tool-call
+    scaffolding) — the caller (bot.py) owns persisting it per chat. Kept
+    separate from the tool-calling messages built up below so a stale
+    tool_call_id from a previous turn can never leak into this request.
+    """
+    messages = [{"role": "system", "content": _build_system_prompt()}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": question})
 
     for _ in range(_MAX_TOOL_ROUNDS):
         try:

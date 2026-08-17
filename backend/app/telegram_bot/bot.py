@@ -42,6 +42,12 @@ logger = logging.getLogger("vitar.ai_core.telegram_bot")
 # WAT convention used elsewhere in this codebase (see booking.py/appointments.py).
 WAT = dt_timezone(timedelta(hours=1))
 
+# Rolling per-chat memory for the free-text assistant, kept in
+# context.user_data (same mechanism awaiting_edit already uses) — bounds
+# token growth on every call while keeping enough recent turns for
+# follow-ups ("list them all", "how many days until then") to resolve.
+_ASSISTANT_HISTORY_TURNS = 8
+
 # Mirrors admin_agents.py's GOAL_TARGET_CLIENTS / GOAL_DEADLINE. GOAL_START is
 # specific to the digest's pace estimate — the AI Core system doesn't record
 # its own "went live" date anywhere else, so this is a fixed anchor rather
@@ -97,6 +103,7 @@ def admin_only(handler):
 
 @admin_only
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("assistant_history", None)
     await update.message.reply_text(
         "Vitar Ops Bot connected.\n\n"
         "/status — agent overview + goal progress\n"
@@ -366,7 +373,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # assistant (leads, trial expiry, drafts, agent status, etc.)
         # rather than silently dropping it.
         await update.effective_chat.send_action("typing")
-        answer = await assistant.answer_question(update.message.text)
+        history = context.user_data.get("assistant_history", [])
+        question = update.message.text
+        answer = await assistant.answer_question(question, history=history)
+        history.append({"role": "user", "content": question})
+        history.append({"role": "assistant", "content": answer})
+        context.user_data["assistant_history"] = history[-(_ASSISTANT_HISTORY_TURNS * 2):]
         await update.message.reply_text(answer)
         return
     prefix = _ENDPOINT_PREFIX.get(pending["kind"])

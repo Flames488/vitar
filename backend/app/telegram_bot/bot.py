@@ -48,6 +48,28 @@ WAT = dt_timezone(timedelta(hours=1))
 # follow-ups ("list them all", "how many days until then") to resolve.
 _ASSISTANT_HISTORY_TURNS = 8
 
+# Telegram hard-rejects any text message over 4096 chars (BadRequest, and
+# with no try/except around the send it would silently drop the reply on
+# the floor) — a "list everything" style answer over many drafts/leads can
+# easily run past that. Split rather than truncate so nothing is lost.
+_TELEGRAM_MAX_LEN = 4000
+
+
+def _chunk_text(text: str, limit: int = _TELEGRAM_MAX_LEN) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    chunks = []
+    while text:
+        if len(text) <= limit:
+            chunks.append(text)
+            break
+        split_at = text.rfind("\n", 0, limit)
+        if split_at <= 0:
+            split_at = limit
+        chunks.append(text[:split_at])
+        text = text[split_at:].lstrip("\n")
+    return chunks
+
 # Mirrors admin_agents.py's GOAL_TARGET_CLIENTS / GOAL_DEADLINE. GOAL_START is
 # specific to the digest's pace estimate — the AI Core system doesn't record
 # its own "went live" date anywhere else, so this is a fixed anchor rather
@@ -379,7 +401,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         history.append({"role": "user", "content": question})
         history.append({"role": "assistant", "content": answer})
         context.user_data["assistant_history"] = history[-(_ASSISTANT_HISTORY_TURNS * 2):]
-        await update.message.reply_text(answer)
+        for chunk in _chunk_text(answer):
+            await update.message.reply_text(chunk)
         return
     prefix = _ENDPOINT_PREFIX.get(pending["kind"])
     if not prefix:

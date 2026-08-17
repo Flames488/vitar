@@ -19,6 +19,7 @@ from app.core.utils import utcnow
 from app.core.config import settings
 from app.core.logging import get_logger, log_payment_event
 from app.services.geo_service import PRICING_TIERS
+from app.services.notifications import notify
 from app.core.circuit_breaker import billing_breaker
 
 logger = get_logger(__name__)
@@ -626,6 +627,17 @@ class BillingService:
         log_payment_event("subscription_activated", "paystack", reference, str(pending.clinic_id),
                           paid_amount, "success", extra={"plan": pending.subscription_plan, "automated": True})
 
+        plan_name = PLANS.get(pending.subscription_plan, {}).get("name", pending.subscription_plan)
+        currency_symbol = "₦" if pending.currency == "NGN" else pending.currency
+        notify(
+            event_type="subscription_paid",
+            agent_name="billing",
+            message=f"{clinic.name} just paid for the {plan_name} plan "
+                    f"({currency_symbol}{paid_amount:,.2f}, {pending.billing_cycle}).",
+            related_id=clinic.id,
+            link_path="/admin/subscriptions",
+        )
+
         if is_first_payment:
             from app.services.referral_service import record_referral_payment
             record_referral_payment(pending.clinic_id, db)
@@ -718,6 +730,18 @@ class BillingService:
 
             log_payment_event("subscription_activated", provider, reference, clinic_id, amount, "success",
                               extra={"plan": plan})
+
+            plan_name = PLANS.get(plan, {}).get("name", plan)
+            currency_symbol = "₦" if (clinic.currency or "NGN") == "NGN" else clinic.currency
+            notify(
+                event_type="subscription_paid",
+                agent_name="billing",
+                message=f"{clinic.name} just paid for the {plan_name} plan "
+                        f"({currency_symbol}{amount:,.2f}, {billing_cycle}).",
+                related_id=clinic.id,
+                link_path="/admin/subscriptions",
+            )
+
             return True
 
         except Exception as e:

@@ -30,6 +30,7 @@ from app.models.models import (
     User, Clinic, Subscription, SubscriptionPlan, SubscriptionStatus,
 )
 from app.services.audit_service import write_audit_log
+from app.services.notifications import notify
 
 router = APIRouter(prefix="/admin/subscriptions", tags=["Admin — Subscriptions"])
 
@@ -84,6 +85,29 @@ def _serialize(clinic: Clinic, sub: Subscription, owner: Optional[User]) -> dict
         "admin_override": (sub.extra_data or {}).get("admin_override"),
         "updated_at": sub.updated_at.isoformat() if sub.updated_at else None,
     }
+
+
+def _override_message(action: "OverrideAction", clinic: Clinic, sub: Subscription, body: "OverrideRequest") -> str:
+    plan_display = sub.plan.value if sub.plan else "plan"
+    if action == OverrideAction.GRANT_FREE:
+        text = f"{clinic.name} was granted a free {plan_display} plan (admin override)."
+    elif action == OverrideAction.GRANT_TEMPORARY:
+        text = f"{clinic.name} was granted {body.duration_days} days of {plan_display} (admin override)."
+    elif action == OverrideAction.GRANT_LIFETIME:
+        text = f"{clinic.name} was granted a lifetime {plan_display} plan (admin override)."
+    elif action == OverrideAction.EXTEND:
+        end = sub.current_period_end.strftime("%d %b %Y") if sub.current_period_end else "—"
+        text = f"{clinic.name}'s subscription was extended by {body.duration_days} days, now ends {end} (admin override)."
+    elif action == OverrideAction.SET_EXPIRATION:
+        end = sub.current_period_end.strftime("%d %b %Y") if sub.current_period_end else "—"
+        text = f"{clinic.name}'s subscription expiration was manually set to {end} (admin override)."
+    elif action == OverrideAction.REVOKE:
+        text = f"{clinic.name}'s subscription was revoked (admin override)."
+    else:
+        text = f"{clinic.name}'s subscription was updated: {action.value} (admin override)."
+    if body.reason:
+        text += f" Reason: {body.reason}"
+    return text
 
 
 def _get_clinic_and_sub(clinic_id: str, db: Session) -> tuple[Clinic, Subscription]:
@@ -311,6 +335,14 @@ def apply_override(
     )
     db.commit()
     db.refresh(sub)
+
+    notify(
+        event_type="subscription_override",
+        agent_name="billing",
+        message=_override_message(body.action, clinic, sub, body),
+        related_id=clinic.id,
+        link_path="/admin/subscriptions",
+    )
 
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
     return _serialize(clinic, sub, owner)

@@ -1021,6 +1021,8 @@ class NotificationEventType(str, enum.Enum):
     CONTENT_READY = "content_ready"
     HEALTH_SIGNAL = "health_signal"
     AGENT_FAILED = "agent_failed"
+    SUBSCRIPTION_PAID = "subscription_paid"
+    SUBSCRIPTION_OVERRIDE = "subscription_override"
 
 
 class AgentNotification(Base):

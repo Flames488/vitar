@@ -19,7 +19,6 @@ import html
 import logging
 from datetime import datetime, time as dt_time, timedelta, timezone as dt_timezone
 
-import httpx
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -33,15 +32,11 @@ from telegram.ext import (
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.security import create_access_token
 from app.core.utils import utcnow
+from app.telegram_bot import assistant
+from app.telegram_bot.api_client import call_api as _api
 
 logger = logging.getLogger("vitar.ai_core.telegram_bot")
-
-# Internal docker-network address of the api service (see docker-compose.yml)
-# — not the public livevault.cloud/nginx path. Keeps ops-bot traffic off the
-# public edge entirely.
-API_BASE = "http://api:8000/api/v1"
 
 # Africa/Lagos has no DST, so a fixed UTC+1 offset is always correct — same
 # WAT convention used elsewhere in this codebase (see booking.py/appointments.py).
@@ -64,6 +59,8 @@ _EVENT_EMOJI = {
     "content_ready": "\U0001F4DD",
     "health_signal": "⚠️",
     "agent_failed": "\U0001F534",
+    "subscription_paid": "\U0001F4B3",
+    "subscription_override": "\U0001F6E0",
 }
 # Only Sales Agent drafts have an /edit endpoint (Content Agent's don't per
 # the Phase 4 spec) — kept here so both the keyboard builder and the
@@ -96,41 +93,6 @@ def admin_only(handler):
     return wrapper
 
 
-_superadmin_user_id_cache: str | None = None
-
-
-def _get_superadmin_user_id() -> str:
-    """Looked up once and cached — used only to mint short-lived JWTs so the
-    bot can call the real admin endpoints, never used for anything else."""
-    global _superadmin_user_id_cache
-    if _superadmin_user_id_cache:
-        return _superadmin_user_id_cache
-    from app.models.models import User
-
-    db = SessionLocal()
-    try:
-        user = (
-            db.query(User)
-            .filter(User.is_superadmin == True, User.is_active == True)  # noqa: E712
-            .first()
-        )
-        if not user:
-            raise RuntimeError("No active superadmin user found — the Telegram bot needs one to mint API tokens")
-        _superadmin_user_id_cache = user.id
-        return user.id
-    finally:
-        db.close()
-
-
-async def _api(method: str, path: str, **kwargs) -> dict:
-    user_id = await asyncio.to_thread(_get_superadmin_user_id)
-    token = create_access_token({"sub": user_id}, expires_delta=timedelta(minutes=5))
-    async with httpx.AsyncClient(base_url=API_BASE, timeout=20) as client:
-        resp = await client.request(method, path, headers={"Authorization": f"Bearer {token}"}, **kwargs)
-        resp.raise_for_status()
-        return resp.json()
-
-
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 @admin_only
@@ -140,7 +102,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status — agent overview + goal progress\n"
         "/pending — outreach & content drafts awaiting approval\n"
         "/leads new — newest new-status leads\n"
-        "/digest — 7-day rollup (also sent automatically every Sunday 18:00 WAT)"
+        "/digest — 7-day rollup (also sent automatically every Sunday 18:00 WAT)\n\n"
+        "You can also just ask a question in plain English — e.g. \"when does "
+        "Cedar Clinic's trial expire\" or \"which trials expire this week\" — "
+        "and I'll look it up live."
     )
 
 
@@ -397,6 +362,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     pending = context.user_data.pop("awaiting_edit", None)
     if not pending:
+        # Not mid-edit — treat this as a free-text question for the AI
+        # assistant (leads, trial expiry, drafts, agent status, etc.)
+        # rather than silently dropping it.
+        await update.effective_chat.send_action("typing")
+        answer = await assistant.answer_question(update.message.text)
+        await update.message.reply_text(answer)
         return
     prefix = _ENDPOINT_PREFIX.get(pending["kind"])
     if not prefix:

@@ -13,6 +13,7 @@ from app.core.security import get_current_user, get_current_clinic
 from app.models.models import Clinic, Subscription, SubscriptionPlan, SubscriptionStatus
 from app.services.billing_service import billing_service, get_plan_pricing, PLANS
 from app.services.geo_service import get_all_plans_for_currency, get_payment_provider
+from app.services.notifications import notify
 from app.services.trial_guard import get_trial_status
 from app.core.config import settings
 
@@ -269,6 +270,18 @@ def activate_subscription(
         db.add(sub)
 
     db.commit()
+
+    plan_name = PLANS.get(body.plan, {}).get("name", body.plan)
+    currency_symbol = "₦" if (clinic.currency or "NGN") == "NGN" else clinic.currency
+    notify(
+        event_type="subscription_paid",
+        agent_name="billing",
+        message=f"{clinic.name} just paid for the {plan_name} plan "
+                f"({currency_symbol}{amount:,.2f}, {body.billing_cycle}) — activated manually.",
+        related_id=clinic.id,
+        link_path="/admin/subscriptions",
+    )
+
     return {
         "message": f"{clinic.name} activated on {body.plan} plan",
         "plan": body.plan,

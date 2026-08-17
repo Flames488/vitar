@@ -24,7 +24,7 @@ from app.models.models import AiUsageLog
 
 logger = logging.getLogger("vitar.ai_core.ai_provider")
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 _MAX_RETRIES = 2
 _RETRY_BASE_DELAY_S = 1.5
 

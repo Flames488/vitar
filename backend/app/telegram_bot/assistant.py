@@ -100,12 +100,12 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string",
-                        "enum": ["new", "contacted", "replied", "trial_started", "paid", "lost"],
-                        "description": "Pipeline status to filter by. Omit to get all statuses.",
+                        "type": ["string", "null"],
+                        "enum": ["new", "contacted", "replied", "trial_started", "paid", "lost", None],
+                        "description": "Pipeline status to filter by. Omit or null to get all statuses.",
                     },
-                    "city": {"type": "string", "description": "City to filter by, e.g. Lagos."},
-                    "limit": {"type": "integer", "description": "Max rows to return, default 10, max 100."},
+                    "city": {"type": ["string", "null"], "description": "City to filter by, e.g. Lagos. Omit or null for all."},
+                    "limit": {"type": ["integer", "null"], "description": "Max rows to return, default 10, max 100. Omit or null for default."},
                 },
             },
         },
@@ -119,8 +119,8 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "kind": {
-                        "type": "string",
-                        "enum": ["sales", "content", "all"],
+                        "type": ["string", "null"],
+                        "enum": ["sales", "content", "all", None],
                         "description": "Which draft type to list. Default 'all'.",
                     },
                 },
@@ -154,9 +154,9 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "days": {
-                        "type": "integer",
+                        "type": ["integer", "null"],
                         "description": "Only include trials ending within this many days. "
-                                       "Omit to list all active trials, soonest first.",
+                                       "Omit or null to list all active trials, soonest first.",
                     },
                 },
             },
@@ -192,11 +192,11 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string",
-                        "enum": ["pending_payout", "sent", "failed"],
-                        "description": "Filter by payout status. Omit to get all statuses.",
+                        "type": ["string", "null"],
+                        "enum": ["pending_payout", "sent", "failed", None],
+                        "description": "Filter by payout status. Omit or null to get all statuses.",
                     },
-                    "limit": {"type": "integer", "description": "Max rows to return, default 10, max 100."},
+                    "limit": {"type": ["integer", "null"], "description": "Max rows to return, default 10, max 100. Omit or null for default."},
                 },
             },
         },
@@ -212,8 +212,8 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "days": {
-                        "type": "integer",
-                        "description": "Lookback window in days. Default 1 (today/last 24h).",
+                        "type": ["integer", "null"],
+                        "description": "Lookback window in days. Default 1 (today/last 24h). Omit or null for default.",
                     },
                 },
             },
@@ -232,13 +232,13 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "search": {"type": "string", "description": "Clinic name or slug to search for. Omit to list all."},
+                    "search": {"type": ["string", "null"], "description": "Clinic name or slug to search for. Omit or null to list all."},
                     "status": {
-                        "type": "string",
-                        "enum": ["active", "disabled"],
-                        "description": "Filter by clinic active status.",
+                        "type": ["string", "null"],
+                        "enum": ["active", "disabled", None],
+                        "description": "Filter by clinic active status. Omit or null for all.",
                     },
-                    "limit": {"type": "integer", "description": "Max rows to return, default 10, max 100."},
+                    "limit": {"type": ["integer", "null"], "description": "Max rows to return, default 10, max 100. Omit or null for default."},
                 },
             },
         },
@@ -254,9 +254,9 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string",
-                        "enum": ["open", "acknowledged", "resolved"],
-                        "description": "Filter by signal status. Default 'open'.",
+                        "type": ["string", "null"],
+                        "enum": ["open", "acknowledged", "resolved", None],
+                        "description": "Filter by signal status. Default 'open'. Omit or null for default.",
                     },
                 },
             },
@@ -272,8 +272,8 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "search": {"type": "string", "description": "Name or email to search for. Omit to list all users."},
-                    "limit": {"type": "integer", "description": "Max rows to return, default 20, max 100."},
+                    "search": {"type": ["string", "null"], "description": "Name or email to search for. Omit or null to list all users."},
+                    "limit": {"type": ["integer", "null"], "description": "Max rows to return, default 20, max 100. Omit or null for default."},
                 },
             },
         },
@@ -289,7 +289,7 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "limit": {"type": "integer", "description": "Max rows to return, default 15, max 100."},
+                    "limit": {"type": ["integer", "null"], "description": "Max rows to return, default 15, max 100. Omit or null for default."},
                 },
             },
         },

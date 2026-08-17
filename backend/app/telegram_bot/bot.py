@@ -398,8 +398,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         history = context.user_data.get("assistant_history", [])
         question = update.message.text
         answer = await assistant.answer_question(question, history=history)
+        # Store a capped copy, not the verbatim answer — a single unusually
+        # long reply (the model doesn't always follow the "stay concise"
+        # instruction) sitting in history is enough on its own to blow past
+        # this account's Groq rate limit (8000 TPM) on the *next* question,
+        # which is exactly what happened in testing. Full text was already
+        # sent to the admin above; only the stored copy needs trimming.
+        stored_answer = answer if len(answer) <= 800 else answer[:800] + " […]"
         history.append({"role": "user", "content": question})
-        history.append({"role": "assistant", "content": answer})
+        history.append({"role": "assistant", "content": stored_answer})
         context.user_data["assistant_history"] = history[-(_ASSISTANT_HISTORY_TURNS * 2):]
         for chunk in _chunk_text(answer):
             await update.message.reply_text(chunk)

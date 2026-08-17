@@ -113,8 +113,11 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "list_pending_drafts",
-            "description": "Outreach and/or content drafts currently awaiting admin approval.",
+            "name": "list_drafts",
+            "description": "Outreach (sales) and/or content drafts at any stage — pending approval, "
+                            "already approved, rejected, or published (sent). Use this for 'show me "
+                            "the outreach draft messages', 'how many drafts were approved', 'any "
+                            "rejected drafts', etc. — not just what's still awaiting approval.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -123,6 +126,13 @@ TOOLS = [
                         "enum": ["sales", "content", "all", None],
                         "description": "Which draft type to list. Default 'all'.",
                     },
+                    "status": {
+                        "type": ["string", "null"],
+                        "enum": ["pending_approval", "approved", "rejected", "published", "draft", "all", None],
+                        "description": "Draft status to filter by. Default 'pending_approval'. Use "
+                                       "'all' for every status regardless of approval state.",
+                    },
+                    "limit": {"type": ["integer", "null"], "description": "Max rows to return per kind, default 10, max 100."},
                 },
             },
         },
@@ -435,16 +445,25 @@ async def _execute_tool(name: str, args: dict) -> dict:
             params["city"] = args["city"]
         return await call_api("GET", "/admin/leads/", params=params)
 
-    if name == "list_pending_drafts":
+    if name == "list_drafts":
         kind = (args.get("kind") or "all").lower()
+        status = (args.get("status") or "pending_approval").lower()
+        limit = min(int(args.get("limit") or 10), 100)
         result = {}
         if kind in ("sales", "all"):
+            # The sales endpoint defaults to pending_approval even when the
+            # status param is omitted — an explicit empty string is what
+            # actually bypasses its filter to return every status.
+            sales_params = {"limit": limit, "status": "" if status == "all" else status}
             result["sales"] = (
-                await call_api("GET", "/admin/agents/sales/drafts", params={"status": "pending_approval", "limit": 10})
+                await call_api("GET", "/admin/agents/sales/drafts", params=sales_params)
             ).get("drafts", [])
         if kind in ("content", "all"):
+            content_params = {"limit": limit}
+            if status != "all":
+                content_params["status"] = status
             result["content"] = (
-                await call_api("GET", "/admin/agents/content/drafts", params={"status": "pending_approval", "limit": 10})
+                await call_api("GET", "/admin/agents/content/drafts", params=content_params)
             ).get("drafts", [])
         return result
 

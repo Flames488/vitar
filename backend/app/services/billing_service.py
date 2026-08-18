@@ -397,9 +397,13 @@ class BillingService:
         # Refer & Earn: apply this clinic's earned (unredeemed) 10% referral
         # discount, if any. No-op and safe to call unconditionally — see
         # referral_service.apply_referral_discount for the failure-safety
-        # guarantee (never raises, never blocks checkout).
+        # guarantee (never raises, never blocks checkout). The credit is
+        # NOT marked spent here — only once this specific checkout actually
+        # confirms paid (see finalize_paystack_payment's redeem_referral_
+        # discount call below) — so a failed/expired/mismatched attempt
+        # doesn't burn the referrer's discount for nothing.
         from app.services.referral_service import apply_referral_discount
-        amount = apply_referral_discount(amount, clinic_id, db)
+        amount, applied_referral_id = apply_referral_discount(amount, clinic_id, db)
 
         currency_symbol = "₦" if currency == "NGN" else currency
 
@@ -454,7 +458,10 @@ class BillingService:
                 db.commit()
             raise
 
-        pending.provider_response = charge.get("raw", {})
+        # Merge (not overwrite) — applied_referral_id must survive this
+        # assignment so finalize_paystack_payment can find it later to
+        # redeem the credit once (and only once) this checkout confirms.
+        pending.provider_response = {**charge.get("raw", {}), "applied_referral_id": applied_referral_id}
         db.commit()
 
         cache.set(f"payment_status:{reference}", {"status": "pending", "clinic_id": clinic_id}, ttl=35 * 60)
@@ -537,9 +544,21 @@ class BillingService:
         )
         from app.core.cache import cache
 
+        # with_for_update() closes a real gap: this function's only
+        # protection against a concurrent duplicate webhook delivery used
+        # to be handle_payment_success's idempotency layer at the route
+        # level, which itself fails open if Redis is briefly unreachable
+        # (idempotency.py). Without a row lock here, two requests could
+        # both read status=PENDING before either commits and both attempt
+        # to activate — it happened to never double-credit only because
+        # SubscriptionPayment.provider_reference has a DB-level unique
+        # constraint that makes the loser's commit raise, which is an
+        # accidental safety net, not a designed one. The second request now
+        # simply blocks here until the first transaction commits, then sees
+        # status=PAID and returns via the idempotent no-op check below.
         pending = db.query(PendingSubscriptionPayment).filter(
             PendingSubscriptionPayment.paystack_reference == reference
-        ).first()
+        ).with_for_update().first()
         if not pending:
             return False  # not part of the automated flow — let caller use legacy path
 
@@ -641,6 +660,12 @@ class BillingService:
         if is_first_payment:
             from app.services.referral_service import record_referral_payment
             record_referral_payment(pending.clinic_id, db)
+
+        # This clinic's own checkout may have had a referral discount
+        # applied to it (see create_automated_subscription_payment) — now
+        # that the payment is actually confirmed, mark that credit spent.
+        from app.services.referral_service import redeem_referral_discount
+        redeem_referral_discount((pending.provider_response or {}).get("applied_referral_id"), db)
 
         return True
 

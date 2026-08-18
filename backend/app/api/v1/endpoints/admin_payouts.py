@@ -48,6 +48,27 @@ async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
         HospitalBankAccount.verified == True,  # noqa: E712
     ).order_by(HospitalBankAccount.created_at.desc()).first()
     if not account or not account.paystack_recipient_code:
+        # Without this, a clinic that never set up payout banking has this
+        # exact 409 raised silently, every hour, forever, by
+        # auto_send_pending_payouts (workers/tasks.py) — with nothing ever
+        # telling the admin money is stuck. Alert once per payout (7-day
+        # cache TTL) rather than every single hourly retry.
+        from app.core.cache import cache
+        from app.services.notifications import notify
+
+        alert_key = f"payout_bank_alert:{payout.id}"
+        if not cache.get(alert_key):
+            clinic = db.query(Clinic).filter(Clinic.id == payout.hospital_id).first()
+            notify(
+                event_type="payout_blocked_no_bank",
+                agent_name="billing",
+                message=f"A payout for {clinic.name if clinic else 'a clinic'} "
+                        f"(₦{payout.amount / 100:,.2f}) is stuck — the clinic has no verified "
+                        f"payout bank account on file yet.",
+                related_id=payout.id,
+                link_path="/admin/payouts",
+            )
+            cache.set(alert_key, True, ttl=7 * 24 * 3600)
         raise HTTPException(status_code=409, detail="Hospital has no verified payout account")
 
     # Deterministic, stable across retries: if a prior attempt timed out on

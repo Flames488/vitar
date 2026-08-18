@@ -701,6 +701,9 @@ def cancel_by_token(
         logger.error(f"Cancel commit failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to cancel appointment")
 
+    from app.api.v1.endpoints.webhooks import void_payout_for_cancelled_appointment
+    void_payout_for_cancelled_appointment(apt, db)
+
     background_tasks.add_task(_dispatch_waiting_list_notify, clinic_id, doctor_id, slot_iso)
     log_booking_event("patient_self_cancelled", apt.id, clinic_id)
     return {"message": "Appointment cancelled successfully."}

@@ -89,6 +89,8 @@ _EVENT_EMOJI = {
     "agent_failed": "\U0001F534",
     "subscription_paid": "\U0001F4B3",
     "subscription_override": "\U0001F6E0",
+    "appointment_refund_needed": "\U0001F534",
+    "payout_blocked_no_bank": "\U0001F3E6",
 }
 # Only Sales Agent drafts have an /edit endpoint (Content Agent's don't per
 # the Phase 4 spec) — kept here so both the keyboard builder and the

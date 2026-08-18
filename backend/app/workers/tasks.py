@@ -73,6 +73,8 @@ def cancel_stale_awaiting_payment_appointments(self):
     from app.core.config import settings
     from app.core.utils import utcnow
     from app.models.models import Appointment, AppointmentStatus, PaymentStatus
+    from app.services.billing_service import billing_service
+    from app.api.v1.endpoints.webhooks import finalize_paid_appointment
 
     db = SessionLocal()
     try:
@@ -81,14 +83,49 @@ def cancel_stale_awaiting_payment_appointments(self):
             Appointment.status == AppointmentStatus.AWAITING_PAYMENT,
             Appointment.created_at < cutoff,
         ).all()
+
+        cancelled = 0
+        recovered = 0
         for apt in stale:
+            # Live incident (2026-08-18): a real patient payment confirmed
+            # successful on Paystack sat in AWAITING_PAYMENT because the
+            # webhook that should have confirmed it never arrived (an
+            # unrelated nginx bug, since fixed) — this task would have
+            # cancelled a genuinely paid booking with no recovery path.
+            # Always check with Paystack directly before cancelling: the
+            # webhook is the *normal* confirmation path, not the *only*
+            # possible one, and a delayed/lost webhook must not cost a
+            # patient their paid booking.
+            paid = False
+            if apt.payment_provider_ref:
+                try:
+                    result = run_async(billing_service.paystack.verify_transaction(apt.payment_provider_ref, retries=1))
+                    data = result.get("data") or {}
+                    if result.get("verified") and data.get("status") == "success":
+                        paid = True
+                except Exception as exc:
+                    logger.error(f"[stale_payment_cleanup] Paystack verify failed for {apt.payment_provider_ref}: {exc}")
+
+            if paid:
+                finalize_paid_appointment(apt, data, db)
+                recovered += 1
+                logger.warning(
+                    f"[stale_payment_cleanup] Appointment {apt.id} was actually paid — "
+                    f"recovered instead of cancelled (webhook must have been missed)."
+                )
+                continue
+
             apt.status = AppointmentStatus.CANCELLED
             apt.payment_status = PaymentStatus.FAILED
             apt.cancelled_reason = "Payment not completed within time limit"
             apt.cancelled_at = utcnow()
+            cancelled += 1
         db.commit()
-        logger.info(f"[stale_payment_cleanup] Cancelled {len(stale)} abandoned checkout appointments")
-        return {"cancelled": len(stale)}
+        logger.info(
+            f"[stale_payment_cleanup] Cancelled {cancelled} abandoned checkout appointments, "
+            f"recovered {recovered} that had actually been paid"
+        )
+        return {"cancelled": cancelled, "recovered": recovered}
     except Exception as exc:
         db.rollback()
         logger.error(f"[stale_payment_cleanup] Failed: {exc}")
@@ -681,6 +718,44 @@ def expire_trial_subscriptions(self):
         # un-expired (and still is_listed=True) until the next daily tick.
         db.rollback()
         logger.error(f"expire_trial_subscriptions error: {e}")
+        raise self.retry(exc=e, countdown=300 * (2 ** self.request.retries))
+    finally:
+        db.close()
+
+
+@celery.task(bind=True, max_retries=3, autoretry_for=(Exception,), retry_backoff=10, retry_jitter=True, queue="billing")
+def expire_paid_subscriptions(self):
+    """
+    Every payment in this system is a one-time bank transfer — there is no
+    recurring/auto-debit charge anywhere. Nothing else in the codebase ever
+    re-checks an ACTIVE subscription's current_period_end once it's been
+    set active; trial_guard.py's access checks only ever look at
+    sub.status == "active", never the date. Without this task, a clinic
+    that pays once keeps full paid access forever after their period ends,
+    unless an admin happens to notice and manually revoke it via
+    admin_subscriptions.py — a real, ongoing revenue leak. Mirrors
+    expire_trial_subscriptions immediately above/below in this file.
+    """
+    db = SessionLocal()
+    try:
+        from app.models.models import Subscription, SubscriptionStatus, Clinic
+        now = utcnow()
+        expired = db.query(Subscription).filter(
+            Subscription.status == SubscriptionStatus.ACTIVE,
+            Subscription.current_period_end < now,
+        ).all()
+        for sub in expired:
+            sub.status = SubscriptionStatus.EXPIRED
+            logger.info(f"Paid subscription expired: subscription={sub.id} clinic={sub.clinic_id}")
+        if expired:
+            db.query(Clinic).filter(Clinic.id.in_([s.clinic_id for s in expired])).update(
+                {"is_listed": False}, synchronize_session=False
+            )
+        db.commit()
+        logger.info(f"Expired {len(expired)} paid subscriptions")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"expire_paid_subscriptions error: {e}")
         raise self.retry(exc=e, countdown=300 * (2 ** self.request.retries))
     finally:
         db.close()

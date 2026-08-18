@@ -40,6 +40,10 @@ beat_schedule = {
         "task": "app.workers.tasks.expire_trial_subscriptions",
         "schedule": crontab(hour=0, minute=0),
     },
+    "expire-paid-subscriptions": {
+        "task": "app.workers.tasks.expire_paid_subscriptions",
+        "schedule": crontab(minute=0),
+    },
     "retry-failed-notifications": {
         "task": "app.workers.tasks.retry_failed_notifications",
         "schedule": 600.0,
@@ -177,6 +181,7 @@ celery.conf.update(
         "app.workers.tasks.handle_no_show_followup":        {"queue": "notifications"},
         "app.workers.tasks.send_trial_nudges":              {"queue": "billing"},
         "app.workers.tasks.expire_trial_subscriptions":     {"queue": "billing"},
+        "app.workers.tasks.expire_paid_subscriptions":      {"queue": "billing"},
         "app.workers.tasks.retry_failed_notifications":     {"queue": "notifications"},
         "app.workers.tasks.retry_failed_payments":          {"queue": "billing"},
         "app.workers.tasks.auto_send_pending_payouts":      {"queue": "billing"},

@@ -464,6 +464,9 @@ def cancel_appointment(
     apt.cancelled_at = utcnow()
     db.commit()
 
+    from app.api.v1.endpoints.webhooks import void_payout_for_cancelled_appointment
+    void_payout_for_cancelled_appointment(apt, db)
+
     background_tasks.add_task(_dispatch_waiting_list, apt.clinic_id, apt.doctor_id, slot_iso)
     log_booking_event("cancelled", apt.id, clinic.id)
     return {"message": "Appointment cancelled", "id": appointment_id}

@@ -148,11 +148,20 @@ def apply_referral_discount(amount, clinic_id: str, db: Session):
     after the plan's base price is computed, before the PendingSubscription
     Payment row (and therefore the Paystack charge / exact-match target) is
     built. If this clinic (as a referrer) has an earned-but-unredeemed 10%
-    discount, applies it and marks that one credit 'credited' — capped at
-    one discount per invoice cycle even if multiple credits are pending
-    (oldest first). Returns the (possibly discounted) amount; on any error
-    returns the original amount unchanged so a bug here can never block
-    checkout.
+    discount, applies it to the charge amount — but does NOT yet mark the
+    credit spent (that used to happen right here, which meant a checkout
+    that then failed, expired, or came back amount-mismatched had already
+    permanently burned the referrer's discount for a payment that never
+    completed). Marking it spent is deferred to redeem_referral_discount(),
+    called only once the payment actually confirms — see
+    BillingService.finalize_paystack_payment. Capped at one discount per
+    invoice cycle even if multiple credits are pending (oldest first).
+
+    Returns (amount, referral_id_or_None) — the caller must persist
+    referral_id somewhere tied to this specific checkout attempt (e.g.
+    PendingSubscriptionPayment.provider_response) so the confirmation step
+    knows which credit to redeem. On any error returns the original amount
+    unchanged with no referral so a bug here can never block checkout.
     """
     try:
         from app.models.models import Referral, ReferralStatus
@@ -164,20 +173,44 @@ def apply_referral_discount(amount, clinic_id: str, db: Session):
             .first()
         )
         if not referral:
-            return amount
+            return amount, None
 
         discounted = round(float(amount) * (1 - REFERRAL_DISCOUNT_PCT), 2)
+        return discounted, referral.id
+    except Exception:
+        db.rollback()
+        logger.error("apply_referral_discount failed — charging full price", exc_info=True)
+        return amount, None
+
+
+def redeem_referral_discount(referral_id: Optional[str], db: Session) -> None:
+    """
+    Marks a referral credit actually spent — called only once the checkout
+    it was applied to (via apply_referral_discount above) has been
+    confirmed paid, from BillingService.finalize_paystack_payment. If the
+    checkout instead failed/expired/mismatched, this is simply never
+    called and the credit stays in PAID status, available to be applied to
+    the clinic's next checkout attempt.
+    """
+    if not referral_id:
+        return
+    try:
+        from app.models.models import Referral, ReferralStatus
+
+        referral = db.query(Referral).filter(
+            Referral.id == referral_id, Referral.status == ReferralStatus.PAID
+        ).first()
+        if not referral:
+            return  # already redeemed or no longer valid — nothing to do
 
         referral.status = ReferralStatus.CREDITED
         referral.credited_at = utcnow()
         db.commit()
 
         log_payment_event(
-            "referral_discount_applied", "paystack", None, clinic_id,
-            discounted, "success", extra={"referral_id": referral.id, "original_amount": float(amount)},
+            "referral_discount_applied", "paystack", None, None,
+            0, "success", extra={"referral_id": referral.id},
         )
-        return discounted
     except Exception:
         db.rollback()
-        logger.error("apply_referral_discount failed — charging full price", exc_info=True)
-        return amount
+        logger.error("redeem_referral_discount failed", exc_info=True)

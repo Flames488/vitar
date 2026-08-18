@@ -95,6 +95,7 @@ class PayoutStatus(str, enum.Enum):
     PENDING_PAYOUT = "pending_payout"
     SENT = "sent"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 class Region(str, enum.Enum):
     NG = "NG"
@@ -1023,6 +1024,8 @@ class NotificationEventType(str, enum.Enum):
     AGENT_FAILED = "agent_failed"
     SUBSCRIPTION_PAID = "subscription_paid"
     SUBSCRIPTION_OVERRIDE = "subscription_override"
+    APPOINTMENT_REFUND_NEEDED = "appointment_refund_needed"
+    PAYOUT_BLOCKED_NO_BANK = "payout_blocked_no_bank"
 
 
 class AgentNotification(Base):

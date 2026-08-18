@@ -128,6 +128,57 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
     return payout
 
 
+def void_payout_for_cancelled_appointment(appointment, db: Session) -> None:
+    """
+    Called from every appointment-cancellation path (staff-side DELETE and
+    the patient's self-service cancel link) right after the appointment
+    itself is cancelled. Without this, a Payout row created by
+    finalize_paid_appointment() above is otherwise completely unconditional
+    — it goes out to the clinic on its normal schedule regardless of
+    whether the visit still happens, i.e. the clinic gets paid for a
+    cancelled booking with no refund path for the patient at all.
+
+    If the payout hasn't gone out yet, cancel it outright (the auto-send
+    job only ever picks up PENDING_PAYOUT rows, so this fully stops it).
+    If it already went out, the money already left Vitar's account —
+    there's no safe way to auto-reverse that here, so this raises a
+    Telegram alert instead of pretending to fix it silently.
+    """
+    from app.models.models import PaymentStatus, Payout, PayoutStatus, Clinic
+    from app.services.notifications import notify
+
+    if appointment.payment_status != PaymentStatus.PAID:
+        return
+    payout = db.query(Payout).filter(Payout.appointment_id == appointment.id).first()
+    if not payout:
+        return
+
+    clinic = db.query(Clinic).filter(Clinic.id == appointment.clinic_id).first()
+    clinic_name = clinic.name if clinic else "a clinic"
+
+    if payout.status == PayoutStatus.PENDING_PAYOUT.value:
+        payout.status = PayoutStatus.CANCELLED.value
+        db.commit()
+        notify(
+            event_type="appointment_refund_needed",
+            agent_name="billing",
+            message=f"A paid appointment at {clinic_name} was cancelled — payout stopped before it went "
+                    f"out, but the patient already paid and needs a manual refund.",
+            related_id=appointment.id,
+            link_path="/admin/payouts",
+        )
+    elif payout.status == PayoutStatus.SENT.value:
+        notify(
+            event_type="appointment_refund_needed",
+            agent_name="billing",
+            message=f"A paid appointment at {clinic_name} was cancelled AFTER the payout already went "
+                    f"out to the clinic. Needs manual reconciliation — claw back from the clinic or "
+                    f"refund the patient yourself.",
+            related_id=appointment.id,
+            link_path="/admin/payouts",
+        )
+
+
 # ─── Paystack Webhook ────────────────────────────────────────────────────────
 
 @router.post("/paystack")
@@ -406,11 +457,54 @@ async def _handle_cancellation(provider: str, subscription_id: str, db: Session)
 
 
 async def _handle_payment_failed(provider: str, data: dict, db: Session):
+    """
+    Used to only log this event — nothing anywhere ever wrote a
+    SubscriptionPayment row with status=FAILED, which is exactly the
+    state retry_failed_payments (workers/tasks.py) scans for. That task
+    has therefore never had anything to find since the day it was written
+    — a failed charge produced a log line no one was watching and then
+    disappeared. This now writes the row the dunning task actually needs.
+    """
     try:
-        metadata = data.get("metadata") or {}
+        from app.models.models import Subscription, SubscriptionPayment, PaymentStatus, PaymentProvider
+
+        metadata = data.get("metadata") or data.get("extra_data") or {}
         clinic_id = metadata.get("clinic_id")
-        log_payment_event("payment_failed", provider, data.get("id", ""), clinic_id)
+        reference = data.get("reference") or data.get("id") or ""
+        amount = float(data.get("amount") or data.get("amount_due") or 0) / 100
+        currency = data.get("currency", "NGN")
+
+        log_payment_event("payment_failed", provider, reference, clinic_id)
+
+        if not clinic_id:
+            return  # no clinic to attach the failure record to
+
+        sub = db.query(Subscription).filter(Subscription.clinic_id == clinic_id).first()
+        if not sub:
+            return
+
+        prov_enum = PaymentProvider.PAYSTACK if provider == "paystack" else PaymentProvider.STRIPE
+        existing = (
+            db.query(SubscriptionPayment).filter(SubscriptionPayment.provider_reference == reference).first()
+            if reference else None
+        )
+        if existing:
+            existing.status = PaymentStatus.FAILED
+            existing.failed_at = utcnow()
+        else:
+            db.add(SubscriptionPayment(
+                subscription_id=sub.id,
+                provider=prov_enum,
+                provider_reference=reference or None,  # unique=True — never store "" for a missing ref
+                amount=amount,
+                currency=currency,
+                status=PaymentStatus.FAILED,
+                failed_at=utcnow(),
+                extra_data={"raw_event_keys": list(data.keys())},
+            ))
+        db.commit()
     except Exception as exc:
+        db.rollback()
         logger.error(f"_handle_payment_failed failed: {exc}")
 
 

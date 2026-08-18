@@ -9,7 +9,7 @@
  * installed, and falls back to WhatsApp Web in the browser when it isn't —
  * no separate device-detection branch needed.
  */
-export const VITAR_SALES_WHATSAPP = '2347016479713';
+export const VITAR_SALES_WHATSAPP = '2348156792070';
 
 export function buildEnterpriseWhatsAppUrl(hospitalName?: string, doctorCount?: number): string {
   const lines = [

@@ -16,6 +16,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Reveal from '@/components/marketing/Reveal';
 import InstallAppButton from '@/components/shared/InstallAppButton';
 import { publicClinicsApi } from '@/lib/api/services';
+import { VITAR_SALES_WHATSAPP } from '@/lib/whatsapp';
 import { useGeoStore } from '@/stores/geoStore';
 import '@/styles/landing.css';
 
@@ -615,7 +616,7 @@ export default function LandingPage() {
               <Link to="/contact">Contact</Link>
               <Link to="/feedback">Give feedback</Link>
               <a href="mailto:vitarhealthcare@gmail.com">vitarhealthcare@gmail.com</a>
-              <a href="https://wa.me/2347016479713" target="_blank" rel="noopener">WhatsApp: +234 701 647 9713</a>
+              <a href={`https://wa.me/${VITAR_SALES_WHATSAPP}`} target="_blank" rel="noopener">WhatsApp: +234 815 679 2070</a>
             </div>
             <div className="col">
               <span className="col-title">Legal</span>

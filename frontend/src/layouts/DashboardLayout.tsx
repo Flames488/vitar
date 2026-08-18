@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Calendar, Users, UserCheck, BarChart3,
   Banknote, Settings, Brain, Clock, Bell, LogOut, Menu,
   X, AlertTriangle, MessageSquare, ListOrdered, QrCode,
-  ChevronRight, Sparkles,
+  ChevronRight, Sparkles, LifeBuoy, Mail,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useGeoStore } from '@/stores/geoStore';
@@ -20,6 +20,12 @@ import VitarLogo from '@/components/shared/VitarLogo';
 import InstallAppButton from '@/components/shared/InstallAppButton';
 import FirstLoginInstallPrompt from '@/components/shared/FirstLoginInstallPrompt';
 import FirstLoginPushPrompt from '@/components/shared/FirstLoginPushPrompt';
+import { VITAR_SALES_WHATSAPP } from '@/lib/whatsapp';
+
+// Same official Vitar support channels used platform-wide (marketing pages,
+// lib/whatsapp.ts) — one number, one inbox, reused rather than introducing
+// a third contact point just for the dashboard.
+const SUPPORT_EMAIL = 'vitarhealthcare@gmail.com';
 
 const NAV_GROUPS = [
   {
@@ -59,6 +65,7 @@ export default function DashboardLayout() {
   const { user, clinic, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const navigate = useNavigate();
 
   const trial = clinic?.trial;
@@ -312,6 +319,54 @@ export default function DashboardLayout() {
 
       <FirstLoginInstallPrompt />
       <FirstLoginPushPrompt />
+
+      {/* Help bubble — reach the Vitar team directly via WhatsApp or email */}
+      <div className="fixed bottom-6 z-40" style={{ right: '84px' }}>
+        {helpOpen && (
+          <div
+            className="absolute bottom-16 right-0 w-60 rounded-xl bg-white overflow-hidden"
+            style={{ boxShadow: '0 10px 32px rgba(0,0,0,0.16)', border: '1px solid rgba(0,0,0,0.06)' }}
+          >
+            <p className="px-4 pt-3 pb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+              Need help? Contact us
+            </p>
+            <a
+              href={`https://wa.me/${VITAR_SALES_WHATSAPP}?text=${encodeURIComponent(
+                `Hi, I need help with my Vitar account${clinic?.name ? ` (${clinic.name})` : ''}.`,
+              )}`}
+              target="_blank"
+              rel="noopener"
+              onClick={() => setHelpOpen(false)}
+              className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <MessageSquare className="w-4 h-4 text-teal-600 flex-shrink-0" />
+              WhatsApp
+            </a>
+            <a
+              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
+                `Support request${clinic?.name ? ` — ${clinic.name}` : ''}`,
+              )}`}
+              onClick={() => setHelpOpen(false)}
+              className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <Mail className="w-4 h-4 text-teal-600 flex-shrink-0" />
+              Email
+            </a>
+          </div>
+        )}
+        <button
+          onClick={() => setHelpOpen((o) => !o)}
+          className="flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+          style={{
+            width: '52px', height: '52px', borderRadius: '1rem',
+            background: '#fff', border: '1px solid rgba(0,0,0,0.08)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          }}
+          title="Help"
+        >
+          <LifeBuoy className="w-5 h-5" style={{ color: '#0d9488' }} />
+        </button>
+      </div>
 
       {/* AI Chatbot bubble */}
       <div className="fixed bottom-6 right-6 z-40">

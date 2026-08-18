@@ -125,37 +125,15 @@ function ClinicLogoPanel() {
   );
 }
 
-// ── Payment collection toggle ─────────────────────────────────────────────────
-// Controls whether patients must pay before an appointment is confirmed. When
-// on, the booking flow always collects payment through Paystack's checkout —
-// there is no manual/unverified payment path, so patients can't claim they
-// paid when they didn't; only a Paystack webhook can mark an appointment paid.
-
-interface PaymentToggleFormValues {
-  patient_payment_enabled: boolean;
-}
+// ── Payment collection (platform policy, always on) ───────────────────────────
+// Every clinic requires patient payment before booking — this used to be a
+// per-clinic toggle, but it's now a fixed platform policy the backend won't
+// let a clinic turn off (clinics.py silently drops any attempt to unset it).
+// Shown here as a locked/informational state instead of an interactive
+// checkbox so the UI doesn't imply a choice that no longer exists — a
+// clinic can still set (or leave unset) their own consultation fee.
 
 function PaymentTogglePanel() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['clinic-me'],
-    queryFn: clinicsApi.getMe,
-  });
-
-  const { register, handleSubmit, formState: { isSubmitting } } = useForm<PaymentToggleFormValues>({
-    values: {
-      patient_payment_enabled: data?.patient_payment_enabled ?? false,
-    },
-  });
-
-  const mutation = useMutation({
-    mutationFn: (values: PaymentToggleFormValues) =>
-      clinicsApi.update({ patient_payment_enabled: values.patient_payment_enabled }),
-    onSuccess: () => toast.success('Payment settings saved'),
-    onError: () => toast.error('Failed to save payment settings'),
-  });
-
-  if (isLoading) return null;
-
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
       <div className="flex items-center gap-2">
@@ -166,32 +144,18 @@ function PaymentTogglePanel() {
       <div className="flex items-start gap-3 rounded-lg bg-blue-50 border border-blue-100 p-3">
         <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
         <p className="text-xs text-blue-700 leading-relaxed">
-          When enabled, patients pay their consultation fee through Paystack's secure checkout
-          right after booking. The appointment only moves to confirmed once Paystack verifies
-          the payment — there's no manual "I already paid" step, so there's nothing for a
-          patient to dispute.
+          Patients pay their consultation fee through Paystack's secure checkout right after
+          booking. The appointment only moves to confirmed once Paystack verifies the payment —
+          there's no manual "I already paid" step, so there's nothing for a patient to dispute.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="space-y-4">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            {...register('patient_payment_enabled')}
-            className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300"
-          />
-          <span className="text-sm font-medium text-slate-700">Require payment before appointments</span>
-        </label>
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-        >
-          {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-          Save Payment Settings
-        </button>
-      </form>
+      <div className="flex items-center gap-3 rounded-lg bg-slate-50 border border-slate-200 p-3">
+        <span className="w-4 h-4 rounded-full bg-teal-600 shrink-0" />
+        <span className="text-sm font-medium text-slate-700">
+          Payment before booking is required for every clinic and can't be turned off.
+        </span>
+      </div>
     </div>
   );
 }

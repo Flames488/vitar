@@ -7,6 +7,7 @@
  * (email, WhatsApp, enterprise) are the actual way to reach the team.
  */
 import MarketingSubpageChrome from '@/components/marketing/MarketingSubpageChrome';
+import { VITAR_SALES_WHATSAPP } from '@/lib/whatsapp';
 import '@/styles/landing.css';
 
 export default function ContactPage() {
@@ -52,7 +53,7 @@ export default function ContactPage() {
                 <div>
                   <h3>WhatsApp / Call</h3>
                   <p>Chat with our team the same way your patients will.</p>
-                  <a className="link" href="https://wa.me/2347016479713" target="_blank" rel="noopener">+234 701 647 9713</a>
+                  <a className="link" href={`https://wa.me/${VITAR_SALES_WHATSAPP}`} target="_blank" rel="noopener">+234 815 679 2070</a>
                 </div>
               </div>
             </div>

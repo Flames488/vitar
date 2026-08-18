@@ -167,12 +167,9 @@ class Clinic(Base):
     trial_bookings_used = Column(Integer, default=0)
     
     # Features
-    # Platform policy: every clinic requires patient payment before booking
-    # — this can no longer be disabled per-clinic (see clinics.py's
-    # update_clinic, which now silently drops any attempt to unset it).
-    # Kept as a real column (not hardcoded True everywhere) so a future,
-    # deliberate per-clinic exemption stays a one-line change instead of
-    # a hunt through every call site.
+    # Defaults on for every new clinic (patients pay before booking) — still
+    # a real per-clinic toggle a clinic can switch off in Settings if they
+    # want free booking, not a locked platform policy.
     patient_payment_enabled = Column(Boolean, default=True)
     consultation_fee = Column(Numeric(12, 2), default=0)
     booking_page_enabled = Column(Boolean, default=True)

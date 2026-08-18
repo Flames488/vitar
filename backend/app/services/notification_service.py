@@ -6,6 +6,7 @@ Supports Termii (NG), Twilio (Global), WhatsApp Cloud API, SendGrid.
 
 import httpx
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 from enum import Enum
@@ -16,6 +17,25 @@ from app.core.config import settings
 from app.core.circuit_breaker import sms_breaker, whatsapp_breaker, email_breaker
 
 logger = logging.getLogger(__name__)
+
+
+def to_whatsapp_phone(phone: str) -> str:
+    """
+    Normalizes a Nigerian phone number to the international-digits-only
+    format WhatsApp Cloud API requires ("234..."). Numbers are stored
+    inconsistently across the app — some with a "+234" prefix from
+    signup, most as raw local "0..." numbers — and send_whatsapp() itself
+    only strips a leading "+", it doesn't convert local-format numbers.
+    Passing a bare local number straight to the Cloud API silently fails
+    (wrong country code), so every WhatsApp send must go through this
+    first.
+    """
+    digits = re.sub(r"\D", "", phone or "")
+    if digits.startswith("234"):
+        return digits
+    if digits.startswith("0"):
+        return "234" + digits[1:]
+    return digits
 
 
 # ─── Channel Enums ────────────────────────────────────────────────────────────

@@ -69,14 +69,6 @@ def update_clinic(
 ):
     data = body.model_dump(exclude_none=True)
 
-    # Platform policy: patient payment is required for every clinic and
-    # can no longer be turned off per-clinic (see the column comment in
-    # models.py) — silently drop an attempt to disable it rather than
-    # error, so an older/cached frontend that still renders the toggle
-    # doesn't break, it just has no effect.
-    if data.get("patient_payment_enabled") is False:
-        data.pop("patient_payment_enabled")
-
     # Map frontend field names to model column names
     field_map = {
         "bank_name": "paystack_bank_name",

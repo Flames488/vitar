@@ -227,6 +227,29 @@ def notify_new_booking(self, appointment_id: str):
                 appointment_id=str(apt.id),
             ))
 
+        # ── WhatsApp ──────────────────────────────────────────────────────
+        # Uses the same WhatsApp Cloud API path patient reminders already go
+        # through (notification_service.send_whatsapp) — no separate
+        # integration needed. No-ops cleanly (logs and returns) until
+        # WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID are configured; not
+        # set on this deployment yet, so this currently logs "not
+        # configured" rather than actually sending — starts working the
+        # moment those two env vars are added, no code change needed then.
+        if clinic.phone:
+            from app.services.notification_service import send_whatsapp, to_whatsapp_phone
+
+            scheduled_str = apt.scheduled_at.strftime("%A, %B %d at %I:%M %p")
+            wa_message = (
+                f"New appointment booked at {clinic.name}:\n"
+                f"Patient: {patient.full_name} ({patient.phone or 'no phone on file'})\n"
+                f"Doctor: Dr. {doctor_name}\n"
+                f"When: {scheduled_str}"
+                + (f"\nReason: {apt.reason}" if apt.reason else "")
+            )
+            wa_result = run_async(send_whatsapp(to_whatsapp_phone(clinic.phone), wa_message))
+            if not wa_result.success:
+                logger.info(f"notify_new_booking: WhatsApp not sent to clinic — {wa_result.error}")
+
     except Exception as exc:
         db.rollback()
         logger.error(f"notify_new_booking failed: {exc}", exc_info=True)

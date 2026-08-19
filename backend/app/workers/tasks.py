@@ -902,13 +902,46 @@ def retry_failed_payments(self):
         db.close()
 
 
+def _send_one_payout_isolated(payout_id: str):
+    """
+    Runs send_payout_to_hospital in its own DB session, for use inside a
+    worker thread with a hard timeout (see auto_send_pending_payouts) — it
+    must NOT share the caller's session, because if the timeout fires the
+    thread is abandoned (still running) rather than killed, and a shared
+    SQLAlchemy session isn't safe to touch from two threads at once.
+    """
+    from app.api.v1.endpoints.admin_payouts import send_payout_to_hospital
+
+    thread_db = SessionLocal()
+    try:
+        run_async(send_payout_to_hospital(payout_id, thread_db))
+    finally:
+        thread_db.close()
+
+
 @celery.task(bind=True, max_retries=2, autoretry_for=(Exception,), retry_backoff=30, retry_jitter=True, queue="billing")
 def auto_send_pending_payouts(self):
+    """
+    Live incident (2026-08-19): a send attempt for one payout hung for
+    60s+ and got hard-killed by Celery's 180s task time limit, every hour
+    it was retried — burning this task's whole time budget on a single
+    payout that could never succeed (a Paystack account-tier restriction,
+    unrelated to this code). Traced the hang past both the DB lock
+    (SELECT ... FOR UPDATE, now has its own statement_timeout — see
+    admin_payouts.py) and the Paystack HTTP call (which has its own 20s
+    httpx timeout and was fast when called in isolation) without finding
+    a single fixable root cause — so instead of chasing it further, each
+    attempt now runs in its own thread with a hard wall-clock timeout.
+    A stuck attempt gets abandoned (not killed — Python can't force-kill a
+    thread) rather than blocking every other pending payout and the whole
+    task behind it.
+    """
+    import concurrent.futures
+
     db = SessionLocal()
     try:
         from app.core.config import settings
         from app.models.models import Payout, PayoutStatus
-        from app.api.v1.endpoints.admin_payouts import send_payout_to_hospital
 
         cutoff = utcnow() - timedelta(hours=settings.PAYOUT_AUTO_SEND_AFTER_HOURS)
         pending = db.query(Payout).filter(
@@ -918,16 +951,25 @@ def auto_send_pending_payouts(self):
 
         sent = 0
         failed = 0
+        timed_out = 0
         for payout in pending:
-            try:
-                run_async(send_payout_to_hospital(payout.id, db))
-                sent += 1
-            except Exception as exc:
-                failed += 1
-                logger.error(f"auto_send_pending_payouts failed for payout={payout.id}: {exc}")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_send_one_payout_isolated, payout.id)
+                try:
+                    future.result(timeout=25)
+                    sent += 1
+                except concurrent.futures.TimeoutError:
+                    timed_out += 1
+                    logger.error(
+                        f"auto_send_pending_payouts: payout={payout.id} timed out after 25s "
+                        f"(abandoned, not killed) — will be retried next hour"
+                    )
+                except Exception as exc:
+                    failed += 1
+                    logger.error(f"auto_send_pending_payouts failed for payout={payout.id}: {exc}")
 
-        logger.info(f"auto_send_pending_payouts: sent={sent} failed={failed}")
-        return {"sent": sent, "failed": failed}
+        logger.info(f"auto_send_pending_payouts: sent={sent} failed={failed} timed_out={timed_out}")
+        return {"sent": sent, "failed": failed, "timed_out": timed_out}
     finally:
         db.close()
 

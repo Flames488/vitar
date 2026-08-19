@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -36,6 +37,15 @@ def serialize_payout(payout: Payout, clinic: Optional[Clinic] = None) -> dict:
 
 
 async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
+    # Guard against an indefinite hang: SELECT ... FOR UPDATE below has no
+    # timeout by default. Confirmed live — a run of this function hung for
+    # 60s+ and got hard-killed by Celery's 180s task time limit instead of
+    # failing cleanly (auto_send_pending_payouts was silently eating its
+    # whole time budget every hour on a payout that can never succeed —
+    # see the "starter business" Paystack restriction this specific payout
+    # hit). Bounding the lock wait to 10s turns a stuck lock into a normal,
+    # catchable exception instead of a task timeout.
+    db.execute(text("SET LOCAL statement_timeout = '10s'"))
     payout = db.query(Payout).filter(Payout.id == payout_id).with_for_update().first()
     if not payout:
         raise HTTPException(status_code=404, detail="Payout not found")

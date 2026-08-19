@@ -60,9 +60,23 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
     amount = amount_kobo / 100
     now = utcnow()
 
+    # Live discovery (2026-08-19): this used to split PLATFORM_PAYOUT_FEE_PCT
+    # off the raw patient-paid amount, ignoring that Paystack takes its own
+    # processing fee before anything ever reaches our settlement account.
+    # Real example: patient paid ₦5,000, Paystack's cut was ₦175 (3.5%,
+    # bank-transfer channel), we only netted ₦4,825 — but the old math still
+    # promised the clinic 98% of the original ₦5,000 (₦4,900), which is MORE
+    # than we actually received. Paystack includes its own fee on every
+    # transaction payload (`fees`, in kobo) — subtract that first to get
+    # what we actually netted, then split *that* between platform and
+    # clinic, so the two shares can never add up to more than we were
+    # actually paid.
+    paystack_fee_kobo = int(data.get("fees") or 0)
+    net_kobo = max(amount_kobo - paystack_fee_kobo, 0)
+
     fee_pct = max(0.0, min(1.0, settings.PLATFORM_PAYOUT_FEE_PCT))
-    platform_share_kobo = round(amount_kobo * fee_pct)
-    clinic_share_kobo = amount_kobo - platform_share_kobo
+    platform_share_kobo = round(net_kobo * fee_pct)
+    clinic_share_kobo = net_kobo - platform_share_kobo
     platform_share = platform_share_kobo / 100
     clinic_share = clinic_share_kobo / 100
 

@@ -953,20 +953,30 @@ def auto_send_pending_payouts(self):
         failed = 0
         timed_out = 0
         for payout in pending:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_send_one_payout_isolated, payout.id)
-                try:
-                    future.result(timeout=25)
-                    sent += 1
-                except concurrent.futures.TimeoutError:
-                    timed_out += 1
-                    logger.error(
-                        f"auto_send_pending_payouts: payout={payout.id} timed out after 25s "
-                        f"(abandoned, not killed) — will be retried next hour"
-                    )
-                except Exception as exc:
-                    failed += 1
-                    logger.error(f"auto_send_pending_payouts failed for payout={payout.id}: {exc}")
+            # Deliberately not a `with` block: ThreadPoolExecutor.__exit__
+            # calls shutdown(wait=True), which blocks until the submitted
+            # thread finishes — for an abandoned/stuck thread that's
+            # "finishes" as in "never", silently defeating the 25s timeout
+            # below by hanging here instead (confirmed live: the timeout
+            # log line fired correctly, then the task hung anyway waiting
+            # for the `with` block's own cleanup). shutdown(wait=False)
+            # returns immediately and truly abandons a stuck thread instead.
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(_send_one_payout_isolated, payout.id)
+            try:
+                future.result(timeout=25)
+                sent += 1
+            except concurrent.futures.TimeoutError:
+                timed_out += 1
+                logger.error(
+                    f"auto_send_pending_payouts: payout={payout.id} timed out after 25s "
+                    f"(abandoned, not killed) — will be retried next hour"
+                )
+            except Exception as exc:
+                failed += 1
+                logger.error(f"auto_send_pending_payouts failed for payout={payout.id}: {exc}")
+            finally:
+                executor.shutdown(wait=False)
 
         logger.info(f"auto_send_pending_payouts: sent={sent} failed={failed} timed_out={timed_out}")
         return {"sent": sent, "failed": failed, "timed_out": timed_out}

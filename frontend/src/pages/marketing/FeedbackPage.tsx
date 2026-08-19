@@ -9,6 +9,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import MarketingSubpageChrome from '@/components/marketing/MarketingSubpageChrome';
 import { submitFeedback } from '@/lib/marketingForms';
+import { VITAR_SUPPORT_EMAIL } from '@/lib/contact';
 import '@/styles/landing.css';
 
 export default function FeedbackPage() {
@@ -37,7 +38,7 @@ export default function FeedbackPage() {
         footerLinks={[
           { label: 'Home', to: '/' },
           { label: 'Sign up', to: '/register' },
-          { label: 'vitarhealthcare@gmail.com', href: 'mailto:vitarhealthcare@gmail.com' },
+          { label: VITAR_SUPPORT_EMAIL, href: `mailto:${VITAR_SUPPORT_EMAIL}` },
         ]}
       >
         <section className="hero">

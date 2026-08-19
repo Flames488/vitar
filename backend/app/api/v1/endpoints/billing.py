@@ -154,7 +154,7 @@ async def subscribe(
     if body.plan == "enterprise":
         raise HTTPException(
             status_code=400,
-            detail="Enterprise plan requires contacting sales. Please email vitarhealthcare@gmail.com",
+            detail="Enterprise plan requires contacting sales. Please email contact@livevault.cloud",
         )
 
     # create_automated_subscription_payment always goes through Paystack's
@@ -170,7 +170,7 @@ async def subscribe(
             status_code=400,
             detail=(
                 "Online self-service checkout isn't available in your currency yet. "
-                "Please email vitarhealthcare@gmail.com to subscribe."
+                "Please email contact@livevault.cloud to subscribe."
             ),
         )
 

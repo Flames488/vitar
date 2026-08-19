@@ -21,11 +21,7 @@ import InstallAppButton from '@/components/shared/InstallAppButton';
 import FirstLoginInstallPrompt from '@/components/shared/FirstLoginInstallPrompt';
 import FirstLoginPushPrompt from '@/components/shared/FirstLoginPushPrompt';
 import { VITAR_SALES_WHATSAPP } from '@/lib/whatsapp';
-
-// Same official Vitar support channels used platform-wide (marketing pages,
-// lib/whatsapp.ts) — one number, one inbox, reused rather than introducing
-// a third contact point just for the dashboard.
-const SUPPORT_EMAIL = 'vitarhealthcare@gmail.com';
+import { VITAR_SUPPORT_EMAIL as SUPPORT_EMAIL } from '@/lib/contact';
 
 const NAV_GROUPS = [
   {

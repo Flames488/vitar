@@ -8,6 +8,7 @@
  */
 import MarketingSubpageChrome from '@/components/marketing/MarketingSubpageChrome';
 import { VITAR_SALES_WHATSAPP } from '@/lib/whatsapp';
+import { VITAR_SUPPORT_EMAIL } from '@/lib/contact';
 import '@/styles/landing.css';
 
 export default function ContactPage() {
@@ -20,7 +21,7 @@ export default function ContactPage() {
           { label: 'Give feedback', to: '/feedback' },
           { label: 'Privacy Policy', to: '/privacy' },
           { label: 'Terms of Service', to: '/terms' },
-          { label: 'vitarhealthcare@gmail.com', href: 'mailto:vitarhealthcare@gmail.com' },
+          { label: VITAR_SUPPORT_EMAIL, href: `mailto:${VITAR_SUPPORT_EMAIL}` },
         ]}
       >
         <section className="hero">
@@ -37,7 +38,7 @@ export default function ContactPage() {
                 <div>
                   <h3>Email</h3>
                   <p>For general questions, demos, and support.</p>
-                  <a className="link" href="mailto:vitarhealthcare@gmail.com">vitarhealthcare@gmail.com</a>
+                  <a className="link" href={`mailto:${VITAR_SUPPORT_EMAIL}`}>{VITAR_SUPPORT_EMAIL}</a>
                 </div>
               </div>
               <div className="channel-card">
@@ -45,7 +46,7 @@ export default function ContactPage() {
                 <div>
                   <h3>Enterprise & sales</h3>
                   <p>Multi-branch clinics and hospital groups: add "Enterprise" to your subject line.</p>
-                  <a className="link" href="mailto:vitarhealthcare@gmail.com?subject=Enterprise%20enquiry">vitarhealthcare@gmail.com</a>
+                  <a className="link" href={`mailto:${VITAR_SUPPORT_EMAIL}?subject=Enterprise%20enquiry`}>{VITAR_SUPPORT_EMAIL}</a>
                 </div>
               </div>
               <div className="channel-card">

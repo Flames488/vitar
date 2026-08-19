@@ -17,6 +17,7 @@ import Reveal from '@/components/marketing/Reveal';
 import InstallAppButton from '@/components/shared/InstallAppButton';
 import { publicClinicsApi } from '@/lib/api/services';
 import { VITAR_SALES_WHATSAPP } from '@/lib/whatsapp';
+import { VITAR_SUPPORT_EMAIL } from '@/lib/contact';
 import { useGeoStore } from '@/stores/geoStore';
 import '@/styles/landing.css';
 
@@ -615,7 +616,7 @@ export default function LandingPage() {
               <Link to="/growth">Our growth</Link>
               <Link to="/contact">Contact</Link>
               <Link to="/feedback">Give feedback</Link>
-              <a href="mailto:vitarhealthcare@gmail.com">vitarhealthcare@gmail.com</a>
+              <a href={`mailto:${VITAR_SUPPORT_EMAIL}`}>{VITAR_SUPPORT_EMAIL}</a>
               <a href={`https://wa.me/${VITAR_SALES_WHATSAPP}`} target="_blank" rel="noopener">WhatsApp: +234 815 679 2070</a>
             </div>
             <div className="col">

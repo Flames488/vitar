@@ -4,6 +4,7 @@
  */
 import MarketingSubpageChrome from '@/components/marketing/MarketingSubpageChrome';
 import { VITAR_SALES_WHATSAPP } from '@/lib/whatsapp';
+import { VITAR_SUPPORT_EMAIL } from '@/lib/contact';
 import '@/styles/landing.css';
 
 export default function TermsPage() {
@@ -65,7 +66,7 @@ export default function TermsPage() {
           <p>We'll update this page if these terms change materially, and note the date below. Continued use after an update means you accept the revised terms.</p>
 
           <h2>10. Contact</h2>
-          <p>Questions about these terms can be sent to <a href="mailto:vitarhealthcare@gmail.com">vitarhealthcare@gmail.com</a> or via <a href={`https://wa.me/${VITAR_SALES_WHATSAPP}`} target="_blank" rel="noopener">WhatsApp</a>.</p>
+          <p>Questions about these terms can be sent to <a href={`mailto:${VITAR_SUPPORT_EMAIL}`}>{VITAR_SUPPORT_EMAIL}</a> or via <a href={`https://wa.me/${VITAR_SALES_WHATSAPP}`} target="_blank" rel="noopener">WhatsApp</a>.</p>
 
           <p style={{ marginTop: 32, fontSize: '0.82rem', color: 'var(--slate)' }}>Last updated: draft, not yet published.</p>
         </div>

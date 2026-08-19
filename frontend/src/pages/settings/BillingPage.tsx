@@ -17,6 +17,7 @@ import { getCurrencyFormat } from '@/lib/currency';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
 import { buildEnterpriseWhatsAppUrl } from '@/lib/whatsapp';
+import { VITAR_SUPPORT_EMAIL } from '@/lib/contact';
 import ReferralCard from '@/components/shared/ReferralCard';
 
 const PLAN_ICONS = { basic: Zap, pro: CheckCircle, enterprise: Building };
@@ -155,7 +156,7 @@ function BankTransferModal({
             <p className="font-semibold text-red-800">Wrong payment amount detected.</p>
             <p className="text-sm text-red-700">
               Contact support at{' '}
-              <a href="mailto:vitarhealthcare@gmail.com" className="underline font-medium">vitarhealthcare@gmail.com</a>.
+              <a href={`mailto:${VITAR_SUPPORT_EMAIL}`} className="underline font-medium">{VITAR_SUPPORT_EMAIL}</a>.
             </p>
           </div>
         )}
@@ -219,8 +220,8 @@ function BankTransferModal({
             ) : (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                 Bank details not configured yet. Please contact{' '}
-                <a href="mailto:vitarhealthcare@gmail.com" className="font-medium underline">
-                  vitarhealthcare@gmail.com
+                <a href={`mailto:${VITAR_SUPPORT_EMAIL}`} className="font-medium underline">
+                  {VITAR_SUPPORT_EMAIL}
                 </a>{' '}
                 to complete your subscription.
               </div>
@@ -599,7 +600,7 @@ export default function BillingPage() {
                   </a>
                 ) : !canSelfServe ? (
                   <a
-                    href="mailto:vitarhealthcare@gmail.com"
+                    href={`mailto:${VITAR_SUPPORT_EMAIL}`}
                     className="flex items-center justify-center gap-2 border-2 border-slate-300 hover:border-teal-500 text-slate-700 hover:text-teal-700 font-semibold py-2.5 rounded-xl transition-colors text-center text-sm"
                   >
                     Contact us to subscribe

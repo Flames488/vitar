@@ -1,15 +1,20 @@
 """
-Vitar — Admin Dashboard: Booking Payments
+Vitar — Admin Dashboard: Booking Payments (+ their payout status)
 
 GET /api/v1/admin/booking-payments   Every patient payment for a clinic
-                                      appointment, platform-wide.
+                                      appointment, platform-wide, together
+                                      with the matching payout's status.
 
 Reads PatientPayment (app/models/models.py) — the record
 finalize_paid_appointment (webhooks.py) creates the moment a patient's
-booking payment is confirmed. This is the read side that lets the admin
-see every booking payment across every clinic in one place, instead of
-only finding out one exists by chasing down an individual appointment
-(which is how the Aproko Nation Foundation payment was originally found).
+booking payment is confirmed — joined with its Payout (1:1 via
+appointment_id, always created in the same transaction). Deliberately
+merged into one view rather than split across "Booking Payments" and
+"Payouts" pages: the two used to live separately and it was genuinely
+confusing to see "paid" on one page and "pending payout" on another for
+the same booking, with no way to tell from either page alone that they
+were describing two different legs of the same transaction. One row now
+tells the whole story: did the patient pay, and did the clinic get paid.
 """
 
 from typing import Optional
@@ -19,12 +24,17 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_superadmin
-from app.models.models import Clinic, Patient, PatientPayment, User
+from app.models.models import Clinic, Patient, PatientPayment, Payout, User
 
 router = APIRouter(prefix="/admin/booking-payments", tags=["Admin — Booking Payments"])
 
 
-def _serialize(payment: PatientPayment, clinic_name: Optional[str], patient_name: Optional[str]) -> dict:
+def _serialize(
+    payment: PatientPayment,
+    clinic_name: Optional[str],
+    patient_name: Optional[str],
+    payout: Optional[Payout],
+) -> dict:
     return {
         "id": payment.id,
         "appointment_id": payment.appointment_id,
@@ -40,6 +50,12 @@ def _serialize(payment: PatientPayment, clinic_name: Optional[str], patient_name
         "status": payment.status.value if hasattr(payment.status, "value") else payment.status,
         "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
         "created_at": payment.created_at.isoformat() if payment.created_at else None,
+        "payout": {
+            "id": payout.id,
+            "amount": payout.amount,  # kobo — matches admin_payouts.py's serialize_payout convention
+            "status": payout.status.value if hasattr(payout.status, "value") else payout.status,
+            "sent_at": payout.sent_at.isoformat() if payout.sent_at else None,
+        } if payout else None,
     }
 
 
@@ -65,12 +81,18 @@ def list_booking_payments(
     clinics = {c.id: c for c in db.query(Clinic).filter(Clinic.id.in_(clinic_ids)).all()} if clinic_ids else {}
     patient_ids = [r.patient_id for r in rows]
     patients = {p.id: p for p in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()} if patient_ids else {}
+    appointment_ids = [r.appointment_id for r in rows]
+    payouts = (
+        {p.appointment_id: p for p in db.query(Payout).filter(Payout.appointment_id.in_(appointment_ids)).all()}
+        if appointment_ids else {}
+    )
 
     items = [
         _serialize(
             r,
             clinics.get(r.clinic_id).name if r.clinic_id in clinics else None,
             patients.get(r.patient_id).full_name if r.patient_id in patients else None,
+            payouts.get(r.appointment_id),
         )
         for r in rows
     ]

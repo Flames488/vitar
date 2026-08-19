@@ -124,6 +124,24 @@ async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
     payout.sent_at = utcnow()
     db.commit()
     db.refresh(payout)
+
+    try:
+        from app.services.notifications import notify
+
+        clinic = db.query(Clinic).filter(Clinic.id == payout.hospital_id).first()
+        notify(
+            event_type="payout_sent",
+            agent_name="billing",
+            message=(
+                f"₦{payout.amount / 100:,.2f} was just sent to "
+                f"{clinic.name if clinic else 'a clinic'}'s bank account."
+            ),
+            related_id=payout.id,
+            link_path="/admin/payouts",
+        )
+    except Exception as exc:
+        logger.error(f"Failed to dispatch payout-sent notification: {exc}")
+
     return payout
 
 

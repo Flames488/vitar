@@ -91,6 +91,8 @@ _EVENT_EMOJI = {
     "subscription_override": "\U0001F6E0",
     "appointment_refund_needed": "\U0001F534",
     "payout_blocked_no_bank": "\U0001F3E6",
+    "booking_payment_received": "\U0001F4B0",
+    "payout_sent": "✅",
 }
 # Only Sales Agent drafts have an /edit endpoint (Content Agent's don't per
 # the Phase 4 spec) — kept here so both the keyboard builder and the

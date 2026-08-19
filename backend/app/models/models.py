@@ -1029,6 +1029,8 @@ class NotificationEventType(str, enum.Enum):
     SUBSCRIPTION_OVERRIDE = "subscription_override"
     APPOINTMENT_REFUND_NEEDED = "appointment_refund_needed"
     PAYOUT_BLOCKED_NO_BANK = "payout_blocked_no_bank"
+    BOOKING_PAYMENT_RECEIVED = "booking_payment_received"
+    PAYOUT_SENT = "payout_sent"
 
 
 class AgentNotification(Base):

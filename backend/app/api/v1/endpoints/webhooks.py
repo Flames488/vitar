@@ -139,6 +139,27 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
         notify_new_booking.delay(appointment.id)
     except Exception as e:
         logger.error(f"Failed to dispatch new-booking notification: {e}")
+
+    try:
+        from app.models.models import Clinic, Patient
+        from app.services.notifications import notify
+
+        clinic = db.query(Clinic).filter(Clinic.id == appointment.clinic_id).first()
+        patient_row = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
+        notify(
+            event_type="booking_payment_received",
+            agent_name="billing",
+            message=(
+                f"{patient_row.full_name if patient_row else 'A patient'} just paid "
+                f"₦{amount:,.2f} for an appointment at {clinic.name if clinic else 'a clinic'}.\n"
+                f"Clinic share: ₦{clinic_share:,.2f} — payout will follow automatically."
+            ),
+            related_id=payout.id,
+            link_path="/admin/booking-payments",
+        )
+    except Exception as e:
+        logger.error(f"Failed to dispatch booking-payment-received notification: {e}")
+
     return payout
 
 

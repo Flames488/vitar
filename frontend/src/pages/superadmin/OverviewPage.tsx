@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import {
   Users, Building2, CreditCard, ScrollText,
   TrendingUp, TrendingDown, AlertCircle, Activity,
-  ArrowRight, RefreshCw, Clock,
+  ArrowRight, RefreshCw, Clock, Wallet,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -56,6 +56,12 @@ export default function AdminOverviewPage() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['admin', 'overview'],
     queryFn: adminApi.analytics.overview,
+    refetchInterval: 60_000,
+  });
+
+  const { data: bookingPayments, isLoading: paymentsLoading } = useQuery({
+    queryKey: ['admin', 'booking-payments', 'recent'],
+    queryFn: () => adminApi.bookingPayments.list({ limit: 6 }),
     refetchInterval: 60_000,
   });
 
@@ -296,6 +302,58 @@ export default function AdminOverviewPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* ── Recent Booking Payments ─────────────────────────────────── */}
+        <div className={`rounded-xl border overflow-hidden ${c.panel}`}>
+          <div className={`flex items-center justify-between px-5 py-4 border-b ${c.border}`}>
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-amber-500" />
+              <h2 className={`font-bold text-sm ${c.text}`}>Recent Booking Payments</h2>
+            </div>
+            <Link to="/admin/booking-payments" className="text-teal-500 hover:text-teal-400 text-xs font-semibold flex items-center gap-1">
+              View all <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+          {paymentsLoading ? (
+            <div className="divide-y divide-slate-100/10">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex items-center gap-3 px-5 py-3.5 animate-pulse">
+                  <div className={`w-8 h-8 rounded-full flex-shrink-0 ${dark ? 'bg-slate-800' : 'bg-slate-100'}`} />
+                  <div className="flex-1 space-y-1.5">
+                    <div className={`h-3 rounded w-48 ${dark ? 'bg-slate-800' : 'bg-slate-100'}`} />
+                    <div className={`h-2.5 rounded w-28 ${dark ? 'bg-slate-800' : 'bg-slate-100'}`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (bookingPayments?.items ?? []).length === 0 ? (
+            <EmptyState message="No booking payments yet" />
+          ) : (
+            <div className={`divide-y ${c.divide}`}>
+              {bookingPayments.items.map((p: any) => (
+                <div key={p.id} className={`flex items-center gap-3 px-5 py-3 ${c.panelHover} transition-colors`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                    dark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-600'
+                  }`}>
+                    ₦
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm truncate font-medium ${c.text}`}>
+                      {p.patient_name ?? 'A patient'} paid {p.clinic_name ?? 'a clinic'}
+                    </p>
+                    <p className={`text-xs truncate ${c.textFaint}`}>
+                      ₦{Number(p.total_amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })} · {p.status}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Clock className={`w-3 h-3 ${c.textFaint}`} />
+                    <span className={`text-xs ${c.textFaint}`}>{timeAgo(p.paid_at ?? p.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

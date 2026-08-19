@@ -27,6 +27,7 @@ from app.api.v1.endpoints import (
     admin_analytics,
     admin_audit,
     admin_payouts,
+    admin_booking_payments,
     clinic_payouts,
     hospital_bank_accounts,
     qr,
@@ -70,6 +71,7 @@ api_router.include_router(admin_subscriptions.router, tags=["Admin — Subscript
 api_router.include_router(admin_analytics.router, tags=["Admin — Analytics"])
 api_router.include_router(admin_audit.router, tags=["Admin — Audit Log"])
 api_router.include_router(admin_payouts.router)
+api_router.include_router(admin_booking_payments.router)
 api_router.include_router(admin_agents.router, tags=["Admin — AI Agents"])
 api_router.include_router(admin_agents.leads_router, tags=["Admin — Leads"])
 api_router.include_router(admin_agents.health_signals_router, tags=["Admin — Health Signals"])

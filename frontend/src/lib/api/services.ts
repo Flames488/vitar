@@ -310,6 +310,11 @@ export const adminApi = {
       api.post(`/admin/payouts/${payoutId}/send`).then(r => r.data),
   },
 
+  bookingPayments: {
+    list: (params?: { status?: string; clinic_id?: string; page?: number; limit?: number }) =>
+      api.get('/admin/booking-payments/', { params }).then(r => r.data),
+  },
+
   analytics: {
     overview: () => api.get('/admin/analytics/overview').then(r => r.data),
     business: () => api.get('/admin/analytics/business').then(r => r.data),

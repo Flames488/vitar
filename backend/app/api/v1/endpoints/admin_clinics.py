@@ -4,6 +4,7 @@ Vitar — Admin Dashboard: Clinic Management
 GET    /api/v1/admin/clinics                      List clinics (search, filter, paginate)
 GET    /api/v1/admin/clinics/{clinic_id}           View a single clinic + owner + subscription
 PATCH  /api/v1/admin/clinics/{clinic_id}/status     Disable / enable a clinic
+PATCH  /api/v1/admin/clinics/{clinic_id}/settings   Override per-clinic settings (e.g. patient_payment_enabled)
 POST   /api/v1/admin/clinics/{clinic_id}/regenerate-qr   Regenerate the clinic's QR code
 
 Reuses the existing qr_service (same function the clinic owner's own
@@ -31,6 +32,11 @@ class ClinicStatusUpdateRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class ClinicSettingsUpdateRequest(BaseModel):
+    patient_payment_enabled: Optional[bool] = None
+    reason: Optional[str] = None
+
+
 def _portal_url(slug: str) -> str:
     return f"{settings.FRONTEND_URL.rstrip('/')}/book/{slug}"
 
@@ -46,6 +52,7 @@ def _serialize_row(clinic: Clinic, owner: Optional[User], sub: Optional[Subscrip
         "country": clinic.country,
         "is_active": clinic.is_active,
         "onboarding_completed": clinic.onboarding_completed,
+        "patient_payment_enabled": clinic.patient_payment_enabled,
         "subscription_plan": sub.plan.value if sub else None,
         "subscription_status": sub.status.value if sub else None,
         "created_at": clinic.created_at.isoformat() if clinic.created_at else None,
@@ -135,6 +142,53 @@ def update_clinic_status(
 
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
     sub = db.query(Subscription).filter(Subscription.clinic_id == clinic.id).first()
+    return _serialize_row(clinic, owner, sub)
+
+
+@router.patch("/{clinic_id}/settings")
+def update_clinic_settings(
+    clinic_id: str,
+    body: ClinicSettingsUpdateRequest,
+    request: Request,
+    admin: User = Depends(get_current_superadmin),
+    db: Session = Depends(get_db),
+):
+    """
+    Superadmin override for per-clinic settings that are normally
+    self-service (Settings page, clinic-owner-scoped PATCH /clinics).
+    Lets support toggle a clinic's setting directly — e.g. turning off
+    "require payment before booking" — without needing the clinic owner
+    to log in and do it themselves, or resorting to raw SQL.
+    """
+    clinic = _get_or_404(clinic_id, db)
+
+    old_data = {}
+    new_data = {}
+    if body.patient_payment_enabled is not None and body.patient_payment_enabled != clinic.patient_payment_enabled:
+        old_data["patient_payment_enabled"] = clinic.patient_payment_enabled
+        new_data["patient_payment_enabled"] = body.patient_payment_enabled
+        clinic.patient_payment_enabled = body.patient_payment_enabled
+
+    owner = db.query(User).filter(User.id == clinic.owner_id).first()
+    sub = db.query(Subscription).filter(Subscription.clinic_id == clinic.id).first()
+
+    if not new_data:
+        return _serialize_row(clinic, owner, sub)
+
+    write_audit_log(
+        db,
+        admin_id=admin.id,
+        action="clinic.update_settings",
+        entity_type="clinic",
+        entity_id=clinic.id,
+        clinic_id=clinic.id,
+        old_data=old_data,
+        new_data=new_data,
+        reason=body.reason,
+        request=request,
+    )
+    db.commit()
+    db.refresh(clinic)
     return _serialize_row(clinic, owner, sub)
 
 

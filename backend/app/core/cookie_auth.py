@@ -160,6 +160,7 @@ async def csrf_protect(request: Request) -> None:
         "/api/v1/auth/forgot-password",
         "/api/v1/auth/reset-password",
         "/api/v1/auth/verify-email",  # public, token-based — same pattern as reset-password
+        "/api/v1/auth/unsubscribe",   # public, token-based — same pattern as verify-email
         "/api/v1/webhooks/",
         "/api/v1/booking/",
         "/api/v1/push/event",

@@ -1316,13 +1316,12 @@ def send_feature_spotlight(self):
     try:
         from app.models.models import User
         from app.services.email_service import send_feature_spotlight_email
-        from app.services.feature_spotlight import get_spotlight, get_closer
+        from app.services.feature_spotlight import generate_spotlight
         from app.core.security import create_unsubscribe_token
 
         now = utcnow()
-        day_ordinal = now.toordinal()
-        spotlight = get_spotlight(day_ordinal)
-        closer = get_closer(now.weekday(), day_ordinal)
+        spotlight = generate_spotlight(now.toordinal(), now.weekday())
+        closer = spotlight["closer"]
 
         users = db.query(User).filter(
             User.is_active == True,  # noqa: E712

@@ -937,6 +937,21 @@ def auto_send_pending_payouts(self):
     task behind it.
     """
     import concurrent.futures
+    from app.core.cache import cache
+
+    # A payout whose send attempt times out gets abandoned (see comment
+    # below) rather than killed — Python can't force-kill a stuck thread,
+    # so it leaks one OS thread and one DB connection, permanently, every
+    # time this fires. For a payout that times out over and over (e.g. a
+    # Paystack account-tier restriction that can never resolve itself —
+    # the live incident this guard was added for), the task retried it
+    # every single hour forever, leaking one more connection each time
+    # until the shared connection pool was exhausted for EVERY service
+    # sharing it, including unrelated API requests like login. Cap it: after
+    # MAX_TIMEOUTS_BEFORE_GIVING_UP timeouts for the same payout, stop
+    # retrying it automatically and flag it for manual review instead.
+    MAX_TIMEOUTS_BEFORE_GIVING_UP = 3
+    TIMEOUT_COUNT_TTL = 7 * 24 * 3600  # 7 days
 
     db = SessionLocal()
     try:
@@ -968,10 +983,41 @@ def auto_send_pending_payouts(self):
                 sent += 1
             except concurrent.futures.TimeoutError:
                 timed_out += 1
-                logger.error(
-                    f"auto_send_pending_payouts: payout={payout.id} timed out after 25s "
-                    f"(abandoned, not killed) — will be retried next hour"
-                )
+                timeout_key = f"payout_timeout_count:{payout.id}"
+                timeout_count = (cache.get(timeout_key) or 0) + 1
+                cache.set(timeout_key, timeout_count, ttl=TIMEOUT_COUNT_TTL)
+
+                if timeout_count >= MAX_TIMEOUTS_BEFORE_GIVING_UP:
+                    logger.error(
+                        f"auto_send_pending_payouts: payout={payout.id} timed out "
+                        f"{timeout_count}x — giving up, marking FAILED for manual review"
+                    )
+                    try:
+                        stuck = db.query(Payout).filter(Payout.id == payout.id).first()
+                        if stuck and stuck.status == PayoutStatus.PENDING_PAYOUT.value:
+                            stuck.status = PayoutStatus.FAILED.value
+                            db.commit()
+                        from app.services.notifications import notify
+                        notify(
+                            event_type="payout_send_timeout",
+                            agent_name="billing",
+                            message=(
+                                f"A payout ({payout.id}) timed out {timeout_count} times "
+                                f"trying to send — marked FAILED and stopped auto-retrying. "
+                                f"Needs manual investigation."
+                            ),
+                            related_id=payout.id,
+                            link_path="/admin/payouts",
+                        )
+                    except Exception as mark_exc:
+                        db.rollback()
+                        logger.error(f"auto_send_pending_payouts: failed to mark payout={payout.id} FAILED: {mark_exc}")
+                else:
+                    logger.error(
+                        f"auto_send_pending_payouts: payout={payout.id} timed out after 25s "
+                        f"(abandoned, not killed) — attempt {timeout_count}/{MAX_TIMEOUTS_BEFORE_GIVING_UP}, "
+                        f"will be retried next hour"
+                    )
             except Exception as exc:
                 failed += 1
                 logger.error(f"auto_send_pending_payouts failed for payout={payout.id}: {exc}")

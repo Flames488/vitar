@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Ban, CheckCircle2, QrCode, ExternalLink, RefreshCw } from 'lucide-react';
+import { Ban, CheckCircle2, QrCode, ExternalLink, RefreshCw, Landmark } from 'lucide-react';
 import { adminApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import {
@@ -21,6 +21,7 @@ export default function AdminClinicsPage() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [qrPreview, setQrPreview] = useState<{ name: string; path: string; url: string } | null>(null);
+  const [bankClinic, setBankClinic] = useState<{ id: string; name: string } | null>(null);
   const [pendingDisable, setPendingDisable] = useState<{ id: string; name: string; nextValue: boolean } | null>(null);
   const [reason, setReason] = useState('');
 
@@ -38,6 +39,12 @@ export default function AdminClinicsPage() {
       setPendingDisable(null); setReason('');
     },
     onError: (err) => toast.error(getApiError(err)),
+  });
+
+  const { data: bankDetail, isLoading: bankLoading } = useQuery({
+    queryKey: ['admin', 'clinics', 'detail', bankClinic?.id],
+    queryFn: () => adminApi.clinics.get(bankClinic!.id),
+    enabled: !!bankClinic,
   });
 
   const regenerateQrMutation = useMutation({
@@ -123,6 +130,13 @@ export default function AdminClinicsPage() {
                           <ExternalLink className="w-4 h-4" />
                         </a>
                         <button
+                          onClick={() => setBankClinic({ id: clinic.id, name: clinic.name })}
+                          title="View payout bank account"
+                          className="text-slate-400 hover:text-teal-600"
+                        >
+                          <Landmark className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => regenerateQrMutation.mutate(clinic.id)}
                           disabled={regenerateQrMutation.isPending}
                           title="Regenerate QR code"
@@ -174,6 +188,34 @@ export default function AdminClinicsPage() {
           {pendingDisable && <>This affects <span className={`font-medium ${c.text}`}>{pendingDisable.name}</span>{pendingDisable.nextValue === false ? ' — patients will no longer be able to book appointments.' : '.'}</>}
         </p>
         <TextArea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional, recorded in the audit log)" rows={2} />
+      </Modal>
+
+      {/* Bank account details */}
+      <Modal open={!!bankClinic} onClose={() => setBankClinic(null)} title={bankClinic ? `${bankClinic.name} — Payout Bank Account` : 'Payout Bank Account'}>
+        {bankLoading ? (
+          <LoadingState message="Loading bank details..." />
+        ) : bankDetail?.bank_account ? (
+          <div className="space-y-3">
+            <div>
+              <p className={`text-xs ${c.textFaint}`}>Account Number</p>
+              <p className={`text-base font-mono font-medium ${c.text}`}>{bankDetail.bank_account.account_number}</p>
+            </div>
+            <div>
+              <p className={`text-xs ${c.textFaint}`}>Account Name</p>
+              <p className={`text-sm ${c.text}`}>{bankDetail.bank_account.account_name}</p>
+            </div>
+            <div>
+              <p className={`text-xs ${c.textFaint}`}>Bank</p>
+              <p className={`text-sm ${c.text}`}>{bankDetail.bank_account.bank_name}</p>
+            </div>
+            <div>
+              <StatusBadge status={bankDetail.bank_account.verified ? 'active' : 'disabled'} />
+              <span className={`text-xs ml-2 ${c.textMuted}`}>{bankDetail.bank_account.verified ? 'Verified' : 'Not verified'}</span>
+            </div>
+          </div>
+        ) : (
+          <EmptyState message="No payout bank account on file for this clinic" />
+        )}
       </Modal>
 
       {/* QR preview */}

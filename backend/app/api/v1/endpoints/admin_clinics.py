@@ -2,7 +2,7 @@
 Vitar — Admin Dashboard: Clinic Management
 
 GET    /api/v1/admin/clinics                      List clinics (search, filter, paginate)
-GET    /api/v1/admin/clinics/{clinic_id}           View a single clinic + owner + subscription
+GET    /api/v1/admin/clinics/{clinic_id}           View a single clinic + owner + subscription + payout bank account
 PATCH  /api/v1/admin/clinics/{clinic_id}/status     Disable / enable a clinic
 PATCH  /api/v1/admin/clinics/{clinic_id}/settings   Override per-clinic settings (e.g. patient_payment_enabled)
 POST   /api/v1/admin/clinics/{clinic_id}/regenerate-qr   Regenerate the clinic's QR code
@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import get_current_superadmin
 from app.core.config import settings
-from app.models.models import User, Clinic, Subscription
+from app.models.models import User, Clinic, Subscription, HospitalBankAccount
 from app.services.qr_service import regenerate_clinic_qr
 from app.services.audit_service import write_audit_log
 
@@ -107,7 +107,22 @@ def get_clinic(
     clinic = _get_or_404(clinic_id, db)
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
     sub = db.query(Subscription).filter(Subscription.clinic_id == clinic.id).first()
-    return _serialize_row(clinic, owner, sub)
+    row = _serialize_row(clinic, owner, sub)
+
+    # Payout bank details — same "one active account" rule admin_payouts.py
+    # uses to pick which account to pay out to (active, most recently added).
+    bank_account = db.query(HospitalBankAccount).filter(
+        HospitalBankAccount.hospital_id == clinic.id,
+        HospitalBankAccount.active == True,  # noqa: E712
+    ).order_by(HospitalBankAccount.created_at.desc()).first()
+    row["bank_account"] = {
+        "account_number": bank_account.account_number,
+        "account_name": bank_account.account_name,
+        "bank_name": bank_account.bank_name,
+        "verified": bank_account.verified,
+    } if bank_account else None
+
+    return row
 
 
 @router.patch("/{clinic_id}/status")

@@ -1309,18 +1309,20 @@ def inspect_stuck_tasks(self):
 
 @celery.task(bind=True, max_retries=3, autoretry_for=(Exception,), retry_backoff=10, retry_jitter=True, queue="notifications")
 def send_feature_spotlight(self):
-    """One rotating feature-education email per week to every registered
+    """Rotating feature-education email sent Mon/Wed/Fri to every registered
     clinic owner who hasn't unsubscribed. See app.services.feature_spotlight
-    for the content list — deliberately weekly, not daily: with a small
-    registered-user base a daily send reads as spam rather than a newsletter."""
+    for the content list and the Monday-motivation / Friday-weekend closers."""
     db = SessionLocal()
     try:
         from app.models.models import User
         from app.services.email_service import send_feature_spotlight_email
-        from app.services.feature_spotlight import get_weekly_spotlight
+        from app.services.feature_spotlight import get_spotlight, get_closer
         from app.core.security import create_unsubscribe_token
 
-        spotlight = get_weekly_spotlight(utcnow().isocalendar()[1])
+        now = utcnow()
+        day_ordinal = now.toordinal()
+        spotlight = get_spotlight(day_ordinal)
+        closer = get_closer(now.weekday(), day_ordinal)
 
         users = db.query(User).filter(
             User.is_active == True,  # noqa: E712
@@ -1336,7 +1338,7 @@ def send_feature_spotlight(self):
             run_async(send_feature_spotlight_email(
                 user.email, user.full_name,
                 spotlight["subject"], spotlight["headline"], spotlight["body_html"],
-                token,
+                token, closer=closer,
             ))
             sent += 1
 

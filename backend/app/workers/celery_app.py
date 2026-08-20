@@ -36,11 +36,11 @@ beat_schedule = {
         "task": "app.workers.tasks.send_trial_nudges",
         "schedule": crontab(hour=9, minute=0),
     },
-    # Weekly, not daily — see send_feature_spotlight's docstring. Monday
+    # Mon/Wed/Fri, not daily — see send_feature_spotlight's docstring.
     # 08:00 WAT (07:00 UTC — celery.conf below runs on UTC).
-    "feature-spotlight-weekly": {
+    "feature-spotlight-mwf": {
         "task": "app.workers.tasks.send_feature_spotlight",
-        "schedule": crontab(hour=7, minute=0, day_of_week=1),
+        "schedule": crontab(hour=7, minute=0, day_of_week="1,3,5"),
     },
     "expire-trials": {
         "task": "app.workers.tasks.expire_trial_subscriptions",

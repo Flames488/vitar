@@ -72,6 +72,9 @@ class UserOut(BaseModel):
 class VerifyEmailRequest(BaseModel):
     token: str
 
+class UnsubscribeRequest(BaseModel):
+    token: str
+
 class ClinicOut(BaseModel):
     id: str
     name: str
@@ -531,6 +534,27 @@ async def verify_email(
     user.email_verification_token = None
     db.commit()
     return {"message": "Email verified"}
+
+
+@router.post("/unsubscribe")
+async def unsubscribe(
+    body: UnsubscribeRequest,
+    db: Session = Depends(get_db),
+):
+    """Public (no login required), same pattern as verify-email — the
+    signed token in the footer link is the only credential needed. Only
+    flips marketing_opt_in; transactional email (receipts, reminders,
+    password resets) is never gated by this flag."""
+    from app.core.security import verify_unsubscribe_token
+
+    user_id = verify_unsubscribe_token(body.token)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(400, "Invalid unsubscribe link")
+
+    user.marketing_opt_in = False
+    db.commit()
+    return {"message": "Unsubscribed"}
 
 
 @router.post("/resend-verification")

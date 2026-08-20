@@ -128,6 +128,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     is_superadmin = Column(Boolean, default=False, nullable=False)
+    marketing_opt_in = Column(Boolean, default=True, nullable=False)
     email_verification_token = Column(String(255))
     password_reset_token = Column(String(255))
     password_reset_expires = Column(DateTime)

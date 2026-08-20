@@ -36,6 +36,12 @@ beat_schedule = {
         "task": "app.workers.tasks.send_trial_nudges",
         "schedule": crontab(hour=9, minute=0),
     },
+    # Weekly, not daily — see send_feature_spotlight's docstring. Monday
+    # 08:00 WAT (07:00 UTC — celery.conf below runs on UTC).
+    "feature-spotlight-weekly": {
+        "task": "app.workers.tasks.send_feature_spotlight",
+        "schedule": crontab(hour=7, minute=0, day_of_week=1),
+    },
     "expire-trials": {
         "task": "app.workers.tasks.expire_trial_subscriptions",
         "schedule": crontab(hour=0, minute=0),
@@ -180,6 +186,7 @@ celery.conf.update(
         "app.workers.tasks.notify_waiting_list":            {"queue": "notifications"},
         "app.workers.tasks.handle_no_show_followup":        {"queue": "notifications"},
         "app.workers.tasks.send_trial_nudges":              {"queue": "billing"},
+        "app.workers.tasks.send_feature_spotlight":         {"queue": "notifications"},
         "app.workers.tasks.expire_trial_subscriptions":     {"queue": "billing"},
         "app.workers.tasks.expire_paid_subscriptions":      {"queue": "billing"},
         "app.workers.tasks.retry_failed_notifications":     {"queue": "notifications"},

@@ -88,6 +88,28 @@ def generate_secure_token(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
 
+def create_unsubscribe_token(user_id: str) -> str:
+    """Long-lived (1yr) link token for the marketing-email footer — a
+    dedicated 'unsubscribe' type so it's rejected by get_current_user even
+    if it ends up somewhere it shouldn't (it's a plain URL sitting in an
+    inbox, not a secret)."""
+    expire = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=365)
+    return jwt.encode(
+        {"sub": user_id, "type": "unsubscribe", "exp": expire},
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+def verify_unsubscribe_token(token: str) -> str:
+    """Returns the user_id, or raises HTTPException on an invalid/expired/
+    wrong-type token."""
+    payload = decode_token(token)
+    if payload.get("type") != "unsubscribe" or not payload.get("sub"):
+        raise HTTPException(status_code=400, detail="Invalid unsubscribe link")
+    return payload["sub"]
+
+
 # Keep 'security' name for backward compat with existing imports
 security = security_scheme
 

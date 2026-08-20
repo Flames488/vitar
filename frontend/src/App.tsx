@@ -35,6 +35,7 @@ import RegisterPage from '@/pages/auth/RegisterPage';
 import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
+import UnsubscribePage from '@/pages/auth/UnsubscribePage';
 
 // Onboarding
 import OnboardingPage from '@/pages/onboarding/OnboardingPage';
@@ -197,6 +198,7 @@ const SentryErrorBoundary = Sentry.withErrorBoundary(
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/unsubscribe" element={<UnsubscribePage />} />
             </Route>
 
             {/* ── Public Booking ────────────────────────────────────────── */}

@@ -72,7 +72,7 @@ def _noop():
     pass
 
 
-def _base_template(title: str, body: str) -> str:
+def _base_template(title: str, body: str, footer_extra: str = "") -> str:
     return f"""
 <!DOCTYPE html>
 <html>
@@ -86,6 +86,7 @@ def _base_template(title: str, body: str) -> str:
     .content {{ padding: 32px; color: #333; line-height: 1.6; }}
     .btn {{ display: inline-block; background: #0d9488; color: white !important; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin: 16px 0; }}
     .footer {{ background: #f9f9f9; padding: 16px 32px; font-size: 12px; color: #999; text-align: center; border-top: 1px solid #eee; }}
+    .footer a {{ color: #999; }}
   </style>
 </head>
 <body>
@@ -98,6 +99,7 @@ def _base_template(title: str, body: str) -> str:
     <div class="footer">
       &copy; 2025 Vitar Health. All rights reserved.<br>
       This email was sent because you registered on Vitar.
+      {footer_extra}
     </div>
   </div>
 </body>
@@ -231,3 +233,28 @@ async def send_subscription_activated_email(to_email: str, clinic_name: str, pla
         """,
     )
     await _send(to_email, f"Vitar {plan.title()} plan activated", html)
+
+
+async def send_feature_spotlight_email(
+    to_email: str,
+    full_name: str,
+    subject: str,
+    headline: str,
+    body_html: str,
+    unsubscribe_token: str,
+):
+    """Weekly feature-spotlight email — see app.services.feature_spotlight
+    for the rotating content list and app.workers.tasks.send_feature_spotlight
+    for the send loop. footer_extra carries the unsubscribe link required by
+    Resend/inbox spam policy for any recurring, non-transactional email."""
+    unsubscribe_url = f"{settings.FRONTEND_URL}/unsubscribe?token={unsubscribe_token}"
+    html = _base_template(
+        headline,
+        f"""
+        <p>Hi {full_name.split()[0] if full_name else 'there'},</p>
+        {body_html}
+        <a href="{settings.FRONTEND_URL}/dashboard" class="btn">Open Vitar →</a>
+        """,
+        footer_extra=f'<br><a href="{unsubscribe_url}">Unsubscribe from these tips</a>',
+    )
+    await _send(to_email, subject, html)

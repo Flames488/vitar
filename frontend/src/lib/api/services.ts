@@ -30,6 +30,9 @@ export const authApi = {
   verifyEmail: (token: string) =>
     api.post('/auth/verify-email', { token }).then(r => r.data),
 
+  unsubscribe: (token: string) =>
+    api.post('/auth/unsubscribe', { token }).then(r => r.data),
+
   resendVerification: () =>
     api.post('/auth/resend-verification').then(r => r.data),
 

@@ -1303,3 +1303,47 @@ def inspect_stuck_tasks(self):
     except Exception as exc:
         logger.error(f"inspect_stuck_tasks failed: {exc}", exc_info=True)
         return {"error": str(exc)}
+
+
+# ─── Weekly Feature Spotlight ──────────────────────────────────────────────────
+
+@celery.task(bind=True, max_retries=3, autoretry_for=(Exception,), retry_backoff=10, retry_jitter=True, queue="notifications")
+def send_feature_spotlight(self):
+    """One rotating feature-education email per week to every registered
+    clinic owner who hasn't unsubscribed. See app.services.feature_spotlight
+    for the content list — deliberately weekly, not daily: with a small
+    registered-user base a daily send reads as spam rather than a newsletter."""
+    db = SessionLocal()
+    try:
+        from app.models.models import User
+        from app.services.email_service import send_feature_spotlight_email
+        from app.services.feature_spotlight import get_weekly_spotlight
+        from app.core.security import create_unsubscribe_token
+
+        spotlight = get_weekly_spotlight(utcnow().isocalendar()[1])
+
+        users = db.query(User).filter(
+            User.is_active == True,  # noqa: E712
+            User.is_superadmin == False,  # noqa: E712
+            User.marketing_opt_in == True,  # noqa: E712
+        ).all()
+
+        sent = 0
+        for user in users:
+            if not user.clinics:
+                continue  # no clinic yet — nothing to spotlight for them
+            token = create_unsubscribe_token(user.id)
+            run_async(send_feature_spotlight_email(
+                user.email, user.full_name,
+                spotlight["subject"], spotlight["headline"], spotlight["body_html"],
+                token,
+            ))
+            sent += 1
+
+        logger.info(f"send_feature_spotlight: sent to {sent} users")
+        return {"sent": sent}
+    except Exception as e:
+        logger.error(f"send_feature_spotlight error: {e}")
+        raise self.retry(exc=e, countdown=300 * (2 ** self.request.retries))
+    finally:
+        db.close()

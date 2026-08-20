@@ -3,11 +3,20 @@
  */
 
 import { Outlet, Link } from 'react-router-dom';
+import { Home } from 'lucide-react';
 import VitarLogo from '@/components/shared/VitarLogo';
 
 export default function AuthLayout() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-teal-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-teal-900 flex items-center justify-center p-4 relative">
+      <Link
+        to="/"
+        aria-label="Back to home"
+        className="absolute top-4 left-4 inline-flex items-center gap-1.5 text-slate-300 hover:text-white text-sm font-medium transition-colors"
+      >
+        <Home className="w-4 h-4" />
+        Home
+      </Link>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex flex-col items-center gap-3">

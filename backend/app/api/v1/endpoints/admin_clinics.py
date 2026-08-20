@@ -34,6 +34,7 @@ class ClinicStatusUpdateRequest(BaseModel):
 
 class ClinicSettingsUpdateRequest(BaseModel):
     patient_payment_enabled: Optional[bool] = None
+    is_listed: Optional[bool] = None
     reason: Optional[str] = None
 
 
@@ -125,6 +126,19 @@ def update_clinic_status(
         return _serialize_row(clinic, owner, sub)
 
     clinic.is_active = body.is_active
+    old_data = {"is_active": old_value}
+    new_data = {"is_active": body.is_active}
+    # A disabled clinic must not still show up in public search/booking —
+    # is_listed no longer tracks billing status (see workers/tasks.py), so
+    # this is the one place left that needs to unlist it. Not re-listed
+    # automatically on re-enable — that still requires onboarding_completed
+    # (see onboarding.py/billing_service.py), which a clinic that was
+    # disabled pre-onboarding may never have reached.
+    if not body.is_active and clinic.is_listed:
+        old_data["is_listed"] = True
+        new_data["is_listed"] = False
+        clinic.is_listed = False
+
     write_audit_log(
         db,
         admin_id=admin.id,
@@ -132,8 +146,8 @@ def update_clinic_status(
         entity_type="clinic",
         entity_id=clinic.id,
         clinic_id=clinic.id,
-        old_data={"is_active": old_value},
-        new_data={"is_active": body.is_active},
+        old_data=old_data,
+        new_data=new_data,
         reason=body.reason,
         request=request,
     )
@@ -168,6 +182,10 @@ def update_clinic_settings(
         old_data["patient_payment_enabled"] = clinic.patient_payment_enabled
         new_data["patient_payment_enabled"] = body.patient_payment_enabled
         clinic.patient_payment_enabled = body.patient_payment_enabled
+    if body.is_listed is not None and body.is_listed != clinic.is_listed:
+        old_data["is_listed"] = clinic.is_listed
+        new_data["is_listed"] = body.is_listed
+        clinic.is_listed = body.is_listed
 
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
     sub = db.query(Subscription).filter(Subscription.clinic_id == clinic.id).first()

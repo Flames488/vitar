@@ -693,7 +693,7 @@ def send_trial_nudges(self):
 def expire_trial_subscriptions(self):
     db = SessionLocal()
     try:
-        from app.models.models import Subscription, SubscriptionStatus, Clinic
+        from app.models.models import Subscription, SubscriptionStatus
         now = utcnow()
         expired = db.query(Subscription).filter(
             Subscription.status == SubscriptionStatus.TRIALING,
@@ -702,20 +702,19 @@ def expire_trial_subscriptions(self):
         for sub in expired:
             sub.status = SubscriptionStatus.EXPIRED
             logger.info(f"Trial expired: subscription={sub.id} clinic={sub.clinic_id}")
-        # Public directory eligibility (see models.Clinic.is_listed) — a
-        # clinic whose trial just expired with no active paid plan no longer
-        # qualifies; re-set to True if/when they actually pay (billing_service).
-        if expired:
-            db.query(Clinic).filter(Clinic.id.in_([s.clinic_id for s in expired])).update(
-                {"is_listed": False}, synchronize_session=False
-            )
+        # Public directory eligibility (see models.Clinic.is_listed) is no
+        # longer tied to billing status — an active clinic that finished
+        # onboarding stays searchable regardless of trial/subscription
+        # state (unlisting only happens when a clinic is disabled, see
+        # admin_clinics.update_clinic_status). A trial lapsing here no
+        # longer touches is_listed.
         db.commit()
         logger.info(f"Expired {len(expired)} trial subscriptions")
     except Exception as e:
         # FIX: same anti-pattern already fixed in fire_pending_reminders —
         # swallowing this without re-raising means autoretry_for=(Exception,)
         # never triggers, so a transient failure leaves expired trials
-        # un-expired (and still is_listed=True) until the next daily tick.
+        # un-expired until the next daily tick.
         db.rollback()
         logger.error(f"expire_trial_subscriptions error: {e}")
         raise self.retry(exc=e, countdown=300 * (2 ** self.request.retries))
@@ -738,7 +737,7 @@ def expire_paid_subscriptions(self):
     """
     db = SessionLocal()
     try:
-        from app.models.models import Subscription, SubscriptionStatus, Clinic
+        from app.models.models import Subscription, SubscriptionStatus
         now = utcnow()
         expired = db.query(Subscription).filter(
             Subscription.status == SubscriptionStatus.ACTIVE,
@@ -747,10 +746,8 @@ def expire_paid_subscriptions(self):
         for sub in expired:
             sub.status = SubscriptionStatus.EXPIRED
             logger.info(f"Paid subscription expired: subscription={sub.id} clinic={sub.clinic_id}")
-        if expired:
-            db.query(Clinic).filter(Clinic.id.in_([s.clinic_id for s in expired])).update(
-                {"is_listed": False}, synchronize_session=False
-            )
+        # Public directory eligibility (is_listed) is independent of billing
+        # status — see the matching note in expire_trial_subscriptions above.
         db.commit()
         logger.info(f"Expired {len(expired)} paid subscriptions")
     except Exception as e:

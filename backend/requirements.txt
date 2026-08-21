@@ -2,7 +2,7 @@
 # Pin major versions for reproducibility; allow patch updates
 
 # ── Web Framework ─────────────────────────────────────────────────────────────
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn[standard]==0.32.1
 gunicorn==23.0.0
 python-multipart==0.0.20

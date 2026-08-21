@@ -69,7 +69,7 @@ anyio==4.7.0
 locust==2.32.3
 
 # ── AI Core: Lead Hunter scraping ───────────────────────────────────────────
-playwright==1.49.0
+playwright==1.62.0
 
 # ── AI Core: Telegram ops bot ────────────────────────────────────────────────
 # [job-queue] extra pulls in APScheduler — needed for the weekly digest

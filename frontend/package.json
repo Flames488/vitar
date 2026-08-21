@@ -49,7 +49,7 @@
     "jose": "^5.9.6",
     "lucide-react": "^0.562.0",
     "next-themes": "^0.4.6",
-    "posthog-js": "^1.247.3",
+    "posthog-js": "^1.417.4",
     "react": "^19.2.0",
     "react-day-picker": "^9.13.0",
     "react-dom": "^19.2.0",

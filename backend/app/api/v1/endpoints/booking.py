@@ -570,9 +570,13 @@ async def public_book_appointment(
 
 
 @router.get("/appointments/{appointment_id}/status")
-def get_public_appointment_status(appointment_id: str, db: Session = Depends(get_db)):
+def get_public_appointment_status(appointment_id: str, token: str, db: Session = Depends(get_db)):
+    """Same ownership proof as /doctor-contact just below — Vitar has no
+    patient login, so the confirmation_token (returned once, at booking
+    time) is the only thing that should let a caller read this appointment's
+    status. Previously took appointment_id alone with no check at all."""
     apt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not apt:
+    if not apt or apt.confirmation_token != token:
         raise HTTPException(status_code=404, detail="Appointment not found")
     return {
         "appointment_id": apt.id,

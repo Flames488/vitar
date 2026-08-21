@@ -5,12 +5,22 @@ Transactional email templates. Sends via Resend if RESEND_API_KEY is set
 falling back to SendGrid if only SENDGRID_API_KEY is set.
 """
 
+import html as _html_mod
 import httpx
 import logging
 from app.core.config import settings
 from app.core.recovery import email_circuit, CircuitOpenError
 
 logger = logging.getLogger(__name__)
+
+
+def _esc(value) -> str:
+    """Escape a user-controlled value before dropping it into an HTML email
+    body. Every field here can originate from an unauthenticated public form
+    (booking, registration) — without this, a patient's own name or "reason
+    for visit" free-text field could inject HTML (e.g. a phishing link) into
+    an email opened by clinic staff or another patient."""
+    return _html_mod.escape(str(value)) if value else value
 
 
 async def _send(to_email: str, subject: str, html: str):
@@ -109,9 +119,9 @@ def _base_template(title: str, body: str, footer_extra: str = "") -> str:
 
 async def send_welcome_email(to_email: str, full_name: str, clinic_name: str):
     html = _base_template(
-        f"Welcome to Vitar, {full_name.split()[0]}! 🎉",
+        f"Welcome to Vitar, {_esc(full_name.split()[0])}! 🎉",
         f"""
-        <p>Your clinic <strong>{clinic_name}</strong> is ready to go.</p>
+        <p>Your clinic <strong>{_esc(clinic_name)}</strong> is ready to go.</p>
         <p>You're on a <strong>30-day free trial</strong> with full access to:</p>
         <ul>
           <li>AI-powered no-show prediction</li>
@@ -131,7 +141,7 @@ async def send_verification_email(to_email: str, full_name: str, token: str):
     html = _base_template(
         "Verify your email address",
         f"""
-        <p>Hi {full_name.split()[0] if full_name else 'there'},</p>
+        <p>Hi {_esc(full_name.split()[0]) if full_name else 'there'},</p>
         <p>Please confirm this is your email address so we can reach you about your account.</p>
         <a href="{verify_url}" class="btn">Verify Email →</a>
         <p style="color:#999;font-size:13px;">Your account already works fully in the meantime — this just confirms we can reach you.</p>
@@ -158,7 +168,7 @@ async def send_trial_expiry_warning(to_email: str, clinic_name: str, days_left: 
     html = _base_template(
         f"Your trial ends in {days_left} day{'s' if days_left != 1 else ''}",
         f"""
-        <p>Your <strong>30-day free trial</strong> for <strong>{clinic_name}</strong> is almost over.</p>
+        <p>Your <strong>30-day free trial</strong> for <strong>{_esc(clinic_name)}</strong> is almost over.</p>
         <p>Upgrade now to keep your appointments, reminders, and analytics running without interruption.</p>
         <a href="{settings.FRONTEND_URL}/settings/billing" class="btn">Upgrade Now →</a>
         <p style="color:#666;font-size:14px;">
@@ -181,11 +191,11 @@ async def send_appointment_confirmation_email(
     html = _base_template(
         "Appointment Confirmed",
         f"""
-        <p>Hi <strong>{patient_name}</strong>,</p>
+        <p>Hi <strong>{_esc(patient_name)}</strong>,</p>
         <p>Your appointment has been confirmed:</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Doctor</td><td style="padding:8px;">Dr. {doctor_name}</td></tr>
-          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Clinic</td><td style="padding:8px;">{clinic_name}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Doctor</td><td style="padding:8px;">Dr. {_esc(doctor_name)}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Clinic</td><td style="padding:8px;">{_esc(clinic_name)}</td></tr>
           <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Date & Time</td><td style="padding:8px;">{scheduled_at_str}</td></tr>
         </table>
         <p>Need to cancel? <a href="{cancel_url}" style="color:#0d9488;">Click here</a> (please give at least 2 hours notice).</p>
@@ -207,12 +217,12 @@ async def send_new_booking_email(
     html = _base_template(
         "New Appointment Booked",
         f"""
-        <p>A new appointment was just booked at <strong>{clinic_name}</strong>:</p>
+        <p>A new appointment was just booked at <strong>{_esc(clinic_name)}</strong>:</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Patient</td><td style="padding:8px;">{patient_name} ({patient_phone})</td></tr>
-          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Doctor</td><td style="padding:8px;">Dr. {doctor_name}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Patient</td><td style="padding:8px;">{_esc(patient_name)} ({_esc(patient_phone)})</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Doctor</td><td style="padding:8px;">Dr. {_esc(doctor_name)}</td></tr>
           <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Date & Time</td><td style="padding:8px;">{scheduled_at_str}</td></tr>
-          {f'<tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Reason</td><td style="padding:8px;">{reason}</td></tr>' if reason else ''}
+          {f'<tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Reason</td><td style="padding:8px;">{_esc(reason)}</td></tr>' if reason else ''}
         </table>
         <a href="{settings.FRONTEND_URL}/dashboard/appointments/{appointment_id}" class="btn">View Appointment →</a>
         """,
@@ -224,7 +234,7 @@ async def send_subscription_activated_email(to_email: str, clinic_name: str, pla
     html = _base_template(
         "Subscription Activated 🎉",
         f"""
-        <p>Payment confirmed for <strong>{clinic_name}</strong>.</p>
+        <p>Payment confirmed for <strong>{_esc(clinic_name)}</strong>.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Plan</td><td style="padding:8px;">{plan.title()}</td></tr>
           <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Amount</td><td style="padding:8px;">{amount}</td></tr>
@@ -254,7 +264,7 @@ async def send_feature_spotlight_email(
     html = _base_template(
         headline,
         f"""
-        <p>Hi {full_name.split()[0] if full_name else 'there'},</p>
+        <p>Hi {_esc(full_name.split()[0]) if full_name else 'there'},</p>
         {body_html}
         <a href="{settings.FRONTEND_URL}/dashboard" class="btn">Open Vitar →</a>
         {closer_html}

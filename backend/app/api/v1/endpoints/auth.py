@@ -379,6 +379,8 @@ async def login(
 
 @router.get("/me")
 async def get_me(
+    request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -386,10 +388,19 @@ async def get_me(
     v12: Session-restore endpoint that works for BOTH clinic owners and
     superadmin-only accounts. The frontend uses this on app mount instead of
     GET /clinics/me, which 404s for users without a clinic.
+
+    Also (re-)establishes the CSRF cookie — a tab that restores its session
+    here (persisted user profile, cookie still valid) but never itself ran
+    login/register/refresh has no CSRF token in its in-memory csrfManager.
+    See ensure_csrf_cookie's docstring for why the 401-triggered refresh path
+    doesn't cover this case.
     """
+    from app.core.cookie_auth import ensure_csrf_cookie
+
     clinic = db.query(Clinic).filter(
         Clinic.owner_id == current_user.id, Clinic.is_active == True
     ).first()
+    csrf_token = ensure_csrf_cookie(request, response)
     return {
         "user": {
             "id": current_user.id,
@@ -399,6 +410,7 @@ async def get_me(
             "is_verified": current_user.is_verified,
         },
         "clinic": _clinic_dict(clinic) if clinic else None,
+        "csrf_token": csrf_token,
     }
 
 

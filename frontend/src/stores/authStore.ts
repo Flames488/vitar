@@ -160,7 +160,11 @@ export const useAuthStore = create<AuthState>()(
           return;
         }
         try {
-          const { user: freshUser, clinic } = await authApi.me();
+          const { user: freshUser, clinic, csrf_token } = await authApi.me();
+          // A tab that restores its session here (rather than through its own
+          // login/register/refresh call) otherwise has no CSRF token at all —
+          // see ensure_csrf_cookie's docstring on the backend.
+          if (csrf_token) csrfManager.set(csrf_token);
           set({ user: freshUser, clinic, isAuthenticated: true, sessionChecked: true });
         } catch {
           // Session invalid — clean up local state

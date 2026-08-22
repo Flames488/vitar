@@ -95,6 +95,35 @@ def set_auth_cookies(
     return csrf_token
 
 
+def ensure_csrf_cookie(request: Request, response: Response) -> str:
+    """
+    Reuses the caller's existing CSRF cookie if present, otherwise mints and
+    sets a new one — without touching the access/refresh cookies. For
+    GET /auth/me: a tab that never went through login/register/refresh in
+    its own lifetime (session restored from a persisted user profile, cookie
+    still valid) has a working access-token cookie but no CSRF token in its
+    in-memory csrfManager. Every mutating request from that tab then 403s
+    with "CSRF token missing" — a 403, not a 401, so the axios interceptor's
+    401-triggered refresh-and-retry never kicks in to fix it. /me running on
+    every app mount is what re-establishes it without waiting for that.
+    """
+    existing = request.cookies.get(CSRF_COOKIE)
+    if existing:
+        return existing
+
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=CSRF_COOKIE,
+        value=csrf_token,
+        httponly=False,
+        secure=_is_secure(),
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        path="/",
+    )
+    return csrf_token
+
+
 def clear_auth_cookies(response: Response) -> None:
     for cookie, path in [
         (ACCESS_COOKIE,  "/"),

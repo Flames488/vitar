@@ -50,6 +50,7 @@ class RegisterRequest(BaseModel):
     city: str
     country: str = "NG"
     referral_code: Optional[str] = None
+    turnstile_token: str = ""
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -218,10 +219,17 @@ def _clinic_dict(clinic: Clinic) -> dict:
 @router.post("/register", status_code=201)
 async def register(
     body: RegisterRequest,
+    request: Request,
     response: Response,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    from app.services.turnstile import verify_turnstile
+
+    client_ip = request.headers.get("X-Real-IP", "").strip() or (request.client.host if request.client else None)
+    if not await verify_turnstile(body.turnstile_token, client_ip):
+        raise HTTPException(400, "Bot verification failed. Please refresh and try again.")
+
     if len(body.password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
     if not any(c.isdigit() for c in body.password):

@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "no-reply@livevault.cloud"
     EMAIL_FROM_NAME: str = "Vitar Health"
 
+    # ─── Bot protection (Cloudflare Turnstile) ───────────────────────────────
+    # Secret key only — the site key is a build-time frontend value
+    # (VITE_TURNSTILE_SITE_KEY), never read by the backend.
+    TURNSTILE_SECRET_KEY: str = ""
+
     # ─── Web Push (VAPID) ─────────────────────────────────────────────────
     VAPID_PRIVATE_KEY: str = ""
     VAPID_PUBLIC_KEY: str = ""

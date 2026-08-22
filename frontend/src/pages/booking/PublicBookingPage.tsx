@@ -12,6 +12,7 @@ import { Calendar, Clock, CheckCircle, Loader2, User, Banknote, Phone, MessageCi
 import { bookingApi, registrationsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
+import TurnstileWidget from '@/components/shared/TurnstileWidget';
 
 const schema = z.object({
   full_name: z.string().min(2, 'Name required'),
@@ -48,12 +49,14 @@ export default function PublicBookingPage() {
   });
 
   const [redirecting, setRedirecting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const bookMutation = useMutation({
     mutationFn: (formData: any) => bookingApi.book(slug!, {
       ...formData,
       email: formData.email || undefined,
       doctor_id: selectedDoctor,
+      turnstile_token: turnstileToken,
       // Slot times are clinic-local wall-clock (WAT); convert to a UTC ISO
       // string so the backend's naive-UTC normalization doesn't store the
       // local time as-is (which would be off by the clinic's UTC offset).
@@ -281,6 +284,8 @@ export default function PublicBookingPage() {
                   </p>
                 )}
               </div>
+
+              <TurnstileWidget onVerify={setTurnstileToken} />
 
               <button type="submit" disabled={isSubmitting || bookMutation.isPending || redirecting}
                 className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">

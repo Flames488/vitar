@@ -62,7 +62,7 @@ interface AuthState {
   register: (data: {
     full_name: string; email: string; password: string;
     phone: string; clinic_name: string; city: string; country: string;
-    referral_code?: string;
+    referral_code?: string; turnstile_token?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
   refreshClinic: () => Promise<void>;

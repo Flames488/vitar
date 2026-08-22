@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useGeoStore } from '@/stores/geoStore';
 import { getApiError } from '@/lib/api/client';
 import { toast } from 'sonner';
+import TurnstileWidget from '@/components/shared/TurnstileWidget';
 
 const schema = z.object({
   full_name:   z.string().min(2, 'Full name required'),
@@ -63,6 +64,7 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false);
   const [searchParams] = useSearchParams();
   const referralCode = searchParams.get('ref') || undefined;
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -83,7 +85,7 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: FormData) => {
     try {
-      await signup({ ...data, referral_code: referralCode });
+      await signup({ ...data, referral_code: referralCode, turnstile_token: turnstileToken });
       toast.success("You're in! We've also sent a verification email — check your inbox.");
       navigate('/onboarding');
     } catch (err) {
@@ -193,6 +195,8 @@ export default function RegisterPage() {
           </div>
           {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
         </div>
+
+        <TurnstileWidget onVerify={setTurnstileToken} />
 
         <button
           type="submit"

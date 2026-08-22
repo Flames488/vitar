@@ -7,7 +7,7 @@ Vitar v5.2 - Public Booking Endpoints (HARDENED)
 - Clinic booking page cached in Redis (5-min TTL)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text, or_
 from sqlalchemy.exc import IntegrityError
@@ -40,6 +40,7 @@ class PublicBookingRequest(BaseModel):
     phone: str
     email: Optional[EmailStr] = None
     reason: Optional[str] = None
+    turnstile_token: str = ""
 
     @field_validator("scheduled_at")
     @classmethod
@@ -282,6 +283,7 @@ def get_public_available_slots(slug: str, doctor_id: str, date: str, db: Session
 async def public_book_appointment(
     slug: str,
     body: PublicBookingRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
@@ -290,6 +292,12 @@ async def public_book_appointment(
     Uses SELECT FOR UPDATE SKIP LOCKED on the conflicting slot to prevent
     double-booking under concurrent requests.
     """
+    from app.services.turnstile import verify_turnstile
+
+    client_ip = request.headers.get("X-Real-IP", "").strip() or (request.client.host if request.client else None)
+    if not await verify_turnstile(body.turnstile_token, client_ip):
+        raise HTTPException(status_code=400, detail="Bot verification failed. Please refresh and try again.")
+
     clinic = db.query(Clinic).options(joinedload(Clinic.subscription)).filter(
         Clinic.slug == slug,
         Clinic.is_active == True,

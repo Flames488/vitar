@@ -1,4 +1,4 @@
-"""030_delist_billing_decouple
+"""032_delist_billing_decouple
 
 Public clinic directory visibility (Clinic.is_listed) used to be unset
 by expire_trial_subscriptions/expire_paid_subscriptions whenever a
@@ -15,14 +15,20 @@ onboarding-complete clinics. One-time catch-up; ongoing changes are
 handled by the hooks in onboarding.py / billing_service.py /
 admin_clinics.py, not by re-running this migration.
 
-Revision ID: 030_delist_billing_decouple
-Revises: 029_notification_pushed_flag
+Revision ID: 032_delist_billing_decouple
+Revises: 031_installment_plans
 Create Date: 2026-08-20
+
+Originally written as 030_delist_billing_decouple against
+029_notification_pushed_flag, same as 030_user_marketing_opt_in
+(-> 031_installment_plans) — both branches added a "030" independently.
+Renumbered on top of both to keep a single head instead of a merge
+migration.
 """
 from alembic import op
 
-revision = "030_delist_billing_decouple"
-down_revision = "029_notification_pushed_flag"
+revision = "032_delist_billing_decouple"
+down_revision = "031_installment_plans"
 branch_labels = None
 depends_on = None
 

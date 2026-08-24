@@ -565,12 +565,23 @@ class BillingService:
         if pending.status == PendingPaymentStatus.PAID:
             return True  # already activated — idempotent no-op
 
-        if utcnow() > pending.expires_at:
-            pending.status = PendingPaymentStatus.EXPIRED
-            db.commit()
-            cache.set(f"payment_status:{reference}", {"status": "expired", "clinic_id": str(pending.clinic_id)}, ttl=3600)
-            log_payment_event("automated_payment_expired", "paystack", reference, str(pending.clinic_id))
-            return False
+        # expires_at (35 min) only governs how long the frontend shows the
+        # "waiting for transfer" UI before telling the clinic to regenerate
+        # a session — it is NOT a reason to refuse real money. A Paystack
+        # dedicated-account bank transfer can legitimately clear well past
+        # that window (bank-app delays, interbank transfer lag), and by the
+        # time charge.success arrives the money has already moved into our
+        # account regardless of what our own clock thinks. Same principle
+        # already applied to booking payments in
+        # cancel_stale_awaiting_payment_appointments (workers/tasks.py):
+        # always trust Paystack's own confirmation over our internal state;
+        # a delayed webhook must not cost a clinic a subscription they
+        # already paid for. We still log this case — a late activation is a
+        # real signal the 35-minute window may be too tight.
+        was_late = utcnow() > pending.expires_at
+        if was_late:
+            log_payment_event("automated_payment_late_but_valid", "paystack", reference,
+                              str(pending.clinic_id), extra={"expires_at": pending.expires_at.isoformat()})
 
         paid_amount = float(payload.get("amount", 0)) / 100
         expected_amount = float(pending.amount)

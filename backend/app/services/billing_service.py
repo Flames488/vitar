@@ -372,38 +372,72 @@ class BillingService:
             ),
         }
 
-    async def _initiate_pending_bank_transfer(
-        self, clinic_id, plan, billing_cycle, amount, currency, user_email, db,
-        installment_plan_id=None, installment_number=None, total_installments=None,
+    MIN_PREPAY_MONTHS = 1
+    MAX_PREPAY_MONTHS = 12  # cap how far in advance a clinic can bulk-prepay
+
+    async def create_automated_subscription_payment(
+        self, clinic_id, plan, billing_cycle, user_email, db, months: int = 1,
     ) -> Dict:
         """
-        Shared core of the smart-payment flow: creates one
-        PendingSubscriptionPayment row (superseding any other still-pending
-        attempt for this clinic) and a matching Paystack dedicated
-        bank-transfer charge for `amount`. Used both for a full one-shot
-        subscription payment and for a single installment of a
-        SubscriptionInstallmentPlan — the two are told apart by whether
-        installment_plan_id is set.
+        Smart payment system: generates a Paystack dedicated bank-transfer
+        charge for the clinic's chosen plan, paid in full in one transfer.
+        A PendingSubscriptionPayment row tracks the session so the frontend
+        can poll for status and so the webhook handler knows exactly what
+        to activate once paid.
+
+        `months` (monthly billing_cycle only) lets a clinic prepay several
+        consecutive months in a single upfront transfer instead of paying
+        one month at a time — e.g. months=4 pays for the next 4 months at
+        once, at the same per-month price, and grants all 4 months of
+        coverage as soon as that one transfer is confirmed.
         """
-        from app.models.models import PendingSubscriptionPayment, PendingPaymentStatus
+        from app.models.models import Clinic, PendingSubscriptionPayment, PendingPaymentStatus
         from app.core.cache import cache
+
+        months = months or 1
+        if months < self.MIN_PREPAY_MONTHS or months > self.MAX_PREPAY_MONTHS:
+            raise Exception(
+                f"Months must be between {self.MIN_PREPAY_MONTHS} and {self.MAX_PREPAY_MONTHS}"
+            )
+        if billing_cycle != "monthly" and months != 1:
+            raise Exception("Prepaying multiple months only applies to monthly billing")
+
+        clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
+        if not clinic:
+            raise Exception("Clinic not found")
+
+        currency = clinic.currency or "NGN"
+        pricing = get_plan_pricing(plan, currency)
+        unit_price = pricing["monthly"] if billing_cycle == "monthly" else pricing["annual"]
+        if not unit_price:
+            raise Exception(f"Plan {plan} has no fixed price for automated checkout")
+        amount = unit_price * months
+
+        # Refer & Earn: apply this clinic's earned (unredeemed) 10% referral
+        # discount, if any. No-op and safe to call unconditionally — see
+        # referral_service.apply_referral_discount for the failure-safety
+        # guarantee (never raises, never blocks checkout). The credit is
+        # NOT marked spent here — only once this specific checkout actually
+        # confirms paid (see finalize_paystack_payment's redeem_referral_
+        # discount call below) — so a failed/expired/mismatched attempt
+        # doesn't burn the referrer's discount for nothing.
+        from app.services.referral_service import apply_referral_discount
+        amount, applied_referral_id = apply_referral_discount(amount, clinic_id, db)
 
         currency_symbol = "₦" if currency == "NGN" else currency
 
         # Supersede any still-pending attempts for this clinic. Without this,
-        # clicking Upgrade / Generate New Payment / Pay Next Installment more
-        # than once (e.g. after closing the modal and coming back) would
-        # leave multiple live PendingSubscriptionPayment rows — and multiple
-        # live Paystack dedicated virtual accounts — open for the same
-        # clinic at once.
+        # clicking Upgrade / Generate New Payment more than once (e.g. after
+        # closing the modal and coming back) would leave multiple live
+        # PendingSubscriptionPayment rows — and multiple live Paystack
+        # dedicated virtual accounts — open for the same clinic at once.
         db.query(PendingSubscriptionPayment).filter(
             PendingSubscriptionPayment.clinic_id == clinic_id,
             PendingSubscriptionPayment.status == PendingPaymentStatus.PENDING,
         ).update({"status": PendingPaymentStatus.EXPIRED}, synchronize_session=False)
         db.commit()
 
-        ref_tag = f"-INST{installment_number}" if installment_number else ""
-        reference = f"VITAR-{clinic_id[:8].upper()}-{plan.upper()}{ref_tag}-{int(utcnow().timestamp())}"
+        reference = f"VITAR-{clinic_id[:8].upper()}-{plan.upper()}-{int(utcnow().timestamp())}"
         now = utcnow()
         expires_at = now + timedelta(minutes=35)
 
@@ -416,8 +450,7 @@ class BillingService:
             paystack_reference=reference,
             status=PendingPaymentStatus.PENDING,
             expires_at=expires_at,
-            installment_plan_id=installment_plan_id,
-            installment_number=installment_number,
+            months=months,
         )
         db.add(pending)
         db.commit()
@@ -432,8 +465,7 @@ class BillingService:
                     "plan": plan,
                     "billing_cycle": billing_cycle,
                     "pending_payment_id": pending.id,
-                    "installment_plan_id": installment_plan_id,
-                    "installment_number": installment_number,
+                    "months": months,
                 },
                 expires_at=expires_at,
             )
@@ -447,20 +479,22 @@ class BillingService:
                 db.commit()
             raise
 
-        pending.provider_response = {**charge.get("raw", {})}
+        # Merge (not overwrite) — applied_referral_id must survive this
+        # assignment so finalize_paystack_payment can find it later to
+        # redeem the credit once (and only once) this checkout confirms.
+        pending.provider_response = {**charge.get("raw", {}), "applied_referral_id": applied_referral_id}
         db.commit()
 
         cache.set(f"payment_status:{reference}", {"status": "pending", "clinic_id": clinic_id}, ttl=35 * 60)
 
         log_payment_event("automated_payment_initiated", "paystack", reference, clinic_id, amount, "pending",
-                          extra={"plan": plan, "installment_plan_id": installment_plan_id,
-                                 "installment_number": installment_number})
+                          extra={"plan": plan, "months": months})
 
-        if installment_plan_id:
+        if months > 1:
             instructions = (
                 f"Transfer exactly {currency_symbol}{amount:,} to the account below. "
-                f"This is installment {installment_number} of {total_installments} for your "
-                f"{plan.capitalize()} plan. Coverage extends automatically the moment we receive it."
+                f"This covers the next {months} months of your {plan.capitalize()} plan in one payment. "
+                f"Coverage activates automatically the moment we receive it."
             )
         else:
             instructions = (
@@ -473,6 +507,7 @@ class BillingService:
             "payment_method": "bank_transfer",
             "plan": plan,
             "billing_cycle": billing_cycle,
+            "months": months,
             "amount": float(amount),
             "currency": currency,
             "currency_symbol": currency_symbol,
@@ -490,225 +525,7 @@ class BillingService:
             "server_time": now.isoformat(),
             "status": "pending",
             "instructions": instructions,
-            "installment_plan_id": installment_plan_id,
-            "installment_number": installment_number,
-            "total_installments": total_installments,
         }
-
-    async def create_automated_subscription_payment(
-        self, clinic_id, plan, billing_cycle, user_email, db
-    ) -> Dict:
-        """
-        Smart payment system: generates a Paystack dedicated bank-transfer
-        charge for the clinic's chosen plan, paid in full in one transfer.
-        A PendingSubscriptionPayment row tracks the session so the frontend
-        can poll for status and so the webhook handler knows exactly what
-        to activate once paid.
-        """
-        from app.models.models import Clinic
-
-        clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
-        if not clinic:
-            raise Exception("Clinic not found")
-
-        currency = clinic.currency or "NGN"
-        pricing = get_plan_pricing(plan, currency)
-        amount = pricing["monthly"] if billing_cycle == "monthly" else pricing["annual"]
-        if not amount:
-            raise Exception(f"Plan {plan} has no fixed price for automated checkout")
-
-        # Refer & Earn: apply this clinic's earned (unredeemed) 10% referral
-        # discount, if any. No-op and safe to call unconditionally — see
-        # referral_service.apply_referral_discount for the failure-safety
-        # guarantee (never raises, never blocks checkout). The credit is
-        # NOT marked spent here — only once this specific checkout actually
-        # confirms paid (see finalize_paystack_payment's redeem_referral_
-        # discount call below) — so a failed/expired/mismatched attempt
-        # doesn't burn the referrer's discount for nothing.
-        from app.services.referral_service import apply_referral_discount
-        amount, applied_referral_id = apply_referral_discount(amount, clinic_id, db)
-
-        result = await self._initiate_pending_bank_transfer(
-            clinic_id, plan, billing_cycle, amount, currency, user_email, db,
-        )
-
-        # Merge (not overwrite) — applied_referral_id must survive this
-        # assignment so finalize_paystack_payment can find it later to
-        # redeem the credit once (and only once) this checkout confirms.
-        from app.models.models import PendingSubscriptionPayment
-        pending = db.query(PendingSubscriptionPayment).filter(
-            PendingSubscriptionPayment.paystack_reference == result["reference"]
-        ).first()
-        pending.provider_response = {**(pending.provider_response or {}), "applied_referral_id": applied_referral_id}
-        db.commit()
-
-        return result
-
-    MIN_INSTALLMENTS = 2
-    MAX_INSTALLMENTS = 12  # annual plan split into up to 12 monthly-ish parts
-
-    async def create_installment_subscription_payment(
-        self, clinic_id, plan, installments, user_email, db
-    ) -> Dict:
-        """
-        Lets a clinic pay for the ANNUAL price of a plan across several
-        smaller bank transfers instead of one lump sum — e.g. 2, 3, or up
-        to 12 installments spread across as many months as they want.
-        Creates the SubscriptionInstallmentPlan agreement plus the first
-        installment's bank-transfer payment session. Subsequent
-        installments are billed via pay_next_installment as each one
-        comes due.
-        """
-        from app.models.models import (
-            Clinic, SubscriptionInstallmentPlan, InstallmentPlanStatus,
-        )
-
-        if installments < self.MIN_INSTALLMENTS or installments > self.MAX_INSTALLMENTS:
-            raise Exception(
-                f"Installments must be between {self.MIN_INSTALLMENTS} and {self.MAX_INSTALLMENTS}"
-            )
-
-        clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
-        if not clinic:
-            raise Exception("Clinic not found")
-
-        existing = db.query(SubscriptionInstallmentPlan).filter(
-            SubscriptionInstallmentPlan.clinic_id == clinic_id,
-            SubscriptionInstallmentPlan.status == InstallmentPlanStatus.ACTIVE,
-        ).first()
-        if existing:
-            raise Exception(
-                "You already have an active installment plan. Pay the next installment "
-                "or cancel it before starting a new one."
-            )
-
-        currency = clinic.currency or "NGN"
-        pricing = get_plan_pricing(plan, currency)
-        total_amount = pricing["annual"]
-        if not total_amount:
-            raise Exception(f"Plan {plan} has no fixed annual price for installment checkout")
-
-        # Split evenly in cents/kobo, last installment absorbs the rounding
-        # remainder, so the parts always sum exactly to total_amount.
-        total_amount = float(total_amount)
-        base_unit = round(total_amount / installments, 2)
-        amounts = [base_unit] * (installments - 1)
-        amounts.append(round(total_amount - sum(amounts), 2))
-
-        plan_row = SubscriptionInstallmentPlan(
-            clinic_id=clinic_id,
-            subscription_plan=plan,
-            billing_cycle="annual",
-            total_amount=total_amount,
-            currency=currency,
-            total_installments=installments,
-            installments_paid=0,
-            status=InstallmentPlanStatus.ACTIVE,
-            extra_data={"installment_amounts": amounts},
-        )
-        db.add(plan_row)
-        db.commit()
-        db.refresh(plan_row)
-
-        try:
-            result = await self._initiate_pending_bank_transfer(
-                clinic_id, plan, "annual", amounts[0], currency, user_email, db,
-                installment_plan_id=plan_row.id, installment_number=1,
-                total_installments=installments,
-            )
-        except Exception:
-            db.delete(plan_row)
-            db.commit()
-            raise
-
-        log_payment_event("installment_plan_started", "paystack", result["reference"], clinic_id,
-                          total_amount, "pending", extra={"plan": plan, "installments": installments})
-
-        return result
-
-    async def pay_next_installment(self, clinic_id, user_email, db) -> Dict:
-        """Bills whichever installment comes next on the clinic's active plan."""
-        from app.models.models import Clinic, SubscriptionInstallmentPlan, InstallmentPlanStatus
-
-        clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
-        if not clinic:
-            raise Exception("Clinic not found")
-
-        plan_row = db.query(SubscriptionInstallmentPlan).filter(
-            SubscriptionInstallmentPlan.clinic_id == clinic_id,
-            SubscriptionInstallmentPlan.status == InstallmentPlanStatus.ACTIVE,
-        ).first()
-        if not plan_row:
-            raise Exception("No active installment plan found")
-
-        if plan_row.installments_paid >= plan_row.total_installments:
-            raise Exception("All installments have already been paid")
-
-        amounts = (plan_row.extra_data or {}).get("installment_amounts") or []
-        next_index = plan_row.installments_paid
-        if next_index >= len(amounts):
-            raise Exception("Installment plan is in an inconsistent state")
-        amount = amounts[next_index]
-
-        return await self._initiate_pending_bank_transfer(
-            clinic_id, plan_row.subscription_plan, plan_row.billing_cycle, amount,
-            plan_row.currency or "NGN", user_email, db,
-            installment_plan_id=plan_row.id, installment_number=next_index + 1,
-            total_installments=plan_row.total_installments,
-        )
-
-    def get_installment_plan_status(self, clinic_id, db) -> Optional[Dict]:
-        """Returns the clinic's active installment plan (if any) for the Billing page."""
-        from app.models.models import SubscriptionInstallmentPlan, InstallmentPlanStatus
-
-        plan_row = db.query(SubscriptionInstallmentPlan).filter(
-            SubscriptionInstallmentPlan.clinic_id == clinic_id,
-            SubscriptionInstallmentPlan.status == InstallmentPlanStatus.ACTIVE,
-        ).order_by(SubscriptionInstallmentPlan.created_at.desc()).first()
-        if not plan_row:
-            return None
-
-        amounts = (plan_row.extra_data or {}).get("installment_amounts") or []
-        next_amount = amounts[plan_row.installments_paid] if plan_row.installments_paid < len(amounts) else None
-
-        return {
-            "id": plan_row.id,
-            "plan": plan_row.subscription_plan,
-            "billing_cycle": plan_row.billing_cycle,
-            "total_amount": float(plan_row.total_amount),
-            "currency": plan_row.currency,
-            "total_installments": plan_row.total_installments,
-            "installments_paid": plan_row.installments_paid,
-            "next_installment_amount": next_amount,
-            "status": plan_row.status.value,
-        }
-
-    def cancel_installment_plan(self, clinic_id, db) -> Dict:
-        """
-        Stops future installments from being billed. Coverage already
-        purchased through installments paid so far is not revoked — the
-        clinic's subscription simply runs out at its current period end,
-        same as cancelling a regular subscription.
-        """
-        from app.models.models import SubscriptionInstallmentPlan, InstallmentPlanStatus, PendingSubscriptionPayment, PendingPaymentStatus
-
-        plan_row = db.query(SubscriptionInstallmentPlan).filter(
-            SubscriptionInstallmentPlan.clinic_id == clinic_id,
-            SubscriptionInstallmentPlan.status == InstallmentPlanStatus.ACTIVE,
-        ).first()
-        if not plan_row:
-            raise Exception("No active installment plan found")
-
-        plan_row.status = InstallmentPlanStatus.CANCELLED
-        plan_row.cancelled_at = utcnow()
-
-        db.query(PendingSubscriptionPayment).filter(
-            PendingSubscriptionPayment.installment_plan_id == plan_row.id,
-            PendingSubscriptionPayment.status == PendingPaymentStatus.PENDING,
-        ).update({"status": PendingPaymentStatus.EXPIRED}, synchronize_session=False)
-        db.commit()
-
-        return {"message": "Installment plan cancelled", "installments_paid": plan_row.installments_paid}
 
     def get_payment_status(self, reference: str, db, clinic_id: str) -> Dict:
         """
@@ -814,39 +631,15 @@ class BillingService:
 
         now = utcnow()
 
-        # Installment payments only ever cover a proportional slice of the
-        # full billing cycle (1/total_installments of it) — a clinic that
-        # stops paying partway through simply loses coverage at the point
-        # they've actually paid for, same as any other unpaid renewal.
-        install_plan = None
-        if pending.installment_plan_id:
-            from app.models.models import SubscriptionInstallmentPlan
-            install_plan = db.query(SubscriptionInstallmentPlan).filter(
-                SubscriptionInstallmentPlan.id == pending.installment_plan_id
-            ).with_for_update().first()
-
-        if install_plan:
-            full_cycle_days = 30 if pending.billing_cycle == "monthly" else 365
-            slice_days = max(1, round(full_cycle_days / install_plan.total_installments))
-            period_delta = timedelta(days=slice_days)
-        else:
-            period_delta = timedelta(days=30 if pending.billing_cycle == "monthly" else 365)
+        # A single upfront payment can cover several consecutive months at
+        # once (pending.months — see create_automated_subscription_payment);
+        # always 1 for annual billing.
+        months = pending.months or 1
+        period_delta = timedelta(days=30 * months if pending.billing_cycle == "monthly" else 365)
+        period_start = now
+        period_end = now + period_delta
 
         sub = db.query(Subscription).filter(Subscription.clinic_id == pending.clinic_id).first()
-        # From the 2nd installment onward, coverage stacks onto whatever's
-        # left of the current period (so paying installment 2 while
-        # installment 1's slice hasn't expired yet extends from its end,
-        # not from "now"). The 1st installment always starts fresh at
-        # "now", same as a one-shot full payment — it must not inherit
-        # any leftover free-trial time still sitting on sub.current_period_end.
-        is_followup_installment = bool(install_plan) and (pending.installment_number or 1) > 1
-        if is_followup_installment and sub and sub.current_period_end and sub.current_period_end > now:
-            period_start = sub.current_period_start
-            period_end = sub.current_period_end + period_delta
-        else:
-            period_start = now
-            period_end = now + period_delta
-
         if sub:
             sub.plan = pending.subscription_plan
             sub.status = SubscriptionStatus.ACTIVE
@@ -868,13 +661,6 @@ class BillingService:
             db.add(sub)
         db.flush()
 
-        if install_plan:
-            install_plan.installments_paid = (install_plan.installments_paid or 0) + 1
-            if install_plan.installments_paid >= install_plan.total_installments:
-                from app.models.models import InstallmentPlanStatus
-                install_plan.status = InstallmentPlanStatus.COMPLETED
-                install_plan.completed_at = now
-
         # Refer & Earn: was this clinic's Subscription previously ever paid?
         # Must be captured before adding this payment's own row below.
         is_first_payment = db.query(SubscriptionPayment).filter(
@@ -888,8 +674,7 @@ class BillingService:
             status=PaymentStatus.PAID, paid_at=now,
             extra_data={
                 "automated": True, "pending_payment_id": pending.id,
-                "installment_plan_id": pending.installment_plan_id,
-                "installment_number": pending.installment_number,
+                "months": months,
             },
         ))
 
@@ -901,28 +686,19 @@ class BillingService:
         cache.set(f"payment_status:{reference}", {"status": "paid", "clinic_id": str(pending.clinic_id)}, ttl=3600)
         log_payment_event("subscription_activated", "paystack", reference, str(pending.clinic_id),
                           paid_amount, "success", extra={"plan": pending.subscription_plan, "automated": True,
-                                                           "installment_plan_id": pending.installment_plan_id})
+                                                           "months": months})
 
         plan_name = PLANS.get(pending.subscription_plan, {}).get("name", pending.subscription_plan)
         currency_symbol = "₦" if pending.currency == "NGN" else pending.currency
-        if install_plan:
-            notify(
-                event_type="subscription_paid",
-                agent_name="billing",
-                message=f"{clinic.name} paid installment {pending.installment_number}/{install_plan.total_installments} "
-                        f"for the {plan_name} plan ({currency_symbol}{paid_amount:,.2f}).",
-                related_id=clinic.id,
-                link_path="/admin/subscriptions",
-            )
-        else:
-            notify(
-                event_type="subscription_paid",
-                agent_name="billing",
-                message=f"{clinic.name} just paid for the {plan_name} plan "
-                        f"({currency_symbol}{paid_amount:,.2f}, {pending.billing_cycle}).",
-                related_id=clinic.id,
-                link_path="/admin/subscriptions",
-            )
+        months_note = f", {months} months prepaid" if months > 1 else ""
+        notify(
+            event_type="subscription_paid",
+            agent_name="billing",
+            message=f"{clinic.name} just paid for the {plan_name} plan "
+                    f"({currency_symbol}{paid_amount:,.2f}, {pending.billing_cycle}{months_note}).",
+            related_id=clinic.id,
+            link_path="/admin/subscriptions",
+        )
 
         if is_first_payment:
             from app.services.referral_service import record_referral_payment

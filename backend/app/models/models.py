@@ -91,12 +91,6 @@ class PendingPaymentStatus(str, enum.Enum):
     EXPIRED = "expired"
     AMOUNT_MISMATCH = "amount_mismatch"
 
-class InstallmentPlanStatus(str, enum.Enum):
-    """Lifecycle of a clinic's split-payment agreement for one annual
-    subscription (see SubscriptionInstallmentPlan)."""
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
 
 class PayoutStatus(str, enum.Enum):
     PENDING_PAYOUT = "pending_payout"
@@ -322,60 +316,13 @@ class PendingSubscriptionPayment(Base):
 
     provider_response = Column(JSONB, default={})
 
-    # Set when this pending payment is one installment of a split-payment
-    # agreement (see SubscriptionInstallmentPlan) rather than a full,
-    # one-shot subscription payment. installment_number is 1-based.
-    installment_plan_id = Column(String(36), ForeignKey("subscription_installment_plans.id", ondelete="CASCADE"), nullable=True, index=True)
-    installment_number = Column(Integer, nullable=True)
+    # How many consecutive billing periods this single upfront payment
+    # covers (e.g. 4 = pay once now for the next 4 months). Always 1 for
+    # annual billing_cycle. See billing_service.create_automated_subscription_payment.
+    months = Column(Integer, nullable=False, default=1)
 
     __table_args__ = (
         Index("ix_pendingpay_status_expires", "status", "expires_at"),
-    )
-
-
-# ─── Subscription Installment Plans (pay an annual plan in parts) ─────────────
-
-class SubscriptionInstallmentPlan(Base):
-    """
-    Lets a clinic pay for an annual subscription in several smaller bank
-    transfers spread across months, instead of the full amount up front.
-    total_amount is split into `total_installments` parts (see
-    installment_amounts in extra_data — the last part absorbs any rounding
-    remainder so the parts always sum exactly to total_amount). Each part
-    is billed as its own PendingSubscriptionPayment/dedicated Paystack
-    virtual account; on confirmation the clinic's subscription coverage is
-    extended by one proportional slice (see billing_service.finalize_paystack_payment).
-    """
-    __tablename__ = "subscription_installment_plans"
-
-    id = Column(String(36), primary_key=True, default=gen_uuid)
-    clinic_id = Column(String(36), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
-
-    subscription_plan = Column(String(20), nullable=False)   # basic | pro | enterprise
-    billing_cycle = Column(String(20), default="annual")
-
-    total_amount = Column(Numeric(12, 2), nullable=False)
-    currency = Column(String(10), default="NGN")
-
-    total_installments = Column(Integer, nullable=False)
-    installments_paid = Column(Integer, nullable=False, default=0)
-
-    status = Column(Enum(InstallmentPlanStatus, native_enum=False), default=InstallmentPlanStatus.ACTIVE, nullable=False, index=True)
-
-    # {"installment_amounts": [float, ...]} — the pre-computed amount due
-    # for each installment, in order, so every part is billed at exactly
-    # the amount agreed when the plan was created regardless of any later
-    # pricing changes.
-    extra_data = Column(JSONB, default={})
-
-    created_at = Column(DateTime, default=func.now(), index=True)
-    completed_at = Column(DateTime)
-    cancelled_at = Column(DateTime)
-
-    pending_payments = relationship("PendingSubscriptionPayment", backref="installment_plan")
-
-    __table_args__ = (
-        Index("ix_installplan_clinic_status", "clinic_id", "status"),
     )
 
 

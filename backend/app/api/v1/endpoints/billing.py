@@ -23,16 +23,14 @@ router = APIRouter()
 class SubscribeRequest(BaseModel):
     plan: str
     billing_cycle: str = "monthly"
+    # How many consecutive months to prepay in this one transfer (monthly
+    # billing only) — e.g. 4 pays now for the next 4 months at once.
+    months: int = 1
 
 
 class UpgradeRequest(BaseModel):
     plan: str
     billing_cycle: str = "monthly"
-
-
-class InstallmentSubscribeRequest(BaseModel):
-    plan: str
-    installments: int
 
 
 # ─── Paystack Webhook Compatibility Alias ────────────────────────────────────
@@ -179,9 +177,20 @@ async def subscribe(
             ),
         )
 
+    if body.months != 1 and body.billing_cycle != "monthly":
+        raise HTTPException(
+            status_code=400,
+            detail="Prepaying multiple months only applies to monthly billing",
+        )
+    if body.months < 1 or body.months > 12:
+        raise HTTPException(status_code=400, detail="months must be between 1 and 12")
+
     # Smart payment system: generates a dedicated Paystack bank-transfer
     # charge. The clinic transfers, Paystack webhooks us, and the
     # subscription activates automatically — no admin step required.
+    # months > 1 pays for that many consecutive months in one transfer
+    # (e.g. months=4 covers the next 4 months up front) instead of one
+    # billing period at a time.
     try:
         result = await billing_service.create_automated_subscription_payment(
             clinic_id=clinic.id,
@@ -189,6 +198,7 @@ async def subscribe(
             billing_cycle=body.billing_cycle,
             user_email=current_user.email,
             db=db,
+            months=body.months,
         )
     except Exception as exc:
         from app.core.logging import get_logger
@@ -197,111 +207,6 @@ async def subscribe(
                    extra={"clinic_id": str(clinic.id), "plan": body.plan})
         raise HTTPException(status_code=502, detail="Payment provider unavailable. Please try again.")
     return result
-
-
-# ─── Installment Plan (pay an annual plan across several months) ──────────────
-
-@router.post("/subscribe-installments")
-async def subscribe_installments(
-    body: InstallmentSubscribeRequest,
-    clinic=Depends(get_current_clinic),
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Lets a clinic pay for the annual price of a plan across several
-    smaller bank transfers instead of one lump sum — e.g. twice over 2
-    months, or up to 12 installments, spread across as many months as
-    they want. Starts the plan and returns the first installment's bank
-    transfer instructions; call /installment-plan/pay-next for each
-    following one as it comes due.
-    """
-    if body.plan not in PLANS:
-        raise HTTPException(status_code=400, detail=f"Invalid plan: {body.plan}")
-
-    if body.plan == "enterprise":
-        raise HTTPException(
-            status_code=400,
-            detail="Enterprise plan requires contacting sales. Please email contact@livevault.cloud",
-        )
-
-    if (clinic.currency or "NGN") != "NGN":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Online self-service checkout isn't available in your currency yet. "
-                "Please email contact@livevault.cloud to subscribe."
-            ),
-        )
-
-    try:
-        result = await billing_service.create_installment_subscription_payment(
-            clinic_id=clinic.id,
-            plan=body.plan,
-            installments=body.installments,
-            user_email=current_user.email,
-            db=db,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        from app.core.logging import get_logger
-        _log = get_logger(__name__)
-        msg = str(exc)
-        # Validation-style failures (bad installment count, existing active
-        # plan) should surface as 400s the frontend can show directly;
-        # anything else (Paystack/provider trouble) is a 502.
-        if "Installments must be" in msg or "active installment plan" in msg or "no fixed annual price" in msg:
-            raise HTTPException(status_code=400, detail=msg)
-        _log.error("subscribe_installments: failed", exc_info=exc,
-                   extra={"clinic_id": str(clinic.id), "plan": body.plan})
-        raise HTTPException(status_code=502, detail="Payment provider unavailable. Please try again.")
-    return result
-
-
-@router.get("/installment-plan")
-def get_installment_plan(
-    clinic=Depends(get_current_clinic),
-    db: Session = Depends(get_db),
-):
-    """Returns the clinic's active installment plan, or null if none."""
-    return {"installment_plan": billing_service.get_installment_plan_status(clinic.id, db)}
-
-
-@router.post("/installment-plan/pay-next")
-async def pay_next_installment(
-    clinic=Depends(get_current_clinic),
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Generates bank transfer instructions for the next due installment."""
-    try:
-        result = await billing_service.pay_next_installment(
-            clinic_id=clinic.id, user_email=current_user.email, db=db,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        from app.core.logging import get_logger
-        _log = get_logger(__name__)
-        msg = str(exc)
-        if "No active installment plan" in msg or "already been paid" in msg:
-            raise HTTPException(status_code=400, detail=msg)
-        _log.error("pay_next_installment: failed", exc_info=exc, extra={"clinic_id": str(clinic.id)})
-        raise HTTPException(status_code=502, detail="Payment provider unavailable. Please try again.")
-    return result
-
-
-@router.post("/installment-plan/cancel")
-def cancel_installment_plan(
-    clinic=Depends(get_current_clinic),
-    db: Session = Depends(get_db),
-):
-    """Stops future installments; coverage already paid for is unaffected."""
-    try:
-        return billing_service.cancel_installment_plan(clinic.id, db)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ─── Payment Status Polling (smart payment system) ────────────────────────────

@@ -19,7 +19,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
-from app.core.database import get_db, retry_on_disconnect
+from app.core.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +117,7 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
-    user = retry_on_disconnect(
-        lambda: db.query(User).filter(User.id == user_id, User.is_active == True).first()
-    )
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found or inactive")
     return user
@@ -132,12 +130,12 @@ def get_current_clinic(
     """Eager-loads subscription so trial_guard works without lazy-load errors."""
     from app.models.models import Clinic
 
-    clinic = retry_on_disconnect(lambda: (
+    clinic = (
         db.query(Clinic)
         .options(joinedload(Clinic.subscription))
         .filter(Clinic.owner_id == current_user.id, Clinic.is_active == True)
         .first()
-    ))
+    )
     if not clinic:
         raise HTTPException(status_code=404, detail="Clinic not found")
     return clinic

@@ -178,32 +178,48 @@ def timed_query(label: str, query_fn: Callable[..., T], *args, **kwargs) -> T:
         raise
 
 
-# ── Disconnect-retry wrapper ───────────────────────────────────────────────────
-def retry_on_disconnect(query_fn: Callable[[], T]) -> T:
+# ── Disconnect-retry session ──────────────────────────────────────────────────
+class _AutoReconnectSession(Session):
     """
-    Run query_fn() once; on an OperationalError, retry exactly once.
+    Retries exactly once on OperationalError — but ONLY for the first
+    statement executed on this session. After that first execute() call
+    (success or a used-up retry), eligibility flips off for the rest of
+    this session's life, so a mid-transaction drop after something has
+    already been written is never retried blindly (that would risk
+    re-running a statement whose effect may have already landed server
+    side before the connection dropped — a real double-write risk this
+    fix must not introduce).
 
-    pool_pre_ping + pool_recycle=300 (see _make_engine above) handle the
-    common case of Supabase's pooler closing an idle connection, but not
-    the residual race where a connection is reaped in the moment between
-    pre_ping's own check and the real query — rare, but non-negligible at
-    scale (confirmed live: OperationalError("server closed the connection
-    unexpectedly") surfacing from get_current_clinic's query, a dependency
-    that runs ahead of nearly every authenticated endpoint). SQLAlchemy
-    already invalidates the dead pooled connection itself when this
-    happens, so a plain retry gets a fresh one and just works — cheaper
-    and more reliable than tuning the recycle window tighter and hoping.
-
-    Use for the small number of call sites that run before a request's
-    own try/except would have a chance to handle it (auth dependencies),
-    not as a blanket wrapper around every query.
+    That "first statement only" scope isn't a compromise — it's exactly
+    the failure shape this targets. pool_pre_ping + pool_recycle (see
+    _make_engine above) handle the common case of Supabase's pooler
+    closing an idle connection, but not the residual race where a
+    connection is reaped in the moment between pre_ping's own check and
+    the real query. That race can only ever hit a session's first use of
+    a freshly-checked-out connection — nothing has been sent on it yet,
+    so retrying is always safe. Confirmed live: OperationalError("server
+    closed the connection unexpectedly") from get_current_clinic (a
+    dependency that runs ahead of nearly every authenticated endpoint),
+    then independently from admin_users and admin_agents list endpoints
+    within the same minute — three unrelated call sites hit by the same
+    connection-pool race, which is what makes a per-session fix worth
+    having instead of chasing each call site that happens to alert.
     """
-    from sqlalchemy.exc import OperationalError
-    try:
-        return query_fn()
-    except OperationalError:
-        logger.warning("retry_on_disconnect: retrying once after OperationalError")
-        return query_fn()
+    _retry_eligible = True
+
+    def execute(self, *args, **kwargs):
+        from sqlalchemy.exc import OperationalError
+        try:
+            result = super().execute(*args, **kwargs)
+            self._retry_eligible = False
+            return result
+        except OperationalError:
+            if not self._retry_eligible:
+                raise
+            self._retry_eligible = False
+            logger.warning("db session: retrying first statement once after OperationalError "
+                            "(likely a pooled connection reaped by Supabase's pooler)")
+            return super().execute(*args, **kwargs)
 
 
 # ── Redis-backed query cache ──────────────────────────────────────────────────
@@ -326,7 +342,7 @@ class _LazyEngine:
 
 engine = _LazyEngine()
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=_AutoReconnectSession)
 
 
 # ── Read replica engine ───────────────────────────────────────────────────────
@@ -361,7 +377,7 @@ def _get_replica_session_factory():
     global ReplicaSessionLocal
     if ReplicaSessionLocal is None:
         ReplicaSessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=_get_replica_engine()
+            autocommit=False, autoflush=False, bind=_get_replica_engine(), class_=_AutoReconnectSession
         )
     return ReplicaSessionLocal
 

@@ -178,6 +178,34 @@ def timed_query(label: str, query_fn: Callable[..., T], *args, **kwargs) -> T:
         raise
 
 
+# ── Disconnect-retry wrapper ───────────────────────────────────────────────────
+def retry_on_disconnect(query_fn: Callable[[], T]) -> T:
+    """
+    Run query_fn() once; on an OperationalError, retry exactly once.
+
+    pool_pre_ping + pool_recycle=300 (see _make_engine above) handle the
+    common case of Supabase's pooler closing an idle connection, but not
+    the residual race where a connection is reaped in the moment between
+    pre_ping's own check and the real query — rare, but non-negligible at
+    scale (confirmed live: OperationalError("server closed the connection
+    unexpectedly") surfacing from get_current_clinic's query, a dependency
+    that runs ahead of nearly every authenticated endpoint). SQLAlchemy
+    already invalidates the dead pooled connection itself when this
+    happens, so a plain retry gets a fresh one and just works — cheaper
+    and more reliable than tuning the recycle window tighter and hoping.
+
+    Use for the small number of call sites that run before a request's
+    own try/except would have a chance to handle it (auth dependencies),
+    not as a blanket wrapper around every query.
+    """
+    from sqlalchemy.exc import OperationalError
+    try:
+        return query_fn()
+    except OperationalError:
+        logger.warning("retry_on_disconnect: retrying once after OperationalError")
+        return query_fn()
+
+
 # ── Redis-backed query cache ──────────────────────────────────────────────────
 def cached_query(
     key: str,

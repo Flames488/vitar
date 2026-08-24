@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   CheckCircle, Zap, Building, AlertCircle, ExternalLink,
-  Banknote, Copy, Check, Clock, X, Loader2,
+  Banknote, Copy, Check, Clock, X, Loader2, Layers, Minus, Plus,
 } from 'lucide-react';
 import { billingApi, doctorsApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
@@ -338,6 +338,149 @@ function PaymentHistorySection({ payments, isLoading, formatMoney }: { payments:
   );
 }
 
+// ── Active Installment Plan Card ────────────────────────────────────────────────
+
+function InstallmentPlanCard({
+  plan,
+  onPayNext,
+  onCancel,
+  isPaying,
+  isCancelling,
+  formatMoney,
+}: {
+  plan: {
+    plan: string;
+    total_installments: number;
+    installments_paid: number;
+    next_installment_amount: number | null;
+    total_amount: number;
+  };
+  onPayNext: () => void;
+  onCancel: () => void;
+  isPaying: boolean;
+  isCancelling: boolean;
+  formatMoney: (n: number) => string;
+}) {
+  const remaining = plan.total_installments - plan.installments_paid;
+  const pct = Math.round((plan.installments_paid / plan.total_installments) * 100);
+  const isComplete = plan.installments_paid >= plan.total_installments;
+  const planLabel = plan.plan.charAt(0).toUpperCase() + plan.plan.slice(1);
+
+  return (
+    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+            <Layers className="w-5 h-5 text-indigo-700" />
+          </div>
+          <div>
+            <p className="font-semibold text-indigo-900">
+              {planLabel} Plan · Installment Plan
+            </p>
+            <p className="text-indigo-700 text-sm mt-0.5">
+              {plan.installments_paid} of {plan.total_installments} installments paid ·
+              Total {formatMoney(plan.total_amount)}/year
+            </p>
+          </div>
+        </div>
+        {!isComplete && (
+          <button
+            onClick={onCancel}
+            disabled={isCancelling}
+            className="text-xs text-red-600 hover:text-red-700 font-medium shrink-0 disabled:opacity-60"
+          >
+            Cancel remaining
+          </button>
+        )}
+      </div>
+
+      <div className="w-full h-2 bg-indigo-100 rounded-full overflow-hidden">
+        <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+      </div>
+
+      {!isComplete && plan.next_installment_amount != null && (
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <p className="text-sm text-indigo-800">
+            Next installment: <span className="font-semibold">{formatMoney(plan.next_installment_amount)}</span>
+            {' '}({remaining} remaining)
+          </p>
+          <button
+            onClick={onPayNext}
+            disabled={isPaying}
+            className="shrink-0 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            {isPaying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Banknote className="w-4 h-4" />}
+            Pay Next Installment
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Pay-in-installments picker (shown under an annual plan card) ───────────────
+
+function InstallmentPicker({
+  onStart,
+  isPending,
+  formatMoney,
+  annualPrice,
+}: {
+  onStart: (installments: number) => void;
+  isPending: boolean;
+  formatMoney: (n: number) => string;
+  annualPrice: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [installments, setInstallments] = useState(2);
+  const perInstallment = annualPrice / installments;
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full text-center text-xs text-teal-700 hover:text-teal-800 font-medium mt-2 underline underline-offset-2"
+      >
+        Or pay in installments
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50">
+      <p className="text-xs font-medium text-slate-600">Split into how many months?</p>
+      <div className="flex items-center justify-center gap-3">
+        <button
+          onClick={() => setInstallments((n) => Math.max(2, n - 1))}
+          className="w-7 h-7 flex items-center justify-center rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <span className="font-bold text-slate-900 text-sm w-20 text-center">
+          {installments} {installments === 1 ? 'month' : 'months'}
+        </span>
+        <button
+          onClick={() => setInstallments((n) => Math.min(12, n + 1))}
+          className="w-7 h-7 flex items-center justify-center rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <p className="text-center text-xs text-slate-500">
+        {formatMoney(perInstallment)}/month × {installments}, first payment starts today
+      </p>
+      <button
+        onClick={() => onStart(installments)}
+        disabled={isPending}
+        className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-60 text-white font-semibold py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
+      >
+        {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+        Start Installment Plan
+      </button>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BillingPage() {
@@ -346,6 +489,10 @@ export default function BillingPage() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [transferData, setTransferData] = useState<any>(null);
+  // What the open BankTransferModal's "generate new payment" retry should
+  // re-run — a full-price checkout vs. one specific installment plan's
+  // next-due installment need different mutations behind that button.
+  const [checkoutKind, setCheckoutKind] = useState<'full' | 'installment'>('full');
 
   // The clinic's own billing currency (set at registration from their
   // country — see auth.py's /register), not the visitor's current IP/VPN
@@ -387,10 +534,16 @@ export default function BillingPage() {
     queryFn: billingApi.getPaymentHistory,
   });
 
+  const { data: installmentData, refetch: refetchInstallmentPlan } = useQuery({
+    queryKey: ['billing', 'installment-plan'],
+    queryFn: billingApi.getInstallmentPlan,
+  });
+
   const subscribeMutation = useMutation({
     mutationFn: ({ plan, cycle }: { plan: string; cycle: string }) =>
       billingApi.subscribe(plan, cycle),
     onSuccess: (data) => {
+      setCheckoutKind('full');
       if (data.payment_method === 'bank_transfer') {
         // Show bank transfer instructions
         setTransferData(data);
@@ -415,9 +568,38 @@ export default function BillingPage() {
     onError: (err) => toast.error(getApiError(err) || 'Failed to cancel subscription'),
   });
 
+  const subscribeInstallmentsMutation = useMutation({
+    mutationFn: ({ plan, installments }: { plan: string; installments: number }) =>
+      billingApi.subscribeInstallments(plan, installments),
+    onSuccess: (data) => {
+      setCheckoutKind('installment');
+      setTransferData(data);
+    },
+    onError: (err) => toast.error(getApiError(err) || 'Failed to start installment plan. Please try again.'),
+  });
+
+  const payNextInstallmentMutation = useMutation({
+    mutationFn: billingApi.payNextInstallment,
+    onSuccess: (data) => {
+      setCheckoutKind('installment');
+      setTransferData(data);
+    },
+    onError: (err) => toast.error(getApiError(err) || 'Failed to start next installment payment. Please try again.'),
+  });
+
+  const cancelInstallmentMutation = useMutation({
+    mutationFn: billingApi.cancelInstallmentPlan,
+    onSuccess: () => {
+      toast.success('Installment plan cancelled. Coverage already paid for is unaffected.');
+      refetchInstallmentPlan();
+    },
+    onError: (err) => toast.error(getApiError(err) || 'Failed to cancel installment plan'),
+  });
+
   const plans = plansData?.plans ?? [];
   const sub = subData?.subscription;
   const trial = subData?.trial;
+  const installmentPlan = installmentData?.installment_plan;
 
   const isCurrentPlan = (planKey: string) => sub?.plan === planKey && sub?.status === 'active';
 
@@ -427,13 +609,16 @@ export default function BillingPage() {
       {transferData && (
         <BankTransferModal
           data={transferData}
-          onClose={() => { setTransferData(null); refetchSub(); }}
-          onActivated={() => { refetchSub(); refreshClinic(); }}
+          onClose={() => { setTransferData(null); refetchSub(); refetchInstallmentPlan(); }}
+          onActivated={() => { refetchSub(); refetchInstallmentPlan(); refreshClinic(); }}
           onRegenerate={() => {
-            if (!selectedPlan) return;
-            subscribeMutation.mutate({ plan: selectedPlan, cycle: billingCycle });
+            if (checkoutKind === 'installment') {
+              payNextInstallmentMutation.mutate();
+            } else if (selectedPlan) {
+              subscribeMutation.mutate({ plan: selectedPlan, cycle: billingCycle });
+            }
           }}
-          regenerating={subscribeMutation.isPending}
+          regenerating={checkoutKind === 'installment' ? payNextInstallmentMutation.isPending : subscribeMutation.isPending}
         />
       )}
 
@@ -490,6 +675,18 @@ export default function BillingPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Active installment plan */}
+      {installmentPlan && (
+        <InstallmentPlanCard
+          plan={installmentPlan}
+          onPayNext={() => payNextInstallmentMutation.mutate()}
+          onCancel={() => { if (confirm('Cancel remaining installments? Coverage already paid for is unaffected.')) cancelInstallmentMutation.mutate(); }}
+          isPaying={payNextInstallmentMutation.isPending}
+          isCancelling={cancelInstallmentMutation.isPending}
+          formatMoney={formatMoney}
+        />
       )}
 
       {/* Refer & Earn */}
@@ -635,6 +832,19 @@ export default function BillingPage() {
                       </>
                     )}
                   </button>
+                )}
+
+                {canSelfServe && billingCycle === 'annual' && plan.plan !== 'enterprise' &&
+                  !isCurrent && !installmentPlan && price != null && (
+                  <InstallmentPicker
+                    annualPrice={price}
+                    formatMoney={formatMoney}
+                    isPending={subscribeInstallmentsMutation.isPending}
+                    onStart={(installments) => {
+                      setSelectedPlan(plan.plan);
+                      subscribeInstallmentsMutation.mutate({ plan: plan.plan, installments });
+                    }}
+                  />
                 )}
               </div>
             );

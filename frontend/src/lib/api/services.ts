@@ -136,6 +136,11 @@ export const billingApi = {
   subscribe: (plan: string, billing_cycle: string) =>
     api.post('/billing/subscribe', { plan, billing_cycle }).then(r => r.data),
   cancel: () => api.post('/billing/cancel').then(r => r.data),
+  subscribeInstallments: (plan: string, installments: number) =>
+    api.post('/billing/subscribe-installments', { plan, installments }).then(r => r.data),
+  getInstallmentPlan: () => api.get('/billing/installment-plan').then(r => r.data),
+  payNextInstallment: () => api.post('/billing/installment-plan/pay-next').then(r => r.data),
+  cancelInstallmentPlan: () => api.post('/billing/installment-plan/cancel').then(r => r.data),
   getPaymentStatus: (reference: string) =>
     api.get(`/billing/payment-status/${reference}`).then(r => r.data),
   getPaymentHistory: () => api.get('/billing/payment-history').then(r => r.data),

@@ -71,7 +71,42 @@ def _sub_snapshot(sub: Subscription) -> dict:
     }
 
 
-def _serialize(clinic: Clinic, sub: Subscription, owner: Optional[User]) -> dict:
+def _installment_summary(plan_row) -> Optional[dict]:
+    if not plan_row:
+        return None
+    return {
+        "plan": plan_row.subscription_plan,
+        "total_installments": plan_row.total_installments,
+        "installments_paid": plan_row.installments_paid,
+        "status": plan_row.status.value,
+    }
+
+
+def _fetch_installment_plans(clinic_ids: list, db: Session) -> dict:
+    """
+    One row per clinic — the clinic's ACTIVE installment plan if it has
+    one, otherwise its most recently created one (completed/cancelled),
+    so admins/the Telegram assistant can see "still paying it off" vs.
+    "finished" vs. "never had one" at a glance.
+    """
+    if not clinic_ids:
+        return {}
+    from app.models.models import SubscriptionInstallmentPlan, InstallmentPlanStatus
+    rows = (
+        db.query(SubscriptionInstallmentPlan)
+        .filter(SubscriptionInstallmentPlan.clinic_id.in_(clinic_ids))
+        .order_by(SubscriptionInstallmentPlan.created_at.desc())
+        .all()
+    )
+    result = {}
+    for r in rows:
+        current = result.get(r.clinic_id)
+        if current is None or (r.status == InstallmentPlanStatus.ACTIVE and current.status != InstallmentPlanStatus.ACTIVE):
+            result[r.clinic_id] = r
+    return result
+
+
+def _serialize(clinic: Clinic, sub: Subscription, owner: Optional[User], installment_plan: Optional[dict] = None) -> dict:
     return {
         "clinic_id": clinic.id,
         "clinic_name": clinic.name,
@@ -84,6 +119,8 @@ def _serialize(clinic: Clinic, sub: Subscription, owner: Optional[User]) -> dict
         "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
         "admin_override": (sub.extra_data or {}).get("admin_override"),
         "updated_at": sub.updated_at.isoformat() if sub.updated_at else None,
+        # None if this clinic has never used the pay-in-installments option.
+        "installment_plan": installment_plan,
     }
 
 
@@ -145,13 +182,17 @@ def list_subscriptions(
     clinics = {c.id: c for c in db.query(Clinic).filter(Clinic.id.in_(clinic_ids)).all()} if clinic_ids else {}
     owner_ids = [c.owner_id for c in clinics.values()]
     owners = {u.id: u for u in db.query(User).filter(User.id.in_(owner_ids)).all()} if owner_ids else {}
+    installment_plans = _fetch_installment_plans(clinic_ids, db)
 
     items = []
     for s in subs:
         clinic = clinics.get(s.clinic_id)
         if not clinic:
             continue
-        items.append(_serialize(clinic, s, owners.get(clinic.owner_id)))
+        items.append(_serialize(
+            clinic, s, owners.get(clinic.owner_id),
+            _installment_summary(installment_plans.get(s.clinic_id)),
+        ))
     return {"items": items, "total": total, "page": page, "limit": limit}
 
 
@@ -163,7 +204,8 @@ def get_subscription(
 ):
     clinic, sub = _get_clinic_and_sub(clinic_id, db)
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
-    return _serialize(clinic, sub, owner)
+    installment_plans = _fetch_installment_plans([clinic_id], db)
+    return _serialize(clinic, sub, owner, _installment_summary(installment_plans.get(clinic_id)))
 
 
 @router.post("/reset-trials")

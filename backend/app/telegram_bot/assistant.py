@@ -152,7 +152,11 @@ TOOLS = [
         "function": {
             "name": "find_clinic_subscription",
             "description": "Look up a clinic's subscription/trial by (partial) clinic name — plan, "
-                            "status, and current billing/trial period end date.",
+                            "status, current billing/trial period end date, and installment_plan "
+                            "(null if the clinic has never used pay-in-installments, otherwise its plan, "
+                            "total_installments, installments_paid, and status — active/completed/cancelled). "
+                            "Use this for 'did X's installment payment go through', 'is X still paying "
+                            "in installments', or 'how many installments has X paid' type questions.",
             "parameters": {
                 "type": "object",
                 "properties": {

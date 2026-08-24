@@ -2,8 +2,9 @@
 Vitar — Admin Dashboard: Clinic Management
 
 GET    /api/v1/admin/clinics                      List clinics (search, filter, paginate)
-GET    /api/v1/admin/clinics/{clinic_id}           View a single clinic + owner + subscription
+GET    /api/v1/admin/clinics/{clinic_id}           View a single clinic + owner + subscription + payout bank account
 PATCH  /api/v1/admin/clinics/{clinic_id}/status     Disable / enable a clinic
+PATCH  /api/v1/admin/clinics/{clinic_id}/settings   Override per-clinic settings (e.g. patient_payment_enabled)
 POST   /api/v1/admin/clinics/{clinic_id}/regenerate-qr   Regenerate the clinic's QR code
 
 Reuses the existing qr_service (same function the clinic owner's own
@@ -19,7 +20,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import get_current_superadmin
 from app.core.config import settings
-from app.models.models import User, Clinic, Subscription
+from app.models.models import User, Clinic, Subscription, HospitalBankAccount
 from app.services.qr_service import regenerate_clinic_qr
 from app.services.audit_service import write_audit_log
 
@@ -28,6 +29,12 @@ router = APIRouter(prefix="/admin/clinics", tags=["Admin — Clinics"])
 
 class ClinicStatusUpdateRequest(BaseModel):
     is_active: bool
+    reason: Optional[str] = None
+
+
+class ClinicSettingsUpdateRequest(BaseModel):
+    patient_payment_enabled: Optional[bool] = None
+    is_listed: Optional[bool] = None
     reason: Optional[str] = None
 
 
@@ -46,6 +53,7 @@ def _serialize_row(clinic: Clinic, owner: Optional[User], sub: Optional[Subscrip
         "country": clinic.country,
         "is_active": clinic.is_active,
         "onboarding_completed": clinic.onboarding_completed,
+        "patient_payment_enabled": clinic.patient_payment_enabled,
         "subscription_plan": sub.plan.value if sub else None,
         "subscription_status": sub.status.value if sub else None,
         "created_at": clinic.created_at.isoformat() if clinic.created_at else None,
@@ -99,7 +107,22 @@ def get_clinic(
     clinic = _get_or_404(clinic_id, db)
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
     sub = db.query(Subscription).filter(Subscription.clinic_id == clinic.id).first()
-    return _serialize_row(clinic, owner, sub)
+    row = _serialize_row(clinic, owner, sub)
+
+    # Payout bank details — same "one active account" rule admin_payouts.py
+    # uses to pick which account to pay out to (active, most recently added).
+    bank_account = db.query(HospitalBankAccount).filter(
+        HospitalBankAccount.hospital_id == clinic.id,
+        HospitalBankAccount.active == True,  # noqa: E712
+    ).order_by(HospitalBankAccount.created_at.desc()).first()
+    row["bank_account"] = {
+        "account_number": bank_account.account_number,
+        "account_name": bank_account.account_name,
+        "bank_name": bank_account.bank_name,
+        "verified": bank_account.verified,
+    } if bank_account else None
+
+    return row
 
 
 @router.patch("/{clinic_id}/status")
@@ -118,6 +141,19 @@ def update_clinic_status(
         return _serialize_row(clinic, owner, sub)
 
     clinic.is_active = body.is_active
+    old_data = {"is_active": old_value}
+    new_data = {"is_active": body.is_active}
+    # A disabled clinic must not still show up in public search/booking —
+    # is_listed no longer tracks billing status (see workers/tasks.py), so
+    # this is the one place left that needs to unlist it. Not re-listed
+    # automatically on re-enable — that still requires onboarding_completed
+    # (see onboarding.py/billing_service.py), which a clinic that was
+    # disabled pre-onboarding may never have reached.
+    if not body.is_active and clinic.is_listed:
+        old_data["is_listed"] = True
+        new_data["is_listed"] = False
+        clinic.is_listed = False
+
     write_audit_log(
         db,
         admin_id=admin.id,
@@ -125,8 +161,8 @@ def update_clinic_status(
         entity_type="clinic",
         entity_id=clinic.id,
         clinic_id=clinic.id,
-        old_data={"is_active": old_value},
-        new_data={"is_active": body.is_active},
+        old_data=old_data,
+        new_data=new_data,
         reason=body.reason,
         request=request,
     )
@@ -135,6 +171,57 @@ def update_clinic_status(
 
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
     sub = db.query(Subscription).filter(Subscription.clinic_id == clinic.id).first()
+    return _serialize_row(clinic, owner, sub)
+
+
+@router.patch("/{clinic_id}/settings")
+def update_clinic_settings(
+    clinic_id: str,
+    body: ClinicSettingsUpdateRequest,
+    request: Request,
+    admin: User = Depends(get_current_superadmin),
+    db: Session = Depends(get_db),
+):
+    """
+    Superadmin override for per-clinic settings that are normally
+    self-service (Settings page, clinic-owner-scoped PATCH /clinics).
+    Lets support toggle a clinic's setting directly — e.g. turning off
+    "require payment before booking" — without needing the clinic owner
+    to log in and do it themselves, or resorting to raw SQL.
+    """
+    clinic = _get_or_404(clinic_id, db)
+
+    old_data = {}
+    new_data = {}
+    if body.patient_payment_enabled is not None and body.patient_payment_enabled != clinic.patient_payment_enabled:
+        old_data["patient_payment_enabled"] = clinic.patient_payment_enabled
+        new_data["patient_payment_enabled"] = body.patient_payment_enabled
+        clinic.patient_payment_enabled = body.patient_payment_enabled
+    if body.is_listed is not None and body.is_listed != clinic.is_listed:
+        old_data["is_listed"] = clinic.is_listed
+        new_data["is_listed"] = body.is_listed
+        clinic.is_listed = body.is_listed
+
+    owner = db.query(User).filter(User.id == clinic.owner_id).first()
+    sub = db.query(Subscription).filter(Subscription.clinic_id == clinic.id).first()
+
+    if not new_data:
+        return _serialize_row(clinic, owner, sub)
+
+    write_audit_log(
+        db,
+        admin_id=admin.id,
+        action="clinic.update_settings",
+        entity_type="clinic",
+        entity_id=clinic.id,
+        clinic_id=clinic.id,
+        old_data=old_data,
+        new_data=new_data,
+        reason=body.reason,
+        request=request,
+    )
+    db.commit()
+    db.refresh(clinic)
     return _serialize_row(clinic, owner, sub)
 
 

@@ -129,6 +129,12 @@ api.interceptors.response.use(
 
 export function getApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
+    if (error.code === 'ECONNABORTED') {
+      return 'The server is taking too long to respond. Please check your connection and try again.';
+    }
+    if (!error.response) {
+      return 'Could not reach the server. Please check your connection and try again.';
+    }
     const data = error.response?.data;
     if (typeof data?.detail === 'string') return data.detail;
     if (typeof data?.detail === 'object') return data.detail?.message ?? 'An error occurred';

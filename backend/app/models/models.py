@@ -208,12 +208,16 @@ class Clinic(Base):
     # Public clinic directory — reuses the existing `slug` above as the
     # public identifier (already used by /book/{slug} and the QR code); no
     # second slug system. is_listed is the single source of truth for public
-    # search/page visibility — set true on onboarding completion and on
-    # subscription activation, set false when a trial expires unpaid (see
-    # onboarding.py, billing_service.py, and workers/tasks.py
-    # expire_trial_subscriptions). opening_hours/services have no existing
-    # data source or editing UI yet — nullable, omitted from the public page
-    # when empty rather than backfilled with placeholder content.
+    # search/page visibility (both endpoints also require is_active — see
+    # public_clinics.py) — set true on onboarding completion and on
+    # subscription activation (onboarding.py, billing_service.py), set false
+    # when an admin disables the clinic (admin_clinics.update_clinic_status).
+    # Deliberately independent of trial/subscription status — an active
+    # clinic patients already know about (e.g. via QR code) stays
+    # searchable even if its trial lapses unpaid; the paywall gates other
+    # features, not directory visibility. opening_hours/services have no
+    # existing data source or editing UI yet — nullable, omitted from the
+    # public page when empty rather than backfilled with placeholder content.
     is_listed = Column(Boolean, default=False, nullable=False, index=True)
     opening_hours = Column(Text, nullable=True)
     services = Column(JSONB, nullable=True)

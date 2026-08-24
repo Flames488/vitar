@@ -178,6 +178,50 @@ def timed_query(label: str, query_fn: Callable[..., T], *args, **kwargs) -> T:
         raise
 
 
+# ── Disconnect-retry session ──────────────────────────────────────────────────
+class _AutoReconnectSession(Session):
+    """
+    Retries exactly once on OperationalError — but ONLY for the first
+    statement executed on this session. After that first execute() call
+    (success or a used-up retry), eligibility flips off for the rest of
+    this session's life, so a mid-transaction drop after something has
+    already been written is never retried blindly (that would risk
+    re-running a statement whose effect may have already landed server
+    side before the connection dropped — a real double-write risk this
+    fix must not introduce).
+
+    That "first statement only" scope isn't a compromise — it's exactly
+    the failure shape this targets. pool_pre_ping + pool_recycle (see
+    _make_engine above) handle the common case of Supabase's pooler
+    closing an idle connection, but not the residual race where a
+    connection is reaped in the moment between pre_ping's own check and
+    the real query. That race can only ever hit a session's first use of
+    a freshly-checked-out connection — nothing has been sent on it yet,
+    so retrying is always safe. Confirmed live: OperationalError("server
+    closed the connection unexpectedly") from get_current_clinic (a
+    dependency that runs ahead of nearly every authenticated endpoint),
+    then independently from admin_users and admin_agents list endpoints
+    within the same minute — three unrelated call sites hit by the same
+    connection-pool race, which is what makes a per-session fix worth
+    having instead of chasing each call site that happens to alert.
+    """
+    _retry_eligible = True
+
+    def execute(self, *args, **kwargs):
+        from sqlalchemy.exc import OperationalError
+        try:
+            result = super().execute(*args, **kwargs)
+            self._retry_eligible = False
+            return result
+        except OperationalError:
+            if not self._retry_eligible:
+                raise
+            self._retry_eligible = False
+            logger.warning("db session: retrying first statement once after OperationalError "
+                            "(likely a pooled connection reaped by Supabase's pooler)")
+            return super().execute(*args, **kwargs)
+
+
 # ── Redis-backed query cache ──────────────────────────────────────────────────
 def cached_query(
     key: str,
@@ -298,7 +342,7 @@ class _LazyEngine:
 
 engine = _LazyEngine()
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=_AutoReconnectSession)
 
 
 # ── Read replica engine ───────────────────────────────────────────────────────
@@ -333,7 +377,7 @@ def _get_replica_session_factory():
     global ReplicaSessionLocal
     if ReplicaSessionLocal is None:
         ReplicaSessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=_get_replica_engine()
+            autocommit=False, autoflush=False, bind=_get_replica_engine(), class_=_AutoReconnectSession
         )
     return ReplicaSessionLocal
 

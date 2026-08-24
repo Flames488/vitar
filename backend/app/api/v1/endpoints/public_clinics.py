@@ -4,9 +4,10 @@ Vitar — Public Clinic Directory Endpoints
 NEW FILE. Fully public, unauthenticated (same shape as booking.py's public
 routes) — a patient without an account needs to reach these. Reuses the
 clinics.slug that already exists (no second slug system) and the
-Clinic.is_listed column as the single source of truth for visibility (see
-models.Clinic and the is_listed hooks in onboarding.py / billing_service.py
-/ workers/tasks.py.expire_trial_subscriptions).
+Clinic.is_listed column as the single source of truth for visibility,
+plus an explicit is_active check (see models.Clinic and the is_listed
+hooks in onboarding.py / billing_service.py / admin_clinics.py). Listing
+is independent of trial/subscription status by design.
 
 Mounted at /api/v1/public/clinics. Search is additionally rate-limited via
 RATE_RULES in core/middleware.py (unauthenticated + scraper-exposed).
@@ -31,7 +32,7 @@ def search_clinics(
     state: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Clinic).filter(Clinic.is_listed == True)  # noqa: E712 — explicit column filter, not a query-build shortcut
+    query = db.query(Clinic).filter(Clinic.is_listed == True, Clinic.is_active == True)  # noqa: E712 — explicit column filter, not a query-build shortcut
     if q:
         query = query.filter(Clinic.name.ilike(f"%{q}%"))
     if city:
@@ -52,7 +53,7 @@ def get_clinic(slug: str, db: Session = Depends(get_db)):
     # Same 404 whether the slug doesn't exist or exists but isn't listed —
     # never let the response distinguish the two (see Phase 1 spec: don't
     # leak which clinics exist but are unlisted).
-    if not clinic or not clinic.is_listed:
+    if not clinic or not clinic.is_listed or not clinic.is_active:
         raise HTTPException(status_code=404, detail="Clinic not found")
 
     result = {

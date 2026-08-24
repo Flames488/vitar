@@ -230,19 +230,76 @@ async def send_new_booking_email(
     await _send(to_email, f"New booking: {patient_name} — {scheduled_at_str}", html)
 
 
-async def send_subscription_activated_email(to_email: str, clinic_name: str, plan: str, amount: str):
+async def send_subscription_activated_email(
+    to_email: str, clinic_name: str, plan: str, amount: str, period_end_str: str = "",
+):
     html = _base_template(
-        "Subscription Activated 🎉",
+        "Payment Received — Subscription Activated",
         f"""
-        <p>Payment confirmed for <strong>{_esc(clinic_name)}</strong>.</p>
+        <p>Dear {_esc(clinic_name)} Team,</p>
+        <p>Thank you for your payment. This is to confirm that we have received your subscription
+        payment, and your Vitar account has been upgraded accordingly.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Plan</td><td style="padding:8px;">{plan.title()}</td></tr>
-          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Amount</td><td style="padding:8px;">{amount}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Clinic</td><td style="padding:8px;">{_esc(clinic_name)}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Plan</td><td style="padding:8px;">{plan.title()}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Amount Paid</td><td style="padding:8px;">{amount}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Status</td><td style="padding:8px;">Active</td></tr>
+          {f'<tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Renews / Expires</td><td style="padding:8px;">{_esc(period_end_str)}</td></tr>' if period_end_str else ''}
         </table>
+        <p>Your {plan.title()} plan is live now — no further action is required on your end.</p>
         <a href="{settings.FRONTEND_URL}/dashboard" class="btn">Go to Dashboard →</a>
+        <p style="color:#666;font-size:14px;">
+          Should you have any questions about this payment or your account, please don't hesitate
+          to reach us directly at {settings.EMAIL_FROM}.
+        </p>
+        <p style="color:#666;font-size:14px;margin-bottom:0;">
+          Thank you for your continued trust in Vitar.
+        </p>
         """,
     )
-    await _send(to_email, f"Vitar {plan.title()} plan activated", html)
+    await _send(to_email, f"Payment Received — Your Vitar {plan.title()} Subscription Is Active", html)
+
+
+async def send_payment_received_email(
+    to_email: str,
+    clinic_name: str,
+    patient_name: str,
+    total_amount: str,
+    clinic_share: str,
+    paystack_fee: str,
+    payout_hours: int,
+    appointment_id: str,
+):
+    """
+    Sent to the clinic the moment a patient's booking payment clears —
+    distinct from notify_new_booking's generic "new appointment" alert,
+    which fires for free bookings too and says nothing about money.
+    """
+    html = _base_template(
+        "Payment Received",
+        f"""
+        <p>Dear {_esc(clinic_name)} Team,</p>
+        <p>We are writing to confirm that a patient payment has been received for an appointment
+        at <strong>{_esc(clinic_name)}</strong>.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;width:40%;">Patient</td><td style="padding:8px;">{_esc(patient_name)}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Amount Paid</td><td style="padding:8px;">{total_amount}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Paystack Processing Fee</td><td style="padding:8px;">-{paystack_fee}</td></tr>
+          <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Your Payout</td><td style="padding:8px;"><strong>{clinic_share}</strong></td></tr>
+        </table>
+        <p>This amount will be transferred to your registered bank account within
+        <strong>{payout_hours} hours</strong>. No action is required on your part.</p>
+        <a href="{settings.FRONTEND_URL}/dashboard/appointments/{appointment_id}" class="btn">View Appointment →</a>
+        <p style="color:#666;font-size:14px;">
+          Should you have any questions about this payment or your payout, please reach us at
+          {settings.EMAIL_FROM}.
+        </p>
+        <p style="color:#666;font-size:14px;margin-bottom:0;">
+          Thank you for partnering with Vitar.
+        </p>
+        """,
+    )
+    await _send(to_email, f"Payment Received — {total_amount} for {patient_name}'s Appointment", html)
 
 
 async def send_feature_spotlight_email(

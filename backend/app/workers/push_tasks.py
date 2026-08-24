@@ -156,7 +156,7 @@ def notify_new_booking(self, appointment_id: str):
     db = SessionLocal()
     try:
         from app.models.models import Appointment, Patient, Doctor, Clinic, User
-        from app.models.models import PushSubscription
+        from app.models.models import PushSubscription, PatientPayment, PaymentStatus
         from app.services.push_service import send_push_notification, build_new_booking_payload
         from app.services.email_service import send_new_booking_email
 
@@ -226,6 +226,33 @@ def notify_new_booking(self, appointment_id: str):
                 reason=apt.reason or "",
                 appointment_id=str(apt.id),
             ))
+
+        # ── Payment confirmation ─────────────────────────────────────────
+        # Distinct from the "new booking" email above, which fires for
+        # free bookings too and says nothing about money. finalize_paid_
+        # appointment (webhooks.py) has already computed and stored the
+        # real clinic_share/platform_share on PatientPayment by the time
+        # this task runs — Paystack's own processing fee (which varies by
+        # amount/channel, never a fixed number) is whatever's left after
+        # subtracting both shares from what the patient actually paid.
+        if owner and owner.email and apt.payment_status == PaymentStatus.PAID:
+            payment = db.query(PatientPayment).filter(PatientPayment.appointment_id == apt.id).first()
+            if payment:
+                from app.services.email_service import send_payment_received_email
+                from app.services.geo_service import format_currency
+                from app.core.config import settings as _settings
+
+                paystack_fee = payment.total_amount - payment.clinic_share - payment.platform_share
+                run_async(send_payment_received_email(
+                    to_email=owner.email,
+                    clinic_name=clinic.name,
+                    patient_name=patient.full_name,
+                    total_amount=format_currency(float(payment.total_amount), payment.currency),
+                    clinic_share=format_currency(float(payment.clinic_share), payment.currency),
+                    paystack_fee=format_currency(float(paystack_fee), payment.currency),
+                    payout_hours=_settings.PAYOUT_AUTO_SEND_AFTER_HOURS,
+                    appointment_id=str(apt.id),
+                ))
 
         # ── WhatsApp ──────────────────────────────────────────────────────
         # Uses the same WhatsApp Cloud API path patient reminders already go

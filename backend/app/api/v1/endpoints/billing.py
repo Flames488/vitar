@@ -3,7 +3,7 @@ Vitar v5 - Billing Endpoints
 Subscription management, plan info, payment initiation.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -327,6 +327,7 @@ class ActivateRequest(BaseModel):
 @router.post("/activate")
 def activate_subscription(
     body: ActivateRequest,
+    background_tasks: BackgroundTasks,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -334,9 +335,11 @@ def activate_subscription(
     Superadmin endpoint: manually activate a clinic's plan after confirming
     their bank transfer. Called from the superadmin subscriptions panel.
     """
-    from app.models.models import Subscription, SubscriptionStatus, PaymentProvider
+    from app.models.models import Subscription, SubscriptionStatus, PaymentProvider, User
     from app.core.utils import utcnow
     from datetime import timedelta
+    from app.services.email_service import send_subscription_activated_email
+    from app.services.geo_service import format_currency
 
     # Only superadmins can activate
     if not getattr(current_user, "is_superadmin", False):
@@ -391,6 +394,20 @@ def activate_subscription(
         related_id=clinic.id,
         link_path="/admin/subscriptions",
     )
+
+    # This is the one manual activation path whose whole purpose is
+    # "confirm a real bank transfer" (per the docstring above) — unlike
+    # admin_subscriptions.py's /override, which also covers free/comp
+    # grants and must never claim a payment that didn't happen, sending
+    # a payment-confirmation email here is always correct.
+    owner = db.query(User).filter(User.id == clinic.owner_id).first()
+    if owner and owner.email:
+        background_tasks.add_task(
+            send_subscription_activated_email,
+            owner.email, clinic.name, body.plan,
+            format_currency(float(amount), clinic.currency or "NGN"),
+            period_end.strftime("%B %d, %Y"),
+        )
 
     return {
         "message": f"{clinic.name} activated on {body.plan} plan",

@@ -11,7 +11,7 @@ import { Settings2, RotateCcw } from 'lucide-react';
 import { adminApi } from '@/lib/api/services';
 import { getApiError } from '@/lib/api/client';
 import {
-  useAdminTheme, SearchInput, Select, Pagination, StatusBadge,
+  useAdminTheme, SearchInput, Select, Pagination, StatusBadge, ToggleSwitch,
   EmptyState, LoadingState, Modal, FormField, TextInput, TextArea, PrimaryButton, SecondaryButton,
 } from '@/components/admin/AdminUI';
 
@@ -45,6 +45,10 @@ export default function AdminSubscriptionsPage() {
   const [expirationDate, setExpirationDate] = useState('');
   const [notes, setNotes] = useState('');
   const [reason, setReason] = useState('');
+  const [notifyPaymentReceived, setNotifyPaymentReceived] = useState(false);
+  const [amountPaid, setAmountPaid] = useState('');
+
+  const canNotifyPayment = ['grant_temporary', 'grant_lifetime', 'extend'].includes(action);
 
   const resetTrialsMutation = useMutation({
     mutationFn: () => adminApi.subscriptions.resetActiveTrials(false),
@@ -96,6 +100,8 @@ export default function AdminSubscriptionsPage() {
       expiration_date: action === 'set_expiration' ? expirationDate : undefined,
       notes: notes || undefined,
       reason: reason || undefined,
+      notify_payment_received: canNotifyPayment && notifyPaymentReceived ? true : undefined,
+      amount_paid: canNotifyPayment && notifyPaymentReceived ? Number(amountPaid) : undefined,
     }),
     onSuccess: () => {
       toast.success('Subscription updated');
@@ -107,12 +113,15 @@ export default function AdminSubscriptionsPage() {
 
   const closeModal = () => {
     setTarget(null); setNotes(''); setReason(''); setPlan('pro'); setExpirationDate(''); setDurationDays('30'); setDurationUnit('days');
+    setNotifyPaymentReceived(false); setAmountPaid('');
   };
 
   const openOverride = (clinicId: string, clinicName: string) => {
     setTarget({ clinicId, clinicName });
     setAction('grant_temporary');
     setPlan('pro'); // sensible default so admin doesn't have to pick every time
+    setNotifyPaymentReceived(false);
+    setAmountPaid('');
   };
 
   const items = data?.items ?? [];
@@ -221,6 +230,7 @@ export default function AdminSubscriptionsPage() {
                 overrideMutation.isPending
                 || (['grant_temporary', 'extend'].includes(action) && !durationDays)
                 || (action === 'set_expiration' && !expirationDate)
+                || (canNotifyPayment && notifyPaymentReceived && !amountPaid)
               }
             >
               {overrideMutation.isPending ? 'Applying...' : 'Apply Override'}
@@ -260,6 +270,33 @@ export default function AdminSubscriptionsPage() {
             </div>
             {durationUnit === 'months' && (
               <p className="text-xs mt-1 text-gray-500">≈ {durationDaysValue} days</p>
+            )}
+          </FormField>
+        )}
+
+        {canNotifyPayment && (
+          <FormField label="Payment confirmation email">
+            <div className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Notify clinic that payment was received</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Only turn this on if a real payment was actually confirmed — the clinic gets a
+                  professional email stating the exact amount below. Not for free/comp grants.
+                </p>
+              </div>
+              <ToggleSwitch checked={notifyPaymentReceived} onChange={() => setNotifyPaymentReceived((v) => !v)} />
+            </div>
+            {notifyPaymentReceived && (
+              <div className="mt-2">
+                <TextInput
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={amountPaid}
+                  onChange={(e) => setAmountPaid(e.target.value)}
+                  placeholder="Amount actually paid, e.g. 6000"
+                />
+              </div>
             )}
           </FormField>
         )}

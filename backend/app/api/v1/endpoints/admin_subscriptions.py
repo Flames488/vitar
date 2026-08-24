@@ -17,7 +17,7 @@ GET /api/v1/admin/audit-logs?entity_type=subscription&entity_id={clinic_id}).
 import enum
 from datetime import timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel, field_validator
@@ -53,6 +53,14 @@ class OverrideRequest(BaseModel):
     expiration_date: Optional[str] = None              # ISO date, required for set_expiration
     notes: Optional[str] = None
     reason: Optional[str] = None
+    # This endpoint also covers free/comp grants and revocations, so it can
+    # never assume an override represents a real payment — the admin must
+    # say so explicitly. When true, amount_paid is required and the clinic
+    # is emailed a payment-confirmation notice for exactly that amount (see
+    # apply_override below). Only meaningful for grant_temporary /
+    # grant_lifetime / extend; ignored otherwise.
+    notify_payment_received: bool = False
+    amount_paid: Optional[float] = None
 
     @field_validator("duration_days")
     @classmethod
@@ -229,12 +237,23 @@ def apply_override(
     clinic_id: str,
     body: OverrideRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(get_current_superadmin),
     db: Session = Depends(get_db),
 ):
     clinic, sub = _get_clinic_and_sub(clinic_id, db)
     old_snapshot = _sub_snapshot(sub)
     now = utcnow()
+
+    if body.notify_payment_received:
+        if body.action not in (OverrideAction.GRANT_TEMPORARY, OverrideAction.GRANT_LIFETIME, OverrideAction.EXTEND):
+            raise HTTPException(
+                status_code=422,
+                detail="notify_payment_received only applies to grant_temporary, grant_lifetime, or extend "
+                       "— it doesn't make sense for a free grant, expiration tweak, or revocation.",
+            )
+        if not body.amount_paid or body.amount_paid <= 0:
+            raise HTTPException(status_code=422, detail="amount_paid is required when notify_payment_received is true")
 
     if body.action == OverrideAction.GRANT_FREE:
         sub.plan = body.plan or sub.plan
@@ -253,11 +272,13 @@ def apply_override(
         sub.current_period_start = now
         sub.current_period_end = now + timedelta(days=body.duration_days)
         sub.cancel_at_period_end = False
+        if body.notify_payment_received:
+            sub.amount = body.amount_paid
 
     elif body.action == OverrideAction.GRANT_LIFETIME:
         sub.plan = body.plan or SubscriptionPlan.ENTERPRISE
         sub.status = SubscriptionStatus.ACTIVE
-        sub.amount = 0
+        sub.amount = body.amount_paid if body.notify_payment_received else 0
         sub.current_period_start = now
         sub.current_period_end = now + timedelta(days=365 * LIFETIME_YEARS)
         sub.cancel_at_period_end = False
@@ -270,6 +291,8 @@ def apply_override(
         sub.cancel_at_period_end = False
         if sub.status in (SubscriptionStatus.EXPIRED, SubscriptionStatus.CANCELLED, SubscriptionStatus.PAST_DUE):
             sub.status = SubscriptionStatus.ACTIVE
+        if body.notify_payment_received:
+            sub.amount = body.amount_paid
 
     elif body.action == OverrideAction.SET_EXPIRATION:
         if not body.expiration_date:
@@ -345,4 +368,16 @@ def apply_override(
     )
 
     owner = db.query(User).filter(User.id == clinic.owner_id).first()
+
+    if body.notify_payment_received and owner and owner.email:
+        from app.services.email_service import send_subscription_activated_email
+        from app.services.geo_service import format_currency
+
+        background_tasks.add_task(
+            send_subscription_activated_email,
+            owner.email, clinic.name, sub.plan.value if hasattr(sub.plan, "value") else sub.plan,
+            format_currency(float(body.amount_paid), clinic.currency or "NGN"),
+            sub.current_period_end.strftime("%B %d, %Y") if sub.current_period_end else "",
+        )
+
     return _serialize(clinic, sub, owner)

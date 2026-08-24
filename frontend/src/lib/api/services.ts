@@ -306,6 +306,7 @@ export const adminApi = {
       action: 'grant_free' | 'grant_temporary' | 'grant_lifetime' | 'extend' | 'set_expiration' | 'revoke';
       plan?: string; duration_days?: number; expiration_date?: string;
       notes?: string; reason?: string;
+      notify_payment_received?: boolean; amount_paid?: number;
     }) => api.post(`/admin/subscriptions/${clinicId}/override`, data).then(r => r.data),
     resetActiveTrials: (dryRun = false) =>
       api.post('/admin/subscriptions/reset-trials', null, { params: { dry_run: dryRun } }).then(r => r.data),

@@ -7,7 +7,8 @@ human approval before anything actually sends.
 
 Two Celery tasks:
   draft_outreach_for_new_leads — AI-drafts a first-contact (or follow-up)
-    message for the highest-scored not-yet-exhausted leads, inserts as a
+    message for the not-yet-exhausted leads closest to home first (by
+    OUTREACH_PRIORITY_AREAS order, lead score breaking ties), inserts as a
     pending_approval content_queue row. Never sends anything itself.
   send_approved_outreach — sends whatever's been approved via Wabizz
     (or the stub, if WABIZZ_OUTREACH_ENABLED=false or DRY_RUN=true), and
@@ -26,7 +27,7 @@ from datetime import timedelta
 from typing import List, Optional
 
 import httpx
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, case, func, or_
 
 from app.agents.utils import is_ai_core_enabled, is_dry_run, log_agent_run
 from app.core.config import settings
@@ -47,52 +48,81 @@ OUTREACH_COOLDOWN_DAYS = 7
 # auto-retired rather than contacted a third time.
 MAX_OUTREACH_ATTEMPTS = 2
 
-SYSTEM_PROMPT = """You are drafting a first-contact WhatsApp message on behalf of Vitar \
-(livevault.cloud), a tool built for Nigerian private clinics that gets rid of front-desk \
-chaos: patients can book an appointment online instead of calling in and playing phone tag, \
-fill out their own registration details on their phone before they arrive instead of \
-scribbling the same paper form every visit, and get an automatic reminder before their \
-appointment so fewer people simply forget to show up. Billing is via Paystack in Naira. \
-Pricing: Starter is ₦6,000/month, Pro is ₦15,000/month, both after a 30-day free trial, no \
-card needed.
+def _system_prompt() -> str:
+    """Built at call time so OUTREACH_HOME_CITY flows into the copy — the
+    message should read as coming from someone local, not a bulk sender."""
+    home_city = settings.OUTREACH_HOME_CITY
+    return f"""You are writing a short first-contact WhatsApp message from the Vitar team to \
+the owner or manager of a private clinic in Nigeria. Vitar (livevault.cloud) is a small \
+Nigerian company based in {home_city} that makes a simple tool for clinics: patients book \
+appointments online instead of calling in and playing phone tag, fill in their own \
+registration details on their phone before they arrive instead of re-doing the same paper \
+form every visit, and get an automatic WhatsApp reminder before their appointment so fewer of \
+them forget to show up. Billing is in Naira via Paystack: Starter is ₦6,000/month, Pro is \
+₦15,000/month.
 
-Output ONLY the WhatsApp message itself — nothing else. No preamble like "Here's a draft..." \
-or "For {clinic}, here's a message:", no meta-commentary before or after, no quotation marks \
-wrapping it, no labels. The clinic owner receiving this must see nothing but the message text \
-a real person would send them.
+Write the way one person messages another on WhatsApp — warm, plain, and brief. Sound like a \
+real {home_city} person reaching out, not a company broadcast. NO marketing or software words \
+("solution", "platform", "SaaS", "streamline", "leverage", "revolutionise", "management \
+software", "cutting-edge", "seamless"). NO grand vision talk about "transforming healthcare \
+in Nigeria". Keep it to about 4-5 short sentences — clinic staff skim WhatsApp.
 
-Write a short WhatsApp message in plain, everyday language a busy clinic owner would actually \
-read — NOT marketing or software jargon ("SaaS", "platform", "solution", "streamline", \
-"management software"). Clinic staff skim WhatsApp, so don't pad it: structure it as four \
-short beats, one sentence each (3-4 sentences total, no more):
+Cover these beats, roughly one sentence each, but vary their order and wording between \
+messages:
+- A friendly greeting that says who this is: a message from the Vitar team, a small \
+{home_city}-based company. Use the clinic's name naturally.
+- One real front-desk headache, stated as a plain fact about running any clinic (phone tag \
+over bookings, re-filling the same paper form every visit, patients forgetting appointments). \
+NOT a guess about this specific clinic — avoid anything that signals you're speculating about \
+them ("I'm sure you...", "you probably...", "likely", "no doubt", "I bet", "I imagine", "I'd \
+guess", and any other phrasing with that same guessing effect). If a sentence reads like \
+you're assuming something about this clinic rather than stating a general fact, rewrite it.
+- Name Vitar and pair one or two concrete things it does with what the clinic gets out of it \
+(less back-and-forth for the front desk, fewer empty appointment slots) — not a feature list.
+- The offer, in its own sentence: Vitar sets the whole thing up for them and the first month \
+is free, then it's the normal monthly price. This is the main reason to reply, so don't bury \
+it.
+- A soft, low-pressure closing question. Offer a quick call or — since Vitar is local — a \
+short visit to show them how it works. Not a hard call-to-action, not a link. Vary the exact \
+wording of this question every message; never default to a single phrasing like "Are you open \
+to exploring...".
 
-1. Open with the clinic's name, then a real front-desk pain point, stated as something clinics \
-generally deal with — phone tag over bookings, re-filling the same paper form every visit, \
-missed appointments from forgotten bookings. State it as a plain fact about running a clinic, \
-not a guess about THIS one specifically. This rules out an entire CATEGORY of wording, not \
-just a fixed list of words — anything that signals you're speculating about them ("I'm sure",
-"likely", "probably", "surely", "I bet", "no doubt", "I imagine", "I'd guess", etc., and any \
-other phrasing with that same guessing effect, even ones not listed here). If a sentence reads \
-like you're assuming something about this specific clinic rather than stating a fact about \
-clinics in general, rewrite it.
-2. Name Vitar explicitly, and pair one or two concrete things it does with the benefit it \
-gives THEM specifically (e.g. less back-and-forth for staff, fewer missed slots) rather than \
-just listing features.
-3. Give the free trial (and that no card is needed) its own short sentence — it's the \
-lowest-friction reason to say yes, don't bury it inside another sentence.
-4. Close with a soft, low-pressure question inviting a reply — not a hard call-to-action or a \
-link. Vary the actual wording of this question between messages; don't default to "Are you \
-open to exploring..." (or any other single phrasing) every time.
+Output ONLY the message text itself — no preamble like "Here's a draft..." or "For \
+{{clinic}}, here's a message:", no meta-commentary before or after, no quotation marks \
+wrapping it, no labels, no separate sign-off block. Nothing but what a real person would type \
+into the chat.
 
-Do not fabricate specific claims about the clinic (their patient volume, their current \
-software, etc.) — you only know their name and that they're a private clinic.
+Do not fabricate specific claims about the clinic (their patient volume, the software they \
+use now, their size) — you only know their name and that they're a private clinic.
 
-This message is one of many being sent to different clinics in the same batch. Vary your \
-exact wording, sentence order, and which pain point/benefit you lead with each time — including \
-the closing question, not just the opener. Do not default to the same sentence structure every \
-time. Near-identical messages sent to many different numbers are exactly what gets flagged as \
-spam, so genuine variation between \
-messages matters as much as the tone of any single one."""
+This message is one of several going to different clinics in the same batch. Genuinely vary \
+the wording, the order of the beats, which headache and which benefit you lead with, and the \
+closing question. Near-identical messages sent to many numbers are exactly what gets a \
+WhatsApp number flagged as spam, so real variation between messages matters as much as the \
+tone of any single one."""
+
+
+def _proximity_rank_expr():
+    """SQL ordering key for closest-first outreach: 0..N-1 for a lead in the
+    Nth OUTREACH_PRIORITY_AREAS entry (matched on Lead.area, or the area
+    name appearing in Lead.address when Lead.area is unset), then N for any
+    other lead in OUTREACH_HOME_CITY, then N+1 for everything else. Lower =
+    drafted/contacted sooner."""
+    areas = settings.outreach_priority_areas
+    whens = []
+    for i, area in enumerate(areas):
+        whens.append((
+            or_(
+                func.lower(Lead.area) == area.lower(),
+                and_(Lead.area.is_(None), Lead.address.ilike(f"%{area}%")),
+            ),
+            i,
+        ))
+    whens.append((
+        func.lower(Lead.city) == settings.OUTREACH_HOME_CITY.lower(),
+        len(areas),
+    ))
+    return case(*whens, else_=len(areas) + 1)
 
 
 def _draft_message(clinic_name: str, avoid_phrases: Optional[List[str]] = None) -> str:
@@ -114,7 +144,7 @@ def _draft_message(clinic_name: str, avoid_phrases: Optional[List[str]] = None) 
     return _strip_preamble(generate(
         prompt=prompt,
         agent_name="sales_agent",
-        system=SYSTEM_PROMPT,
+        system=_system_prompt(),
     ))
 
 
@@ -177,6 +207,9 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
                 )
             )
 
+            # Closest-first: leads in the earliest-listed priority areas are
+            # drafted before anything further out, with lead score only
+            # breaking ties within the same proximity band.
             candidates = (
                 db.query(Lead)
                 .filter(
@@ -184,7 +217,7 @@ def draft_outreach_for_new_leads(self, batch_size: int = 20):
                     Lead.attempt_count < MAX_OUTREACH_ATTEMPTS,
                     ~Lead.id.in_(excluded_lead_ids),
                 )
-                .order_by(Lead.score.desc())
+                .order_by(_proximity_rank_expr().asc(), Lead.score.desc())
                 .limit(batch_size)
                 .all()
             )

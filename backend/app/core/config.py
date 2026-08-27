@@ -258,5 +258,38 @@ class Settings(BaseSettings):
     VITAR_TELEGRAM_BOT_TOKEN: str = ""
     VITAR_ADMIN_TELEGRAM_ID: str = ""
 
+    # ─── AI Core: geographic outreach targeting ───────────────────────────
+    # Lead Hunter and Sales Agent both work outward from a home base.
+    # OUTREACH_PRIORITY_AREAS is an ORDERED, comma-separated list — the
+    # earliest entry is the closest to you and gets hunted + contacted
+    # first. hunt_leads_daily spends most days walking these areas inside
+    # OUTREACH_HOME_CITY (one area per day) and only occasionally dips into
+    # OUTREACH_OTHER_CITIES. Sales Agent drafts outreach to leads in the
+    # earliest-listed areas first, with lead score breaking ties.
+    #
+    # These are plain comma-separated strings, NOT JSON arrays — the
+    # module docstring's "List fields must be JSON" rule is about pydantic
+    # `List` typed fields; these stay `str` and are split by the
+    # properties below.
+    OUTREACH_HOME_CITY: str = "Enugu"
+    OUTREACH_PRIORITY_AREAS: str = (
+        "Gariki,Awkunanaw,Agbani Road,Uwani,Achara Layout,Coal Camp,"
+        "New Haven,Ogui,Asata,Independence Layout,GRA,Trans-Ekulu,"
+        "Abakpa,Emene,Nsukka"
+    )
+    OUTREACH_OTHER_CITIES: str = "Lagos,Abuja,Port Harcourt,Ibadan"
+    # Out of every OUTREACH_DAILY_CYCLE_LENGTH daily Lead Hunter runs, how
+    # many stay in the home city. 6 of 7 ≈ one "other city" day per week.
+    OUTREACH_HOME_CITY_DAYS_PER_CYCLE: int = 6
+    OUTREACH_DAILY_CYCLE_LENGTH: int = 7
+
+    @property
+    def outreach_priority_areas(self) -> List[str]:
+        return [a.strip() for a in self.OUTREACH_PRIORITY_AREAS.split(",") if a.strip()]
+
+    @property
+    def outreach_other_cities(self) -> List[str]:
+        return [c.strip() for c in self.OUTREACH_OTHER_CITIES.split(",") if c.strip()]
+
 
 settings = Settings()

@@ -176,9 +176,11 @@ class Clinic(Base):
     
     # Features
     # Defaults on for every new clinic (patients pay before booking) — still
-    # a real per-clinic toggle a clinic can switch off in Settings if they
-    # want free booking, not a locked platform policy.
-    patient_payment_enabled = Column(Boolean, default=True)
+    # a real per-clinic toggle a clinic can switch off in Settings (or during
+    # onboarding) if they want free booking, not a locked platform policy.
+    # nullable=False + server_default match contact_*_enabled below so a raw
+    # insert can't leave it NULL (which booking.py would read as "free").
+    patient_payment_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
     consultation_fee = Column(Numeric(12, 2), default=0)
     booking_page_enabled = Column(Boolean, default=True)
     online_booking_enabled = Column(Boolean, default=True)
@@ -966,6 +968,13 @@ class Lead(Base):
     whatsapp = Column(String(20))
     address = Column(Text)
     city = Column(String(100))
+    # Sub-city area / neighbourhood the lead was found in — Lead Hunter
+    # searches OUTREACH_PRIORITY_AREAS one at a time and records which one.
+    # Drives the Sales Agent's closest-first outreach ordering. Nullable:
+    # leads from a bare-city search (or scraped before this column existed)
+    # leave it unset, and the Sales Agent falls back to matching an area
+    # name inside `address`.
+    area = Column(String(100))
     source = Column(Enum(LeadSource, native_enum=False), nullable=False)
     source_url = Column(Text)
     status = Column(Enum(LeadStatus, native_enum=False), nullable=False, default=LeadStatus.NEW)
@@ -986,6 +995,7 @@ class Lead(Base):
         # listings have no phone at all.
         Index("uq_leads_phone", "phone", unique=True, postgresql_where=text("phone IS NOT NULL")),
         Index("ix_leads_status_score", "status", "score"),
+        Index("ix_leads_city_area", "city", "area"),
     )
 
 

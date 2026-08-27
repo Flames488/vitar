@@ -58,6 +58,10 @@ export default function OnboardingPage() {
   // Optional — Hospital Contact Settings (item 7 also lets this be set/changed
   // anytime from Settings, so it's fine to default and skip here).
   const [contactMode, setContactMode] = useState<'both' | 'whatsapp' | 'call' | 'none'>('both');
+  // Whether patients pay their consultation fee online before an appointment
+  // is confirmed, or just book and pay at the clinic. Clinic-wide policy,
+  // also changeable anytime from Settings → Patient Payment.
+  const [paymentMode, setPaymentMode] = useState<'pay_first' | 'free'>('pay_first');
 
   // Step 2: Doctor
   const doctorForm = useForm({
@@ -80,6 +84,7 @@ export default function OnboardingPage() {
         ...data,
         contact_whatsapp_enabled: contactMode === 'both' || contactMode === 'whatsapp',
         contact_call_enabled: contactMode === 'both' || contactMode === 'call',
+        patient_payment_enabled: paymentMode === 'pay_first',
       });
       await advance(2);
     } catch (err) { toast.error(getApiError(err)); }
@@ -221,6 +226,22 @@ export default function OnboardingPage() {
                   <option value="call">Phone call only</option>
                   <option value="none">Disable direct contact</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  How should patients book? <span className="text-slate-400 font-normal">(change anytime in Settings)</span>
+                </label>
+                <select
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value as typeof paymentMode)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                >
+                  <option value="pay_first">Pay the consultation fee online before the appointment is confirmed</option>
+                  <option value="free">Just book — patients pay at the clinic (or consultation is free)</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Online payment only applies when a doctor has a consultation fee set. You still need a payout account (next steps) to receive online payments.
+                </p>
               </div>
               <button type="submit" disabled={profileForm.formState.isSubmitting}
                 className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors">

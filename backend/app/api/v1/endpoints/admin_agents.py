@@ -37,6 +37,7 @@ notifications_router = APIRouter(prefix="/admin/notifications", tags=["Admin —
 class LeadHunterRunRequest(BaseModel):
     city: str
     query: str = "private clinic"
+    area: Optional[str] = None
 
 
 @router.post("/lead-hunter/run", status_code=202)
@@ -49,19 +50,25 @@ def run_lead_hunter(
     """Enqueues a Lead Hunter run immediately — the dashboard's 'Run now' button."""
     from app.agents.lead_hunter import hunt_leads
 
-    task = hunt_leads.delay(city=body.city, query=body.query)
+    task = hunt_leads.delay(city=body.city, query=body.query, area=body.area)
 
     write_audit_log(
         db,
         admin_id=admin.id,
         action="ai_core.lead_hunter.run",
         entity_type="agent_run",
-        new_data={"city": body.city, "query": body.query, "task_id": task.id},
+        new_data={"city": body.city, "query": body.query, "area": body.area, "task_id": task.id},
         request=request,
     )
     db.commit()
 
-    return {"status": "queued", "task_id": task.id, "city": body.city, "query": body.query}
+    return {
+        "status": "queued",
+        "task_id": task.id,
+        "city": body.city,
+        "query": body.query,
+        "area": body.area,
+    }
 
 
 @router.get("/{agent_name}/runs")
@@ -249,6 +256,7 @@ def list_leads(
                 "clinic_name": l.clinic_name,
                 "phone": l.phone,
                 "city": l.city,
+                "area": l.area,
                 "source": l.source.value if hasattr(l.source, "value") else l.source,
                 "status": l.status.value if hasattr(l.status, "value") else l.status,
                 "score": l.score,

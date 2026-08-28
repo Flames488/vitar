@@ -101,6 +101,31 @@ def _set_cached_key_id(raw_key: str, key_id: str) -> None:
         logger.debug("api_key_auth: bcrypt cache write failed: %s", exc)
 
 
+_NEG_CACHE_TTL = 60  # seconds a known-bad key is remembered as bad
+
+
+def _is_known_bad(raw_key: str) -> bool:
+    try:
+        from app.core.cache import cache
+        return bool(cache.get(f"apikey_bad:{hashlib.sha256(raw_key.encode()).hexdigest()}"))
+    except Exception:
+        return False
+
+
+def _mark_known_bad(raw_key: str) -> None:
+    """
+    Remember a failed key for a short window so repeated garbage from an
+    attacker doesn't re-run the full bcrypt scan over every active key on
+    every request (each bcrypt is ~100ms — N keys × 100ms per bogus request
+    is a cheap way to pin a worker).
+    """
+    try:
+        from app.core.cache import cache
+        cache.set(f"apikey_bad:{hashlib.sha256(raw_key.encode()).hexdigest()}", True, ttl=_NEG_CACHE_TTL)
+    except Exception:
+        pass
+
+
 def _invalidate_cached_key(raw_key: str) -> None:
     """
     Invalidate the bcrypt cache for a given raw key (call on revocation).
@@ -173,6 +198,15 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
+    # ── Negative cache: reject a recently-failed key without re-scanning ──────
+    if _is_known_bad(raw_key):
+        logger.warning("api_key_auth: known-bad key (negative cache) | path=%s", request.url.path)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+
     matched: ApiKey | None = None
 
     # ── Fast path: Redis cache hit (skips bcrypt entirely) ────────────────────
@@ -212,6 +246,7 @@ async def verify_api_key(
                 break
 
     if matched is None:
+        _mark_known_bad(raw_key)
         logger.warning(
             "api_key_auth: invalid or unknown key | path=%s", request.url.path,
         )

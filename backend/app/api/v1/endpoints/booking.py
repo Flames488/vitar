@@ -27,7 +27,7 @@ from app.models.models import (
     Clinic, Doctor, Patient, Appointment, WaitingList, AppointmentStatus, PaymentStatus,
 )
 from app.services.trial_guard import check_trial_booking_limit, has_doctor_contact_access
-from app.services.hospital_payments import hospital_payments
+from app.services.hospital_payments import hospital_payments, clinic_has_payout_destination
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -142,6 +142,12 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
         Doctor.is_active == True,
     ).all()
 
+    # Only advertise "payment required" when the clinic can actually be paid
+    # out. Collecting a patient's money with no verified payout account on
+    # file means Vitar holds funds it has no automated way to forward — a
+    # trust and regulatory hazard. Mirrors the same gate in public_book_appointment.
+    payment_collectable = bool(clinic.patient_payment_enabled) and clinic_has_payout_destination(db, clinic.id)
+
     # Doctor Contact (WhatsApp/Call) no longer appears here — moved to
     # post-booking only (see get_appointment_doctor_contact below), gated
     # by has_doctor_contact_access() + appointment ownership. Do not add
@@ -155,11 +161,11 @@ def get_clinic_booking_page(slug: str, db: Session = Depends(get_db)):
             "address": clinic.address or "",
             "city": clinic.city or "",
             "logo_url": clinic.logo_url or "",
-            "patient_payment_enabled": bool(clinic.patient_payment_enabled),
+            "patient_payment_enabled": payment_collectable,
             "currency": clinic.currency or "NGN",
             # Bank transfer details — only expose when payment is enabled
-            "bank_name": clinic.paystack_bank_name if clinic.patient_payment_enabled else None,
-            "account_number": clinic.paystack_account_number if clinic.patient_payment_enabled else None,
+            "bank_name": clinic.paystack_bank_name if payment_collectable else None,
+            "account_number": clinic.paystack_account_number if payment_collectable else None,
         },
         "doctors": [
             {
@@ -436,7 +442,17 @@ async def public_book_appointment(
     db.commit()
 
     payment_amount = doctor.consultation_fee or getattr(clinic, "consultation_fee", None) or 0
-    payment_required = bool(clinic.patient_payment_enabled and payment_amount and payment_amount > 0)
+    # Gate collection on a working payout destination — never take a patient's
+    # money the clinic can't be automatically paid out (see
+    # clinic_has_payout_destination). A clinic with fees set but no verified
+    # bank account simply books the appointment for free until they finish
+    # payout setup.
+    payment_required = bool(
+        clinic.patient_payment_enabled
+        and payment_amount
+        and payment_amount > 0
+        and clinic_has_payout_destination(db, clinic.id)
+    )
     payment_reference = f"VITAR-APT-{secrets.token_urlsafe(12).replace('_', '').replace('-', '').upper()}"
 
     # ── Create appointment ────────────────────────────────────────────────

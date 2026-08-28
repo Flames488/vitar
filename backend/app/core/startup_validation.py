@@ -76,6 +76,18 @@ def validate_production_config() -> None:
     if not (has_paystack or has_stripe):
         warnings.append("No production payment provider configured.")
 
+    # Paystack signs webhooks with an HMAC of the SECRET KEY. If the webhook
+    # secret is unset, verify_webhook() fails closed and every charge.success /
+    # transfer.* event is rejected — subscriptions never auto-activate and
+    # clinic payouts never get created. This is an error, not a warning:
+    # payments silently not being processed is worse than refusing to boot.
+    if has_paystack and not settings.PAYSTACK_WEBHOOK_SECRET:
+        errors.append(
+            "PAYSTACK_SECRET_KEY is set but PAYSTACK_WEBHOOK_SECRET is empty. "
+            "Set PAYSTACK_WEBHOOK_SECRET to the same value as PAYSTACK_SECRET_KEY "
+            "or Paystack webhooks (payments, payouts) will all be rejected."
+        )
+
     # Notifications
     if not settings.SENDGRID_API_KEY:
         warnings.append("SENDGRID_API_KEY not set — transactional emails will not work.")

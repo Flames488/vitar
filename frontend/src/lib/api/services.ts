@@ -144,9 +144,6 @@ export const billingApi = {
   getPaymentStatus: (reference: string) =>
     api.get(`/billing/payment-status/${reference}`).then(r => r.data),
   getPaymentHistory: () => api.get('/billing/payment-history').then(r => r.data),
-  getBanks: () => api.get('/billing/banks').then(r => r.data),
-  setupSubaccount: (bank_code: string, account_number: string) =>
-    api.post('/billing/setup-subaccount', { bank_code, account_number }).then(r => r.data),
 };
 
 // ── Referrals (Refer & Earn) ────────────────────────────────────────────────────
@@ -175,10 +172,9 @@ export const registrationsApi = {
 };
 
 // ── Hospital Bank Account (Paystack payout destination) ─────────────────────────
-// Note: distinct from billingApi.getBanks/setupSubaccount above, which configure
-// the legacy split-payment subaccount. This is the payout flow: patient payments
-// route through Vitar's main Paystack balance, then get sent to the hospital's
-// resolved+verified account via the Transfers API.
+// The single payout-setup flow: patient payments route through Vitar's main
+// Paystack balance, then get sent to the hospital's resolved + verified account
+// via the Transfers API (send_payout_to_hospital).
 
 export const hospitalBankAccountApi = {
   getBanks: () => api.get('/banks').then(r => r.data),

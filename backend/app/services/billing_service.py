@@ -81,33 +81,6 @@ class PaystackBilling:
         self.key = settings.PAYSTACK_SECRET_KEY
         self.headers = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
 
-    async def initialize_transaction(self, email, amount_kobo, metadata, callback_url) -> Dict:
-        """
-        FIX: removed empty plan_code (Paystack rejects plan="").
-        FIX: metadata key is "metadata" not "extra_data".
-        """
-        payload = {
-            "email": email,
-            "amount": amount_kobo,
-            "metadata": metadata,          # ← was "extra_data" — Paystack ignores that key
-            "callback_url": callback_url,
-        }
-        # Do NOT include "plan": "" — Paystack rejects empty plan strings
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                f"{self.BASE}/transaction/initialize",
-                headers=self.headers,
-                json=payload,
-            )
-            data = resp.json()
-            if data.get("status"):
-                return {
-                    "authorization_url": data["data"]["authorization_url"],
-                    "reference": data["data"]["reference"],
-                    "access_code": data["data"]["access_code"],
-                }
-            raise Exception(f"Paystack initialize failed: {data.get('message')}")
-
     async def verify_transaction(self, reference: str, retries: int = 3) -> Dict:
         last_error = None
         for attempt in range(retries):
@@ -220,35 +193,6 @@ class PaystackBilling:
                 json={"code": subscription_code, "token": token},
             )
             return resp.json().get("status", False)
-
-    async def create_subaccount(self, business_name, bank_code, account_number, percentage_charge=0) -> Dict:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                f"{self.BASE}/subaccount",
-                headers=self.headers,
-                json={
-                    "business_name": business_name,
-                    "settlement_bank": bank_code,
-                    "account_number": account_number,
-                    "percentage_charge": percentage_charge,
-                },
-            )
-            data = resp.json()
-            if data.get("status"):
-                return {
-                    "subaccount_code": data["data"]["subaccount_code"],
-                    "bank_name": data["data"]["settlement_bank"],
-                }
-            raise Exception(f"Subaccount creation failed: {data.get('message')}")
-
-    async def get_banks(self) -> list:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.get(f"{self.BASE}/bank", headers=self.headers)
-            data = resp.json()
-            return [
-                {"name": b["name"], "code": b["code"]}
-                for b in data.get("data", [])
-            ] if data.get("status") else []
 
     def verify_webhook(self, payload: bytes, signature: Optional[str]) -> bool:
         # Fail closed, always — no environment-based bypass. A webhook that

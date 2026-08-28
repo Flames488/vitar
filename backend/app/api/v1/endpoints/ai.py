@@ -6,9 +6,9 @@ Chatbot backend: Groq (llama-3.3-70b-versatile) — free tier available,
 fast inference, no per-token billing surprises.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 
@@ -33,12 +33,14 @@ class PredictRequest(BaseModel):
 
 class ChatMessage(BaseModel):
     role: str       # "user" or "assistant" only
-    content: str
+    # Bounded so a client can't inflate the prompt (and the Groq bill /
+    # latency) by sending huge history entries.
+    content: str = Field(max_length=4000)
 
 
 class ChatRequest(BaseModel):
-    message: str
-    conversation_history: Optional[List[ChatMessage]] = []
+    message: str = Field(max_length=4000)
+    conversation_history: Optional[List[ChatMessage]] = Field(default=[], max_length=40)
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -166,7 +168,7 @@ def predict_no_show(
 
 @router.get("/no-show-trends")
 def no_show_trends(
-    months: int = 6,
+    months: int = Query(6, ge=1, le=24),
     clinic=Depends(get_current_clinic),
     db: Session = Depends(get_db),
 ):

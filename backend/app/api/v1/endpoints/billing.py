@@ -443,53 +443,11 @@ async def cancel_subscription(
     }
 
 
-# ─── Get Paystack Banks ────────────────────────────────────────────────────────
-
-@router.get("/banks")
-async def get_banks(
-    clinic=Depends(get_current_clinic),
-):
-    if clinic.country != "NG":
-        return {"banks": []}
-    banks = await billing_service.paystack.get_banks()
-    return {"banks": banks}
-
-
-# ─── Create Paystack Subaccount (for patient payments) ───────────────────────
-
-class SubaccountRequest(BaseModel):
-    bank_code: str
-    account_number: str
-
-@router.post("/setup-subaccount")
-async def setup_subaccount(
-    body: SubaccountRequest,
-    clinic=Depends(get_current_clinic),
-    db: Session = Depends(get_db),
-):
-    if clinic.country != "NG":
-        raise HTTPException(status_code=400, detail="Subaccounts only available for Nigerian clinics")
-
-    try:
-        result = await billing_service.paystack.create_subaccount(
-            business_name=clinic.name,
-            bank_code=body.bank_code,
-            account_number=body.account_number,
-            percentage_charge=1.5,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        from app.core.logging import get_logger
-        _log = get_logger(__name__)
-        _log.error("setup_subaccount: paystack error", exc_info=exc,
-                   extra={"clinic_id": str(clinic.id)})
-        raise HTTPException(status_code=502, detail="Payment provider unavailable. Please try again.")
-
-    clinic.paystack_subaccount_code = result["subaccount_code"]
-    clinic.paystack_bank_name = result["bank_name"]
-    clinic.paystack_account_number = body.account_number
-    clinic.patient_payment_enabled = True
-    db.commit()
-
-    return {"message": "Payment account configured", "subaccount_code": result["subaccount_code"]}
+# NOTE: the old POST /setup-subaccount and GET /banks endpoints were removed.
+# They created a Paystack *subaccount* that nothing in the booking flow ever
+# used for splitting, while flipping patient_payment_enabled=True and showing
+# bank details on the public page — so a clinic could start collecting patient
+# money with no working payout path. Clinic payout banking now goes through
+# one place only: POST /hospitals/{id}/bank-account (hospital_bank_accounts.py),
+# which creates a real Paystack transfer recipient that send_payout_to_hospital
+# actually uses.

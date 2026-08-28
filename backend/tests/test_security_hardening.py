@@ -270,14 +270,24 @@ class TestWebhookAndUploadHardening:
 
         assert PaystackBilling().verify_webhook(b"{}", "any-signature") is False
 
-    def test_paystack_webhook_allows_missing_secret_only_outside_production(self, monkeypatch):
+    def test_paystack_webhook_fails_closed_without_secret_in_development_too(self, monkeypatch):
+        # verify_webhook fails closed unconditionally — there is deliberately
+        # no environment-based bypass, since ENVIRONMENT is operator-set and a
+        # misconfiguration there must never become an auth bypass.
         from app.core.config import settings
         from app.services.billing_service import PaystackBilling
 
         monkeypatch.setattr(settings, "ENVIRONMENT", "development")
         monkeypatch.setattr(settings, "PAYSTACK_WEBHOOK_SECRET", "")
 
-        assert PaystackBilling().verify_webhook(b"{}", "any-signature") is True
+        assert PaystackBilling().verify_webhook(b"{}", "any-signature") is False
+
+    def test_paystack_webhook_rejects_bad_signature_with_secret_set(self, monkeypatch):
+        from app.core.config import settings
+        from app.services.billing_service import PaystackBilling
+
+        monkeypatch.setattr(settings, "PAYSTACK_WEBHOOK_SECRET", "test-secret")
+        assert PaystackBilling().verify_webhook(b"{}", "not-the-real-hmac") is False
 
     def test_upload_type_detection_uses_file_signature(self):
         from app.api.v1.endpoints.uploads import _detect_image_content_type

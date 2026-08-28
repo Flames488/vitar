@@ -127,3 +127,25 @@ class PaystackHospitalPayments:
 
 
 hospital_payments = PaystackHospitalPayments()
+
+
+def clinic_has_payout_destination(db, clinic_id: str) -> bool:
+    """
+    True when the clinic has an active, verified bank account with a Paystack
+    transfer recipient — i.e. money collected from a patient can actually be
+    forwarded to the clinic automatically (send_payout_to_hospital). Patient
+    payment collection on the public booking page is gated on this so Vitar
+    never ends up holding patient money it has no automated way to pay out.
+    """
+    from app.models.models import HospitalBankAccount
+
+    acct = (
+        db.query(HospitalBankAccount)
+        .filter(
+            HospitalBankAccount.hospital_id == clinic_id,
+            HospitalBankAccount.active.is_(True),
+            HospitalBankAccount.verified.is_(True),
+        )
+        .first()
+    )
+    return bool(acct and acct.paystack_recipient_code)

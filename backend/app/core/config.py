@@ -83,7 +83,16 @@ class Settings(BaseSettings):
     PAYSTACK_PUBLIC_KEY: str = ""
     PAYSTACK_WEBHOOK_SECRET: str = ""
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
-    PAYOUT_AUTO_SEND_AFTER_HOURS: int = 24
+    # When a patient's payment is confirmed, Vitar holds the clinic's share
+    # for this many minutes and then transfers it to the clinic's bank
+    # automatically. The transfer is dispatched immediately on payment
+    # confirmation (finalize_paid_appointment -> send_clinic_payout), NOT on
+    # an hourly batch. The hold is a safety window: if the patient cancels
+    # within it, void_payout_for_cancelled_appointment stops the transfer
+    # before the money leaves Vitar's balance. Set to 0 to pay out with no
+    # hold. auto_send_pending_payouts still runs hourly as a backstop that
+    # retries any payout the immediate dispatch missed.
+    PAYOUT_AUTO_SEND_AFTER_MINUTES: int = 15
     # An AWAITING_PAYMENT appointment (patient started checkout but never
     # completed it) holds its slot as a conflict for this long, then stops
     # blocking new bookings — otherwise an abandoned checkout permanently

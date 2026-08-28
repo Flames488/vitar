@@ -267,7 +267,7 @@ async def send_payment_received_email(
     total_amount: str,
     clinic_share: str,
     paystack_fee: str,
-    payout_hours: int,
+    payout_minutes: int,
     appointment_id: str,
 ):
     """
@@ -288,7 +288,7 @@ async def send_payment_received_email(
           <tr><td style="padding:8px;background:#f5f5f5;font-weight:600;">Your Payout</td><td style="padding:8px;"><strong>{clinic_share}</strong></td></tr>
         </table>
         <p>This amount will be transferred to your registered bank account within
-        <strong>{payout_hours} hours</strong>. No action is required on your part.</p>
+        <strong>{payout_minutes} minutes</strong>. No action is required on your part.</p>
         <a href="{settings.FRONTEND_URL}/dashboard/appointments/{appointment_id}" class="btn">View Appointment →</a>
         <p style="color:#666;font-size:14px;">
           Should you have any questions about this payment or your payout, please reach us at

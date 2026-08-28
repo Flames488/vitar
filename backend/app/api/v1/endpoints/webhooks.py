@@ -80,8 +80,17 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
     platform_share = platform_share_kobo / 100
     clinic_share = clinic_share_kobo / 100
 
+    # Cancel-then-webhook race: the patient cancelled (or a stale/duplicate
+    # charge.success is being replayed) after the appointment was already
+    # CANCELLED. Do NOT resurrect it to APPROVED and do NOT create/dispatch a
+    # payout — that would pay a clinic for a visit that isn't happening.
+    # Still record the money as received (PatientPayment PAID) and alert so
+    # the patient gets refunded.
+    cancelled = appointment.status in (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW)
+
     appointment.payment_status = PaymentStatus.PAID
-    appointment.status = AppointmentStatus.APPROVED
+    if not cancelled:
+        appointment.status = AppointmentStatus.APPROVED
     appointment.paid_at = now
     appointment.payment_provider_ref = reference
 
@@ -107,7 +116,10 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
         payment.paid_at = now
 
     payout = db.query(Payout).filter(Payout.appointment_id == appointment.id).first()
-    if not payout:
+    # clinic_share_kobo can be 0 if Paystack's fee ate the whole payment
+    # (tiny amounts) — there is nothing to transfer and Paystack rejects a
+    # zero-value transfer, so skip creating a payout row for it.
+    if not payout and not cancelled and clinic_share_kobo > 0:
         payout = Payout(
             appointment_id=appointment.id,
             hospital_id=appointment.clinic_id,
@@ -129,16 +141,50 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
         db.refresh(appointment)
         payout = db.query(Payout).filter(Payout.appointment_id == appointment.id).first()
         return payout
-    cache.set(
-        "admin:payouts:latest",
-        {"payout_id": payout.id, "appointment_id": appointment.id, "hospital_id": appointment.clinic_id},
-        ttl=24 * 60 * 60,
+    # Capture everything the post-commit side effects need NOW, while the
+    # session is known-clean. The notify blocks below don't roll back on
+    # error, so a failure in one of them can leave the session in a
+    # PendingRollbackError state — reading payout.status (an expired
+    # attribute) after that point would raise and abort the whole webhook
+    # even though the payment + payout are already durably committed.
+    payout_id = payout.id if payout else None
+    payout_pending = bool(payout) and (
+        (payout.status if isinstance(payout.status, str) else getattr(payout.status, "value", None))
+        == PayoutStatus.PENDING_PAYOUT.value
     )
-    try:
-        from app.workers.push_tasks import notify_new_booking
-        notify_new_booking.delay(appointment.id)
-    except Exception as e:
-        logger.error(f"Failed to dispatch new-booking notification: {e}")
+
+    if payout_id:
+        cache.set(
+            "admin:payouts:latest",
+            {"payout_id": payout_id, "appointment_id": appointment.id, "hospital_id": appointment.clinic_id},
+            ttl=24 * 60 * 60,
+        )
+
+    # Automatic clinic payout: transfer the clinic's share to its bank the
+    # moment this payment is confirmed, after a short hold window. Dispatched
+    # here (not waited on) so it runs while the funds are still in Vitar's
+    # Paystack balance — before Paystack's daily auto-settlement sweeps them
+    # to Vitar's own bank. auto_send_pending_payouts is the hourly backstop
+    # if this dispatch is lost. Only fires for a freshly-created PENDING
+    # payout — a re-run of an already-sent payment skips it. Dispatched
+    # before the notify blocks below so a failure there can't stop it.
+    if payout_pending:
+        try:
+            from app.workers.tasks import send_clinic_payout
+
+            send_clinic_payout.apply_async(
+                (payout_id,),
+                countdown=max(0, settings.PAYOUT_AUTO_SEND_AFTER_MINUTES * 60),
+            )
+        except Exception as e:
+            logger.error(f"Failed to dispatch automatic payout for {payout_id}: {e}")
+
+    if not cancelled:
+        try:
+            from app.workers.push_tasks import notify_new_booking
+            notify_new_booking.delay(appointment.id)
+        except Exception as e:
+            logger.error(f"Failed to dispatch new-booking notification: {e}")
 
     try:
         from app.models.models import Clinic, Patient
@@ -146,18 +192,32 @@ def finalize_paid_appointment(appointment, data: dict, db: Session):
 
         clinic = db.query(Clinic).filter(Clinic.id == appointment.clinic_id).first()
         patient_row = db.query(Patient).filter(Patient.id == appointment.patient_id).first()
-        notify(
-            event_type="booking_payment_received",
-            agent_name="billing",
-            message=(
-                f"{patient_row.full_name if patient_row else 'A patient'} just paid "
-                f"₦{amount:,.2f} for an appointment at {clinic.name if clinic else 'a clinic'}.\n"
-                f"Clinic share: ₦{clinic_share:,.2f} — payout will follow automatically."
-            ),
-            related_id=payout.id,
-            link_path="/admin/booking-payments",
-        )
+        if cancelled:
+            notify(
+                event_type="appointment_refund_needed",
+                agent_name="billing",
+                message=(
+                    f"A payment of ₦{amount:,.2f} landed for an appointment at "
+                    f"{clinic.name if clinic else 'a clinic'} that was already cancelled. "
+                    f"No payout was created — the patient needs a manual refund."
+                ),
+                related_id=appointment.id,
+                link_path="/admin/booking-payments",
+            )
+        else:
+            notify(
+                event_type="booking_payment_received",
+                agent_name="billing",
+                message=(
+                    f"{patient_row.full_name if patient_row else 'A patient'} just paid "
+                    f"₦{amount:,.2f} for an appointment at {clinic.name if clinic else 'a clinic'}.\n"
+                    f"Clinic share: ₦{clinic_share:,.2f} — payout will follow automatically."
+                ),
+                related_id=payout_id,
+                link_path="/admin/booking-payments",
+            )
     except Exception as e:
+        db.rollback()
         logger.error(f"Failed to dispatch booking-payment-received notification: {e}")
 
     return payout
@@ -179,11 +239,14 @@ def void_payout_for_cancelled_appointment(appointment, db: Session) -> None:
     there's no safe way to auto-reverse that here, so this raises a
     Telegram alert instead of pretending to fix it silently.
     """
+    from sqlalchemy import text
+
     from app.models.models import PaymentStatus, Payout, PayoutStatus, Clinic
     from app.services.notifications import notify
 
     if appointment.payment_status != PaymentStatus.PAID:
         return
+
     payout = db.query(Payout).filter(Payout.appointment_id == appointment.id).first()
     if not payout:
         return
@@ -191,9 +254,40 @@ def void_payout_for_cancelled_appointment(appointment, db: Session) -> None:
     clinic = db.query(Clinic).filter(Clinic.id == appointment.clinic_id).first()
     clinic_name = clinic.name if clinic else "a clinic"
 
-    if payout.status == PayoutStatus.PENDING_PAYOUT.value:
-        payout.status = PayoutStatus.CANCELLED.value
+    # Race-safe stop: a single atomic UPDATE that only cancels the payout if
+    # it is STILL pending. If send_payout_to_hospital already flipped it to
+    # SENT (its transfer went out in the ~15 min hold window), the WHERE
+    # clause won't match and we fall through to the "already went out" alert
+    # — no chance of a stale read clobbering a SENT row back to CANCELLED.
+    # Bound the wait so a genuinely hung send (documented pathology) doesn't
+    # block the cancellation request; on timeout, hand off to a background
+    # reconcile so the payout still gets stopped once the lock frees.
+    try:
+        db.execute(text("SET LOCAL statement_timeout = '8s'"))
+        result = db.execute(
+            text(
+                "UPDATE payouts SET status = :cancelled "
+                "WHERE id = :id AND status = :pending"
+            ),
+            {
+                "cancelled": PayoutStatus.CANCELLED.value,
+                "pending": PayoutStatus.PENDING_PAYOUT.value,
+                "id": payout.id,
+            },
+        )
         db.commit()
+        stopped = result.rowcount > 0
+    except Exception as exc:
+        db.rollback()
+        logger.warning(f"void_payout: could not update payout {payout.id} inline ({exc}); handing to reconcile task")
+        try:
+            from app.workers.tasks import reconcile_cancelled_payout
+            reconcile_cancelled_payout.apply_async((payout.id,), countdown=30)
+        except Exception as e:
+            logger.error(f"void_payout: failed to enqueue reconcile for {payout.id}: {e}")
+        return
+
+    if stopped:
         notify(
             event_type="appointment_refund_needed",
             agent_name="billing",
@@ -202,7 +296,11 @@ def void_payout_for_cancelled_appointment(appointment, db: Session) -> None:
             related_id=appointment.id,
             link_path="/admin/payouts",
         )
-    elif payout.status == PayoutStatus.SENT.value:
+        return
+
+    # Not stopped — re-read the real current status to classify.
+    db.refresh(payout)
+    if payout.status == PayoutStatus.SENT.value:
         notify(
             event_type="appointment_refund_needed",
             agent_name="billing",
@@ -324,16 +422,58 @@ async def paystack_webhook(
                 reason=data.get("gateway_response", "charge_failed"),
             )
 
-        elif event in ("transfer.success", "transfer.failed"):
+        elif event in ("transfer.success", "transfer.failed", "transfer.reversed"):
             from app.models.models import Payout, PayoutStatus
-            transfer_code = data.get("transfer_code") or data.get("reference")
+
+            # Match on the Paystack transfer_code we stored; fall back to the
+            # payout id embedded in our own transfer reference
+            # (vitar-payout-<id>) for the case where the row was created but
+            # its transfer_code was never persisted (send timed out on our
+            # side after Paystack accepted it).
+            transfer_code = data.get("transfer_code")
+            reference = data.get("reference") or ""
+            payout = None
             if transfer_code:
                 payout = db.query(Payout).filter(Payout.paystack_transfer_code == transfer_code).first()
-                if payout:
-                    payout.status = PayoutStatus.SENT.value if event == "transfer.success" else PayoutStatus.FAILED.value
-                    if event == "transfer.success" and not payout.sent_at:
+            if not payout and reference.startswith("vitar-payout-"):
+                # reference is vitar-payout-<uuid>[-<attempt>]; the uuid is a
+                # fixed 36 chars right after the prefix.
+                ref_payout_id = reference[len("vitar-payout-"):][:36]
+                payout = db.query(Payout).filter(Payout.id == ref_payout_id).first()
+
+            succeeded = event == "transfer.success"
+            # Skip only a redundant re-delivery of success; still let a later
+            # failure/reversal override a SENT row (money came back).
+            if payout and not (succeeded and payout.status == PayoutStatus.SENT.value):
+                payout.status = PayoutStatus.SENT.value if succeeded else PayoutStatus.FAILED.value
+                if succeeded:
+                    if not payout.sent_at:
                         payout.sent_at = utcnow()
-                    db.commit()
+                    if transfer_code and not payout.paystack_transfer_code:
+                        payout.paystack_transfer_code = transfer_code
+                db.commit()
+
+                if not succeeded:
+                    from app.api.v1.endpoints.admin_payouts import bump_payout_attempt
+                    bump_payout_attempt(payout.id)
+                    try:
+                        from app.models.models import Clinic
+                        from app.services.notifications import notify
+
+                        clinic = db.query(Clinic).filter(Clinic.id == payout.hospital_id).first()
+                        notify(
+                            event_type="payout_send_timeout",
+                            agent_name="billing",
+                            message=(
+                                f"A payout of ₦{payout.amount / 100:,.2f} to "
+                                f"{clinic.name if clinic else 'a clinic'} was reported "
+                                f"{event.split('.')[-1]} by Paystack — marked FAILED, needs manual review."
+                            ),
+                            related_id=payout.id,
+                            link_path="/admin/payouts",
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to dispatch transfer-failed notification: {e}")
     except Exception:
         # We already marked this event_id as processed (atomic SET NX above,
         # before dispatch) so a raw exception here — DB blip, provider SDK

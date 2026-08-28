@@ -250,7 +250,7 @@ def notify_new_booking(self, appointment_id: str):
                     total_amount=format_currency(float(payment.total_amount), payment.currency),
                     clinic_share=format_currency(float(payment.clinic_share), payment.currency),
                     paystack_fee=format_currency(float(paystack_fee), payment.currency),
-                    payout_hours=_settings.PAYOUT_AUTO_SEND_AFTER_HOURS,
+                    payout_minutes=_settings.PAYOUT_AUTO_SEND_AFTER_MINUTES,
                     appointment_id=str(apt.id),
                 ))
 

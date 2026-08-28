@@ -79,7 +79,7 @@ export function EarningsPage() {
 
         <p className="text-xs text-slate-400 border-t border-slate-100 pt-3">
           Patient payments are sent to your bank account automatically — no action needed.
-          Money usually arrives within {summary?.auto_send_after_hours ?? 24} hours of a patient paying.
+          Money is transferred within {summary?.auto_send_after_minutes ?? 15} minutes of a patient paying.
           {summary?.platform_fee_pct ? ` A ${(summary.platform_fee_pct * 100).toFixed(0)}% processing fee covers payment gateway costs.` : ''}
         </p>
 

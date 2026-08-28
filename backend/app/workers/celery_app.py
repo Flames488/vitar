@@ -192,6 +192,8 @@ celery.conf.update(
         "app.workers.tasks.retry_failed_notifications":     {"queue": "notifications"},
         "app.workers.tasks.retry_failed_payments":          {"queue": "billing"},
         "app.workers.tasks.auto_send_pending_payouts":      {"queue": "billing"},
+        "app.workers.tasks.send_clinic_payout":             {"queue": "billing"},
+        "app.workers.tasks.reconcile_cancelled_payout":     {"queue": "billing"},
         "app.workers.tasks.refresh_upcoming_risk_scores":   {"queue": "ai"},
         "app.workers.tasks.dead_letter_processor":          {"queue": "dead_letter"},
         "app.workers.tasks.update_patient_attendance":      {"queue": "notifications"},

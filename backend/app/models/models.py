@@ -1105,6 +1105,11 @@ class NotificationEventType(str, enum.Enum):
     PAYOUT_BLOCKED_NO_BANK = "payout_blocked_no_bank"
     BOOKING_PAYMENT_RECEIVED = "booking_payment_received"
     PAYOUT_SENT = "payout_sent"
+    # Raised by _attempt_payout_send when a payout's transfer has timed out
+    # enough times that auto-retry gives up and marks it FAILED. Was emitted
+    # with a string literal that isn't in this enum, so notify() silently
+    # dropped every one of these alerts.
+    PAYOUT_SEND_TIMEOUT = "payout_send_timeout"
 
 
 class AgentNotification(Base):

@@ -74,7 +74,7 @@ def get_payout_summary(
         "last_sent_amount": (last_sent.amount / 100) if last_sent else None,
         "last_sent_at": last_sent.sent_at.isoformat() if last_sent and last_sent.sent_at else None,
         "bank_account": _masked_account(account),
-        "auto_send_after_hours": settings.PAYOUT_AUTO_SEND_AFTER_HOURS,
+        "auto_send_after_minutes": settings.PAYOUT_AUTO_SEND_AFTER_MINUTES,
         "platform_fee_pct": settings.PLATFORM_PAYOUT_FEE_PCT,
     }
 

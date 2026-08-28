@@ -18,6 +18,31 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/payouts", tags=["Admin — Payouts"])
 
 
+# Paystack rejects a transfer whose reference was used before, even if that
+# earlier transfer FAILED — so a failed payout can never be retried on the
+# same reference. Track a per-payout attempt number: retries after a genuine
+# failure get a fresh reference, while a same-attempt resend (our client
+# timed out but Paystack accepted it) keeps the reference so Paystack can
+# still dedupe it and we never double-pay.
+_PAYOUT_ATTEMPT_TTL = 30 * 24 * 3600
+
+
+def payout_transfer_reference(payout_id: str) -> str:
+    from app.core.cache import cache
+
+    attempt = cache.get(f"payout_send_attempt:{payout_id}") or 0
+    return f"vitar-payout-{payout_id}" if not attempt else f"vitar-payout-{payout_id}-{attempt}"
+
+
+def bump_payout_attempt(payout_id: str) -> None:
+    """Call on every transition of a payout into FAILED so its next send
+    uses a fresh Paystack transfer reference."""
+    from app.core.cache import cache
+
+    key = f"payout_send_attempt:{payout_id}"
+    cache.set(key, (cache.get(key) or 0) + 1, ttl=_PAYOUT_ATTEMPT_TTL)
+
+
 def serialize_payout(payout: Payout, clinic: Optional[Clinic] = None) -> dict:
     clinic = clinic or payout.clinic
     appointment = payout.appointment
@@ -81,11 +106,11 @@ async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
             cache.set(alert_key, True, ttl=7 * 24 * 3600)
         raise HTTPException(status_code=409, detail="Hospital has no verified payout account")
 
-    # Deterministic, stable across retries: if a prior attempt timed out on
-    # our side after Paystack had already accepted it, resending with the
-    # same reference lets Paystack tell us "duplicate" instead of moving
-    # money twice.
-    transfer_reference = f"vitar-payout-{payout.id}"
+    # Stable within one attempt (a resend after our own client timeout keeps
+    # the reference so Paystack dedupes it), fresh after a genuine failure
+    # (bump_payout_attempt below) so a retry isn't rejected on the burned
+    # reference.
+    transfer_reference = payout_transfer_reference(payout.id)
     try:
         transfer = await hospital_payments.initiate_transfer(
             amount_kobo=payout.amount,
@@ -94,7 +119,15 @@ async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
             reference=transfer_reference,
         )
     except Exception as exc:
-        if "duplicate" in str(exc).lower():
+        # Paystack's "reference already used" message has changed wording
+        # over time and has never literally contained "duplicate" — match
+        # the stable parts (a reference that already exists / was used
+        # before) so a resend after our own client-side timeout is
+        # recognised instead of being misfiled as a fresh failure and
+        # retried into a double payment.
+        msg = str(exc).lower()
+        is_dup = "reference" in msg and any(k in msg for k in ("used", "exist", "duplicate", "already"))
+        if is_dup:
             # We've already sent this exact transfer before. Find out what
             # actually happened instead of assuming failure and letting a
             # future retry pay the hospital again.
@@ -106,7 +139,16 @@ async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
                     status_code=502,
                     detail="Transfer status could not be confirmed — check Paystack dashboard before retrying",
                 )
-            if transfer.get("status") != "success":
+            dup_status = (transfer.get("status") or "").lower()
+            if dup_status in ("failed", "abandoned", "reversed"):
+                # The earlier attempt definitively did not pay out. Mark
+                # FAILED for review and bump the attempt so a retry uses a
+                # fresh reference instead of colliding again.
+                payout.status = PayoutStatus.FAILED.value
+                db.commit()
+                bump_payout_attempt(payout.id)
+                raise HTTPException(status_code=502, detail=f"Earlier transfer {dup_status} — needs manual review")
+            if dup_status != "success":
                 # Still pending/processing on Paystack's side. Leave the
                 # payout row as-is (NOT failed) so it isn't picked up for
                 # another automatic retry while the original is in flight.
@@ -115,9 +157,37 @@ async def send_payout_to_hospital(payout_id: str, db: Session) -> Payout:
                     detail=f"Transfer already in progress (status: {transfer.get('status')})",
                 )
         else:
+            # A non-duplicate error here could be a network timeout AFTER
+            # Paystack accepted the transfer — do NOT bump the attempt
+            # (fresh reference) or a retry could double-pay. Keep the
+            # reference stable so a retry hits "duplicate" and verifies the
+            # real state instead.
             payout.status = PayoutStatus.FAILED.value
             db.commit()
             raise HTTPException(status_code=502, detail="Paystack transfer failed")
+
+    # initiate_transfer only checks Paystack's top-level `status` boolean —
+    # the transfer object's OWN status still has to be inspected. With OTP
+    # disabled a new transfer comes back "pending" (accepted, completes
+    # async; the transfer.success webhook confirms it) or occasionally
+    # "success". Anything else must NOT be recorded as paid.
+    tstatus = (transfer.get("status") or "").lower()
+    if tstatus == "otp":
+        # Transfers OTP is still enabled on the Paystack account — this
+        # transfer will never complete without an OTP-finalize step Vitar
+        # does not perform. Fail loudly so it gets fixed. Do NOT bump the
+        # attempt: the "otp" transfer exists on this reference and could
+        # still be finalized manually in the dashboard — a fresh reference
+        # could then double-pay.
+        payout.status = PayoutStatus.FAILED.value
+        db.commit()
+        logger.error(f"Payout {payout.id}: Paystack returned status=otp — disable Transfers OTP in the Paystack dashboard")
+        raise HTTPException(status_code=502, detail="Paystack Transfers OTP is enabled — disable it to allow automatic payouts")
+    if tstatus in ("failed", "abandoned", "reversed"):
+        payout.status = PayoutStatus.FAILED.value
+        db.commit()
+        bump_payout_attempt(payout.id)
+        raise HTTPException(status_code=502, detail=f"Paystack transfer {tstatus}")
 
     payout.status = PayoutStatus.SENT.value
     payout.paystack_transfer_code = transfer.get("transfer_code")

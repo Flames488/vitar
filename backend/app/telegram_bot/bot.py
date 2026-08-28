@@ -93,6 +93,7 @@ _EVENT_EMOJI = {
     "payout_blocked_no_bank": "\U0001F3E6",
     "booking_payment_received": "\U0001F4B0",
     "payout_sent": "✅",
+    "payout_send_timeout": "\U0001F534",
 }
 # Only Sales Agent drafts have an /edit endpoint (Content Agent's don't per
 # the Phase 4 spec) — kept here so both the keyboard builder and the

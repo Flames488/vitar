@@ -916,46 +916,225 @@ def _send_one_payout_isolated(payout_id: str):
         thread_db.close()
 
 
-@celery.task(bind=True, max_retries=2, autoretry_for=(Exception,), retry_backoff=30, retry_jitter=True, queue="billing")
-def auto_send_pending_payouts(self):
+# A payout whose send attempt times out gets abandoned (see comment inside
+# _attempt_payout_send) rather than killed — Python can't force-kill a stuck
+# thread, so it leaks one OS thread and one DB connection permanently every
+# time. For a payout that times out over and over (e.g. a Paystack
+# account-tier restriction that can never resolve itself) that leak, retried
+# forever, eventually exhausts the shared connection pool for every service.
+# Cap it: after MAX_PAYOUT_TIMEOUTS_BEFORE_GIVING_UP timeouts for the same
+# payout, stop retrying it automatically and flag it for manual review instead.
+MAX_PAYOUT_TIMEOUTS_BEFORE_GIVING_UP = 3
+PAYOUT_TIMEOUT_COUNT_TTL = 7 * 24 * 3600  # 7 days
+
+
+def _attempt_payout_send(payout_id: str, db) -> str:
     """
-    Live incident (2026-08-19): a send attempt for one payout hung for
-    60s+ and got hard-killed by Celery's 180s task time limit, every hour
-    it was retried — burning this task's whole time budget on a single
-    payout that could never succeed (a Paystack account-tier restriction,
-    unrelated to this code). Traced the hang past both the DB lock
-    (SELECT ... FOR UPDATE, now has its own statement_timeout — see
-    admin_payouts.py) and the Paystack HTTP call (which has its own 20s
-    httpx timeout and was fast when called in isolation) without finding
-    a single fixable root cause — so instead of chasing it further, each
-    attempt now runs in its own thread with a hard wall-clock timeout.
-    A stuck attempt gets abandoned (not killed — Python can't force-kill a
-    thread) rather than blocking every other pending payout and the whole
-    task behind it.
+    One send attempt for a payout, run in its own thread with a hard
+    wall-clock timeout so a stuck attempt is abandoned instead of blocking
+    the caller. Shared by send_clinic_payout (immediate, per-payment) and
+    auto_send_pending_payouts (hourly backstop).
+
+    `db` is used only for the give-up bookkeeping (marking the row FAILED +
+    notifying) — never handed to the worker thread. Returns one of:
+    "sent", "timed_out", "gave_up", "failed".
     """
     import concurrent.futures
     from app.core.cache import cache
 
-    # A payout whose send attempt times out gets abandoned (see comment
-    # below) rather than killed — Python can't force-kill a stuck thread,
-    # so it leaks one OS thread and one DB connection, permanently, every
-    # time this fires. For a payout that times out over and over (e.g. a
-    # Paystack account-tier restriction that can never resolve itself —
-    # the live incident this guard was added for), the task retried it
-    # every single hour forever, leaking one more connection each time
-    # until the shared connection pool was exhausted for EVERY service
-    # sharing it, including unrelated API requests like login. Cap it: after
-    # MAX_TIMEOUTS_BEFORE_GIVING_UP timeouts for the same payout, stop
-    # retrying it automatically and flag it for manual review instead.
-    MAX_TIMEOUTS_BEFORE_GIVING_UP = 3
-    TIMEOUT_COUNT_TTL = 7 * 24 * 3600  # 7 days
+    # Deliberately not a `with` block: ThreadPoolExecutor.__exit__ calls
+    # shutdown(wait=True), which blocks until the submitted thread finishes —
+    # for an abandoned/stuck thread that's "never", silently defeating the
+    # timeout below. shutdown(wait=False) truly abandons a stuck thread.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_send_one_payout_isolated, payout_id)
+    try:
+        future.result(timeout=25)
+        return "sent"
+    except concurrent.futures.TimeoutError:
+        timeout_key = f"payout_timeout_count:{payout_id}"
+        timeout_count = (cache.get(timeout_key) or 0) + 1
+        cache.set(timeout_key, timeout_count, ttl=PAYOUT_TIMEOUT_COUNT_TTL)
+
+        if timeout_count >= MAX_PAYOUT_TIMEOUTS_BEFORE_GIVING_UP:
+            logger.error(
+                f"payout={payout_id} timed out {timeout_count}x — giving up, "
+                f"marking FAILED for manual review"
+            )
+            try:
+                from app.models.models import Payout, PayoutStatus
+                from app.services.notifications import notify
+
+                stuck = db.query(Payout).filter(Payout.id == payout_id).first()
+                if stuck and stuck.status == PayoutStatus.PENDING_PAYOUT.value:
+                    stuck.status = PayoutStatus.FAILED.value
+                    db.commit()
+                notify(
+                    event_type="payout_send_timeout",
+                    agent_name="billing",
+                    message=(
+                        f"A payout ({payout_id}) timed out {timeout_count} times trying "
+                        f"to send — marked FAILED and stopped auto-retrying. Needs "
+                        f"manual investigation."
+                    ),
+                    related_id=payout_id,
+                    link_path="/admin/payouts",
+                )
+            except Exception as mark_exc:
+                db.rollback()
+                logger.error(f"payout={payout_id}: failed to mark FAILED: {mark_exc}")
+            return "gave_up"
+
+        logger.error(
+            f"payout={payout_id} timed out after 25s (abandoned, not killed) — "
+            f"attempt {timeout_count}/{MAX_PAYOUT_TIMEOUTS_BEFORE_GIVING_UP}, will be retried"
+        )
+        return "timed_out"
+    except Exception as exc:
+        logger.error(f"payout={payout_id} send failed: {exc}")
+        return "failed"
+    finally:
+        executor.shutdown(wait=False)
+
+
+@celery.task(bind=True, max_retries=3, queue="billing")
+def send_clinic_payout(self, payout_id: str):
+    """
+    Transfer one clinic's share to its bank account, dispatched straight from
+    finalize_paid_appointment() the moment a patient's payment is confirmed
+    (after a PAYOUT_AUTO_SEND_AFTER_MINUTES hold, during which a patient
+    cancellation can still stop it via void_payout_for_cancelled_appointment).
+
+    This is the primary payout path — it also means the transfer runs while
+    the funds are still in Vitar's Paystack balance, before Paystack's daily
+    auto-settlement sweeps them to Vitar's own bank. auto_send_pending_payouts
+    is now only an hourly backstop that retries anything this missed (worker
+    restart, transient failure, clinic that added its bank account late).
+    """
+    from celery.exceptions import Retry
+
+    db = SessionLocal()
+    try:
+        from app.models.models import Payout, PayoutStatus
+
+        payout = db.query(Payout).filter(Payout.id == payout_id).first()
+        if not payout:
+            logger.warning(f"send_clinic_payout: payout {payout_id} not found")
+            return {"status": "not_found"}
+        if payout.status != PayoutStatus.PENDING_PAYOUT.value:
+            # Already sent, or cancelled by a patient cancellation during the
+            # hold window — nothing to do.
+            return {"status": payout.status if isinstance(payout.status, str) else payout.status.value}
+
+        outcome = _attempt_payout_send(payout_id, db)
+        if outcome == "timed_out":
+            # Not yet at the give-up cap — let Celery retry rather than wait a
+            # full hour for the backstop sweep.
+            raise self.retry(countdown=300)
+        return {"status": outcome}
+    except Retry:
+        raise
+    except Exception as exc:
+        # Unexpected (DB blip, import error, broker hiccup). Retry a couple of
+        # times so the primary path recovers fast; the hourly backstop is the
+        # final safety net if all retries are exhausted.
+        logger.error(f"send_clinic_payout({payout_id}) unexpected error: {exc}", exc_info=True)
+        raise self.retry(exc=exc, countdown=120)
+    finally:
+        db.close()
+
+
+@celery.task(bind=True, max_retries=5, autoretry_for=(Exception,), retry_backoff=30, retry_jitter=True, queue="billing")
+def reconcile_cancelled_payout(self, payout_id: str):
+    """
+    Fallback for void_payout_for_cancelled_appointment when it couldn't stop
+    the payout inline (the send path had the row locked past its 8s wait).
+    By the time this runs the lock is free, so a plain locked read + decision
+    is safe: still PENDING -> cancel it and flag the refund; already SENT ->
+    flag for manual reconciliation; already CANCELLED -> nothing to do.
+    """
+    from sqlalchemy import text as _text
+
+    db = SessionLocal()
+    try:
+        from app.models.models import Payout, PayoutStatus, Clinic, Appointment
+        from app.services.notifications import notify
+
+        db.execute(_text("SET LOCAL statement_timeout = '10s'"))
+        payout = db.query(Payout).filter(Payout.id == payout_id).with_for_update().first()
+        if not payout:
+            return {"status": "not_found"}
+
+        # Only act if the appointment is actually cancelled — guards against a
+        # spurious enqueue.
+        appt = db.query(Appointment).filter(Appointment.id == payout.appointment_id).first()
+        appt_status = (appt.status.value if appt and hasattr(appt.status, "value") else getattr(appt, "status", None)) if appt else None
+        if appt_status not in ("cancelled", "no_show"):
+            return {"status": "appointment_not_cancelled"}
+
+        clinic = db.query(Clinic).filter(Clinic.id == payout.hospital_id).first()
+        clinic_name = clinic.name if clinic else "a clinic"
+
+        if payout.status == PayoutStatus.PENDING_PAYOUT.value:
+            payout.status = PayoutStatus.CANCELLED.value
+            db.commit()
+            notify(
+                event_type="appointment_refund_needed",
+                agent_name="billing",
+                message=f"A paid appointment at {clinic_name} was cancelled — payout stopped (reconcile) "
+                        f"before it went out, but the patient already paid and needs a manual refund.",
+                related_id=payout.appointment_id,
+                link_path="/admin/payouts",
+            )
+            return {"status": "cancelled"}
+        if payout.status == PayoutStatus.SENT.value:
+            notify(
+                event_type="appointment_refund_needed",
+                agent_name="billing",
+                message=f"A paid appointment at {clinic_name} was cancelled AFTER the payout already went "
+                        f"out to the clinic. Needs manual reconciliation — claw back from the clinic or "
+                        f"refund the patient yourself.",
+                related_id=payout.appointment_id,
+                link_path="/admin/payouts",
+            )
+            return {"status": "already_sent"}
+        return {"status": payout.status}
+    finally:
+        db.close()
+
+
+@celery.task(bind=True, max_retries=2, autoretry_for=(Exception,), retry_backoff=30, retry_jitter=True, queue="billing")
+def auto_send_pending_payouts(self):
+    """
+    Hourly backstop for send_clinic_payout (the immediate per-payment path).
+    Picks up any payout still PENDING_PAYOUT past its hold window — one whose
+    immediate dispatch was lost to a worker restart, failed transiently, or
+    was blocked because the clinic hadn't added its bank account yet — and
+    retries it.
+
+    Each attempt runs in its own thread with a hard wall-clock timeout
+    (_attempt_payout_send): a stuck attempt is abandoned, not killed (Python
+    can't force-kill a thread), so it can't block every other pending payout
+    behind it. A payout that times out MAX_PAYOUT_TIMEOUTS_BEFORE_GIVING_UP
+    times is marked FAILED for manual review rather than retried forever
+    (that retry loop once leaked a DB connection per hour until the shared
+    pool was exhausted for every service — live incident 2026-08-19).
+
+    The loop also stops after LOOP_BUDGET_SECONDS so it can never run past
+    Celery's 120s soft / 180s hard time limit and get SIGKILLed mid-iteration
+    (which would drop the give-up bookkeeping). Anything not reached this run
+    is picked up by the next hourly run — order_by(created_at) keeps it FIFO.
+    """
+    import time
+
+    LOOP_BUDGET_SECONDS = 90
 
     db = SessionLocal()
     try:
         from app.core.config import settings
         from app.models.models import Payout, PayoutStatus
 
-        cutoff = utcnow() - timedelta(hours=settings.PAYOUT_AUTO_SEND_AFTER_HOURS)
+        cutoff = utcnow() - timedelta(minutes=settings.PAYOUT_AUTO_SEND_AFTER_MINUTES)
         pending = db.query(Payout).filter(
             Payout.status == PayoutStatus.PENDING_PAYOUT.value,
             Payout.created_at <= cutoff,
@@ -964,65 +1143,26 @@ def auto_send_pending_payouts(self):
         sent = 0
         failed = 0
         timed_out = 0
+        skipped = 0
+        started = time.monotonic()
         for payout in pending:
-            # Deliberately not a `with` block: ThreadPoolExecutor.__exit__
-            # calls shutdown(wait=True), which blocks until the submitted
-            # thread finishes — for an abandoned/stuck thread that's
-            # "finishes" as in "never", silently defeating the 25s timeout
-            # below by hanging here instead (confirmed live: the timeout
-            # log line fired correctly, then the task hung anyway waiting
-            # for the `with` block's own cleanup). shutdown(wait=False)
-            # returns immediately and truly abandons a stuck thread instead.
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(_send_one_payout_isolated, payout.id)
-            try:
-                future.result(timeout=25)
+            if time.monotonic() - started > LOOP_BUDGET_SECONDS:
+                skipped = len(pending) - (sent + failed + timed_out)
+                logger.warning(
+                    f"auto_send_pending_payouts: hit {LOOP_BUDGET_SECONDS}s budget — "
+                    f"{skipped} payout(s) deferred to next run"
+                )
+                break
+            outcome = _attempt_payout_send(payout.id, db)
+            if outcome == "sent":
                 sent += 1
-            except concurrent.futures.TimeoutError:
+            elif outcome in ("timed_out", "gave_up"):
                 timed_out += 1
-                timeout_key = f"payout_timeout_count:{payout.id}"
-                timeout_count = (cache.get(timeout_key) or 0) + 1
-                cache.set(timeout_key, timeout_count, ttl=TIMEOUT_COUNT_TTL)
-
-                if timeout_count >= MAX_TIMEOUTS_BEFORE_GIVING_UP:
-                    logger.error(
-                        f"auto_send_pending_payouts: payout={payout.id} timed out "
-                        f"{timeout_count}x — giving up, marking FAILED for manual review"
-                    )
-                    try:
-                        stuck = db.query(Payout).filter(Payout.id == payout.id).first()
-                        if stuck and stuck.status == PayoutStatus.PENDING_PAYOUT.value:
-                            stuck.status = PayoutStatus.FAILED.value
-                            db.commit()
-                        from app.services.notifications import notify
-                        notify(
-                            event_type="payout_send_timeout",
-                            agent_name="billing",
-                            message=(
-                                f"A payout ({payout.id}) timed out {timeout_count} times "
-                                f"trying to send — marked FAILED and stopped auto-retrying. "
-                                f"Needs manual investigation."
-                            ),
-                            related_id=payout.id,
-                            link_path="/admin/payouts",
-                        )
-                    except Exception as mark_exc:
-                        db.rollback()
-                        logger.error(f"auto_send_pending_payouts: failed to mark payout={payout.id} FAILED: {mark_exc}")
-                else:
-                    logger.error(
-                        f"auto_send_pending_payouts: payout={payout.id} timed out after 25s "
-                        f"(abandoned, not killed) — attempt {timeout_count}/{MAX_TIMEOUTS_BEFORE_GIVING_UP}, "
-                        f"will be retried next hour"
-                    )
-            except Exception as exc:
+            else:
                 failed += 1
-                logger.error(f"auto_send_pending_payouts failed for payout={payout.id}: {exc}")
-            finally:
-                executor.shutdown(wait=False)
 
-        logger.info(f"auto_send_pending_payouts: sent={sent} failed={failed} timed_out={timed_out}")
-        return {"sent": sent, "failed": failed, "timed_out": timed_out}
+        logger.info(f"auto_send_pending_payouts: sent={sent} failed={failed} timed_out={timed_out} skipped={skipped}")
+        return {"sent": sent, "failed": failed, "timed_out": timed_out, "skipped": skipped}
     finally:
         db.close()
 
